@@ -220,3 +220,7 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 - Agentic feature to validate created test cases
 - RAG feature
 - Automation
+
+
+## Last
+- Use TSX instead of JSX for frontend 
