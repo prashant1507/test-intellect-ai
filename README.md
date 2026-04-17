@@ -9,12 +9,6 @@
 [![LLM](https://img.shields.io/badge/LLM-OpenAI%20compatible-8B5CF6?style=flat-square&logo=openai&logoColor=white)](https://platform.openai.com/docs/api-reference)
 [![Keycloak](https://img.shields.io/badge/Keycloak-OIDC-5C6BC0?style=flat-square&logo=keycloak&logoColor=white)](https://www.keycloak.org/)
 
-<p align="center">
-  <video controls playsinline width="880" preload="metadata">
-    <source src="resources/video.mp4" type="video/mp4" />
-  </video>
-</p>
-
 Web app that pulls **JIRA** requirements (or pasted text), calls an **OpenAI-compatible** LLM (**local** or **cloud**) to generate **Gherkin-style test cases**. 
 
 Configure the model with **`LLM_URL`** (base URL including `/v1`) and optional **`LLM_ACCESS_TOKEN`** for providers that require a **Bearer API key**. 
@@ -22,6 +16,11 @@ Configure the model with **`LLM_URL`** (base URL including `/v1`) and optional *
 Optionally **saves** runs per ticket in **SQLite**, and records actions in an **audit log**. 
 
 Optional **Keycloak** sign-in ties users to audit entries.
+
+---
+### Product Sample Video
+
+[video.mp4](resources/video.mp4)
 
 ---
 
@@ -220,6 +219,8 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 - Agentic feature to validate created test cases
 - RAG feature
 - Automation
+- Image reading support
+- Choice to generate test cases based on BDD or somethign else
 
 
 ## Last
