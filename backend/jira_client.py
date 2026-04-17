@@ -10,16 +10,19 @@ import urllib3
 from settings import settings
 
 
+def _requests_verify() -> bool:
+    v = settings.jira_verify_ssl
+    if not v:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    return v
+
+
 def _semantic_tier_labels_for_jira_mapping() -> list[str]:
-    """Fixed tiers for spreading AI output across JIRA priorities (not PASTE_MODE_PRIORITIES)."""
     return ["Highest", "High", "Medium", "Low", "Lowest"]
 
 
 def fetch_priorities(base_url: str, user: str, password: str) -> list[dict]:
-    """Return JIRA priorities sorted highest-first (lowest sequence first)."""
-    verify = settings.jira_verify_ssl
-    if not verify:
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    verify = _requests_verify()
     base = base_url.rstrip("/")
     auth = (user, password)
     headers = {"Accept": "application/json"}
@@ -51,7 +54,6 @@ def fetch_priorities(base_url: str, user: str, password: str) -> list[dict]:
 
 
 def build_ai_to_jira_priority_map(jira_priorities: list[dict]) -> dict[str, str]:
-    """Map each AI tier label to a JIRA priority name (evenly along the sorted list, high → low)."""
     labels = _semantic_tier_labels_for_jira_mapping()
     if not labels or not jira_priorities:
         return {}
@@ -70,7 +72,6 @@ def map_test_priority_to_jira(
     ai_or_name: str | None,
     jira_priorities: list[dict],
 ) -> dict | None:
-    """Resolve test_case.priority (AI label or JIRA name) to one JIRA priority dict."""
     if not jira_priorities:
         return None
     raw = str(ai_or_name or "").strip()
@@ -240,7 +241,6 @@ As a registered user, I want to log in to the application using my email/usernam
 
 
 def format_jira_http_error(response: requests.Response) -> str:
-    """Human-readable message from a failed JIRA REST response."""
     status = response.status_code
 
     def extract_body() -> str:
@@ -285,9 +285,7 @@ def format_jira_http_error(response: requests.Response) -> str:
 def fetch_issue(base_url: str, user: str, password: str, issue_key: str) -> dict[str, str]:
     if settings.mock:
         return _mock_issue(issue_key)
-    verify = settings.jira_verify_ssl
-    if not verify:
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    verify = _requests_verify()
     response = requests.get(
         f"{base_url.rstrip('/')}/rest/api/2/issue/{issue_key}",
         auth=(user, password),
@@ -317,9 +315,7 @@ def _get_issue_json(
     fields: str,
     expand: str | None = None,
 ) -> dict:
-    verify = settings.jira_verify_ssl
-    if not verify:
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    verify = _requests_verify()
     params: dict[str, str] = {"fields": fields}
     if expand:
         params["expand"] = expand
@@ -361,7 +357,6 @@ def fetch_linked_work_issues(
     extra_issue_types_from_env: str,
     test_issue_type_name: str,
 ) -> tuple[list[dict], str]:
-    """Linked issues whose type is in (env list ∪ requirement type), excluding test issue type."""
     if settings.mock:
         return [], ""
     req_type = fetch_requirement_issue_type_name(base_url, user, password, requirement_key)
@@ -532,9 +527,7 @@ def push_test_case_to_jira(
     issue_type_override: str | None = None,
     link_type_override: str | None = None,
 ) -> dict[str, str]:
-    verify = settings.jira_verify_ssl
-    if not verify:
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    verify = _requests_verify()
     base = base_url.rstrip("/")
     auth = (user, password)
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
@@ -575,9 +568,6 @@ def push_test_case_to_jira(
     raw_link = (link_type_override or "").strip() or None
     link_type = (raw_link or settings.jira_test_link_type or "Relates").strip() or "Relates"
     req_k = requirement_key.strip().upper()
-    # JIRA REST issueLink requires both inwardIssue and outwardIssue. The link type's inward/outward
-    # strings describe how each side appears in the UI; permission to create the link often applies to
-    # the "from (outward)" issue's project (see Atlassian docs). Swap via JIRA_LINK_INWARD_IS_REQUIREMENT.
     if settings.jira_link_inward_is_requirement:
         inward_key, outward_key = req_k, new_key
     else:
@@ -607,10 +597,7 @@ def update_test_case_in_jira(
     issue_key: str,
     test_case: dict,
 ) -> dict[str, str]:
-    """Update summary, description, and priority on an existing issue (no new link)."""
-    verify = settings.jira_verify_ssl
-    if not verify:
-        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    verify = _requests_verify()
     base = base_url.rstrip("/")
     auth = (user, password)
     headers = {"Accept": "application/json", "Content-Type": "application/json"}

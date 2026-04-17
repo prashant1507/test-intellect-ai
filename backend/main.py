@@ -113,6 +113,52 @@ def _linked_work_type_labels_display(env_str: str, requirement_type: str) -> str
     return ", ".join(sorted(parts, key=lambda s: s.casefold()))
 
 
+def _jira_request_http_exception(e: RequestException) -> HTTPException:
+    if isinstance(e, HTTPError) and e.response is not None:
+        detail = format_jira_http_error(e.response)
+    else:
+        msg = str(e).strip() or "connection failed"
+        detail = f"Could not reach JIRA. Check the site URL and your network.\n{msg}"
+    return HTTPException(status_code=502, detail=detail)
+
+
+async def _load_ticket_linked_jira(body: TicketIn, key: str) -> tuple[list, list, str]:
+    empty = _linked_work_type_labels_display(settings.jira_linked_work_issue_types, "")
+    if settings.mock:
+        return [], [], empty
+    ju = body.jira_url.strip()
+    user = body.username
+    pw = body.password
+    tt = _jira_test_issue_type_from_body(body)
+    linked: list = []
+    try:
+        linked = await asyncio.to_thread(
+            fetch_linked_test_issues,
+            ju,
+            user,
+            pw,
+            key,
+            tt,
+        )
+    except Exception:
+        linked = []
+    linked_work: list = []
+    work_labels = empty
+    try:
+        linked_work, req_t = await asyncio.to_thread(
+            fetch_linked_work_issues,
+            ju,
+            user,
+            pw,
+            key,
+            extra_issue_types_from_env=settings.jira_linked_work_issue_types,
+            test_issue_type_name=tt,
+        )
+        work_labels = _linked_work_type_labels_display(settings.jira_linked_work_issue_types, req_t)
+    except Exception:
+        linked_work = []
+        work_labels = empty
+    return linked, linked_work, work_labels
 
 
 class GenerateIn(TicketIn):
@@ -245,12 +291,7 @@ async def _fetch_jira(body: TicketIn) -> tuple[str, dict]:
             key,
         )
     except RequestException as e:
-        if isinstance(e, HTTPError) and e.response is not None:
-            detail = format_jira_http_error(e.response)
-        else:
-            msg = str(e).strip() or "connection failed"
-            detail = f"Could not reach JIRA. Check the site URL and your network.\n{msg}"
-        raise HTTPException(status_code=502, detail=detail) from e
+        raise _jira_request_http_exception(e) from e
     return key, raw
 
 
@@ -268,6 +309,22 @@ async def _maybe_fetch_jira_priority_names_for_generate(body: GenerateIn) -> lis
         return names if names else None
     except Exception:
         return None
+
+
+def _require_memory_not_mock() -> None:
+    if settings.mock:
+        raise HTTPException(status_code=400, detail="Memory is not persisted in mock mode.")
+
+
+def _existing_jira_tests_for_llm(jira_entries: list | None) -> list[dict] | None:
+    if not jira_entries:
+        return None
+    rows = [
+        {"issue_key": e["issue_key"], "summary": e.get("summary"), "test_case": e.get("test_case")}
+        for e in jira_entries
+        if isinstance(e, dict) and e.get("issue_key")
+    ]
+    return rows or None
 
 
 async def _generate_and_persist(
@@ -288,15 +345,7 @@ async def _generate_and_persist(
 ) -> dict:
     req_diff = _diff(prev["requirements"], req) if prev else None
     allowed = resolve_priority_allowed_for_generation(paste_mode, priority_labels)
-    ej_llm = (
-        [
-            {"issue_key": e["issue_key"], "summary": e.get("summary"), "test_case": e.get("test_case")}
-            for e in (jira_entries or [])
-            if isinstance(e, dict) and e.get("issue_key")
-        ]
-        if jira_entries
-        else None
-    )
+    ej_llm = _existing_jira_tests_for_llm(jira_entries)
     try:
         cases = await generate_test_cases(
             req,
@@ -404,8 +453,7 @@ def memory_item(ticket_id: str, _: Kc):
 
 @api.post("/memory/update-test-cases")
 def memory_update_test_cases(body: MemoryUpdateTestCasesIn, kc: Kc):
-    if settings.mock:
-        raise HTTPException(status_code=400, detail="Memory is not persisted in mock mode.")
+    _require_memory_not_mock()
     key = body.ticket_id.strip().upper()
     tc = body.test_cases if isinstance(body.test_cases, list) else []
     req_in = body.requirements if isinstance(body.requirements, dict) else {}
@@ -419,8 +467,7 @@ def memory_update_test_cases(body: MemoryUpdateTestCasesIn, kc: Kc):
 
 @api.post("/memory/merge-test-case")
 def memory_merge_test_case(body: MemoryMergeTestCaseIn, kc: Kc):
-    if settings.mock:
-        raise HTTPException(status_code=400, detail="Memory is not persisted in mock mode.")
+    _require_memory_not_mock()
     key = body.ticket_id.strip().upper()
     tc = body.test_case if isinstance(body.test_case, dict) else {}
     req = body.requirements if isinstance(body.requirements, dict) else {}
@@ -430,8 +477,7 @@ def memory_merge_test_case(body: MemoryMergeTestCaseIn, kc: Kc):
 
 @api.post("/memory/save-after-edit")
 def memory_save_after_edit(body: MemorySaveAfterEditIn, kc: Kc):
-    if settings.mock:
-        raise HTTPException(status_code=400, detail="Memory is not persisted in mock mode.")
+    _require_memory_not_mock()
     key = body.ticket_id.strip().upper()
     req = body.requirements if isinstance(body.requirements, dict) else {}
     tc = body.test_cases if isinstance(body.test_cases, list) else []
@@ -491,12 +537,7 @@ async def jira_priorities(body: JiraPrioritiesIn, kc: Kc):
             body.password,
         )
     except RequestException as e:
-        if isinstance(e, HTTPError) and e.response is not None:
-            detail = format_jira_http_error(e.response)
-        else:
-            msg = str(e).strip() or "connection failed"
-            detail = f"Could not reach JIRA. Check the site URL and your network.\n{msg}"
-        raise HTTPException(status_code=502, detail=detail) from e
+        raise _jira_request_http_exception(e) from e
     ai_map = build_ai_to_jira_priority_map(pri)
     client_pri = [
         {"id": p.get("id"), "name": p.get("name"), "iconUrl": p.get("iconUrl")}
@@ -522,12 +563,7 @@ async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
                 body.test_case,
             )
         except RequestException as e:
-            if isinstance(e, HTTPError) and e.response is not None:
-                detail = format_jira_http_error(e.response)
-            else:
-                msg = str(e).strip() or "connection failed"
-                detail = f"Could not reach JIRA. Check the site URL and your network.\n{msg}"
-            raise HTTPException(status_code=502, detail=detail) from e
+            raise _jira_request_http_exception(e) from e
         except ValueError as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
         _maybe_audit(kc, rk, f"Updated {result['key']}")
@@ -551,12 +587,7 @@ async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
             body.jira_link_type.strip() or None,
         )
     except RequestException as e:
-        if isinstance(e, HTTPError) and e.response is not None:
-            detail = format_jira_http_error(e.response)
-        else:
-            msg = str(e).strip() or "connection failed"
-            detail = f"Could not reach JIRA. Check the site URL and your network.\n{msg}"
-        raise HTTPException(status_code=502, detail=detail) from e
+        raise _jira_request_http_exception(e) from e
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
     _maybe_audit(kc, rk, f"Created {result['key']}")
@@ -568,35 +599,7 @@ async def fetch_ticket(body: TicketIn, kc: Kc):
     key, raw = await _fetch_jira(body)
     _maybe_audit(kc, key, "fetch_requirements")
     prev = get_latest(key)
-    linked: list = []
-    linked_work: list = []
-    work_labels = ""
-    if not settings.mock:
-        try:
-            linked = await asyncio.to_thread(
-                fetch_linked_test_issues,
-                body.jira_url.strip(),
-                body.username,
-                body.password,
-                key,
-                _jira_test_issue_type_from_body(body),
-            )
-        except Exception:
-            linked = []
-        try:
-            linked_work, req_t = await asyncio.to_thread(
-                fetch_linked_work_issues,
-                body.jira_url.strip(),
-                body.username,
-                body.password,
-                key,
-                extra_issue_types_from_env=settings.jira_linked_work_issue_types,
-                test_issue_type_name=_jira_test_issue_type_from_body(body),
-            )
-            work_labels = _linked_work_type_labels_display(settings.jira_linked_work_issue_types, req_t)
-        except Exception:
-            linked_work = []
-            work_labels = _linked_work_type_labels_display(settings.jira_linked_work_issue_types, "")
+    linked, linked_work, work_labels = await _load_ticket_linked_jira(body, key)
     out: dict = {
         "ticket_id": key,
         "requirements": raw,
@@ -616,35 +619,7 @@ async def fetch_ticket(body: TicketIn, kc: Kc):
 @api.post("/generate-tests")
 async def generate_tests(body: GenerateIn, kc: Kc):
     key, req = await _fetch_jira(body)
-    jira_entries: list = []
-    linked_work_raw: list = []
-    work_labels = ""
-    if not settings.mock:
-        try:
-            jira_entries = await asyncio.to_thread(
-                fetch_linked_test_issues,
-                body.jira_url.strip(),
-                body.username,
-                body.password,
-                key,
-                _jira_test_issue_type_from_body(body),
-            )
-        except Exception:
-            jira_entries = []
-        try:
-            linked_work_raw, req_t = await asyncio.to_thread(
-                fetch_linked_work_issues,
-                body.jira_url.strip(),
-                body.username,
-                body.password,
-                key,
-                extra_issue_types_from_env=settings.jira_linked_work_issue_types,
-                test_issue_type_name=_jira_test_issue_type_from_body(body),
-            )
-            work_labels = _linked_work_type_labels_display(settings.jira_linked_work_issue_types, req_t)
-        except Exception:
-            linked_work_raw = []
-            work_labels = _linked_work_type_labels_display(settings.jira_linked_work_issue_types, "")
+    jira_entries, linked_work_raw, work_labels = await _load_ticket_linked_jira(body, key)
     prev = get_latest(key)
     similar_used = False
     thr = settings.memory_similarity_threshold

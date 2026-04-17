@@ -60,6 +60,11 @@ export function changeStatusLabel(raw) {
   return raw ? String(raw) : "New";
 }
 
+export function tcStatusSlug(raw) {
+  const s = String(raw || "new").toLowerCase().replace(/_/g, "-");
+  return ["new", "updated", "unchanged"].includes(s) ? s : "new";
+}
+
 export function fmtScenarioLines(tc) {
   if (!tc) return "";
   if (isUnifiedGherkin(tc)) return (tc.steps || []).join("\n");

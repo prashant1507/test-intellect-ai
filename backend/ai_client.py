@@ -378,7 +378,6 @@ def _tc_similarity(a: dict, b: dict) -> float:
 
 
 def _signature_digits_collapsed(tc: dict) -> str:
-    """Same as _tc_signature_norm but digit runs replaced with # so 5 vs 10 matches for merge."""
     d = _WS_NORM.sub(" ", str(tc.get("description") or "").strip()).casefold()
     lines = list(_steps_norm_tuple(tc.get("steps")))
     raw = d + "\n" + "\n".join(lines)
@@ -390,7 +389,6 @@ def _tc_similarity_digit_norm(a: dict, b: dict) -> float:
 
 
 def _tc_similarity_for_merge(a: dict, b: dict) -> float:
-    """Max of raw and digit-collapsed similarity so small requirement edits (5→10) still merge."""
     return max(_tc_similarity(a, b), _tc_similarity_digit_norm(a, b))
 
 

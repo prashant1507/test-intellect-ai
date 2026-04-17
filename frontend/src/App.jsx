@@ -12,6 +12,7 @@ import {
 } from "./components/common";
 import { AuditActionCell } from "./components/AuditActionCell";
 import { JiraTestPushButton } from "./components/JiraTestPushButton";
+import { LinkedJiraTestsBlock, LinkedJiraWorkBlock } from "./components/LinkedJiraLists";
 import { PriorityTag } from "./components/PriorityTag";
 import { MemoryDetailContent } from "./components/Memory";
 import { TestCaseEditModal } from "./components/TestCaseEditModal";
@@ -22,7 +23,7 @@ import {
   auditActionLabel,
   downloadAuditPdf,
 } from "./utils/audit";
-import { changeStatusLabel, fmtReqMarkdown, fmtTestsMarkdown, formatTime, readTheme } from "./utils/format";
+import { changeStatusLabel, fmtReqMarkdown, fmtTestsMarkdown, formatTime, readTheme, tcStatusSlug } from "./utils/format";
 import { parseApiError } from "./utils/parseApiError";
 import {
   jiraPushFingerprint,
@@ -32,35 +33,9 @@ import {
 } from "./utils/jiraPushFingerprint";
 import { loadJiraPushedMap, persistJiraPushedMap } from "./utils/jiraPushedStorage";
 import { remapTestCasePriority } from "./utils/jiraPriorityRemap";
+import { normalizeLinkedJiraFromApi } from "./utils/linkedJiraPayload";
+import { readStoredJiraLinkType, readStoredJiraTestIssueType, readStoredJiraUrl } from "./utils/storage";
 import { parseMinTc, parseMaxTc, testCaseBounds } from "./utils/testCase";
-
-function readStoredJiraUrl() {
-  try {
-    return localStorage.getItem("jira-ai-jira-url") ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function readStoredJiraTestIssueType() {
-  try {
-    const v = localStorage.getItem("jira-ai-jira-test-issue-type");
-    if (v !== null && String(v).trim()) return String(v).trim();
-  } catch {}
-  return "Test";
-}
-
-function readStoredJiraLinkType() {
-  try {
-    const v = localStorage.getItem("jira-ai-jira-link-type");
-    if (v !== null && String(v).trim()) {
-      const t = String(v).trim();
-      if (t === "Relates to") return "Relates";
-      return t;
-    }
-  } catch {}
-  return "Relates";
-}
 
 export default function App() {
   const [theme, setTheme] = useState(readTheme);
@@ -163,8 +138,9 @@ export default function App() {
     setReq(d.requirements);
     setKey(d.ticket_id);
     setTests(d.test_cases || []);
-    setLinkedJiraTests(Array.isArray(d.linked_jira_tests) ? d.linked_jira_tests : []);
-    setLinkedJiraWork(Array.isArray(d.linked_jira_work) ? d.linked_jira_work : []);
+    const { tests: ljTests, work: ljWork } = normalizeLinkedJiraFromApi(d);
+    setLinkedJiraTests(ljTests);
+    setLinkedJiraWork(ljWork);
     setReqFetchMeta({ hadSavedMemory: false });
     setJiraUpdateSucceededKeys({});
     setJiraHideUpdateAfterCreate({});
@@ -291,7 +267,6 @@ export default function App() {
           requirements: d.requirements,
           test_cases: d.test_cases,
         });
-        setTicketId(d.ticket_id);
         setAnnounce(`History opened for ${d.ticket_id}.`);
       } catch (e) {
         setMemoryPanel({
@@ -354,10 +329,11 @@ export default function App() {
       { scope = "main", memoryTicketId, updateExisting = false, bulkQuiet = false } = {},
     ) => {
       if (!bulkQuiet) setErr("");
+      const mainReqKey = (key || ticketId).trim().toUpperCase();
       const tidForResolve =
         scope === "memory" && memoryTicketId
           ? String(memoryTicketId).trim().toUpperCase()
-          : ticketId.trim().toUpperCase();
+          : mainReqKey;
       if (!updateExisting && !jiraTestProject.trim()) {
         const msg = "JIRA Test Project is required to add a test case in JIRA.";
         if (!bulkQuiet) setErr(msg);
@@ -376,7 +352,7 @@ export default function App() {
       const rk =
         scope === "memory" && memoryTicketId
           ? String(memoryTicketId).trim().toUpperCase()
-          : ticketId.trim().toUpperCase();
+          : mainReqKey;
       if (!rk) {
         const msg =
           scope === "memory"
@@ -529,6 +505,7 @@ export default function App() {
       username,
       password,
       ticketId,
+      key,
       jiraTestProject,
       jiraTestIssueType,
       jiraLinkType,
@@ -552,7 +529,7 @@ export default function App() {
 
   const syncAllJiraBulk = useCallback(async () => {
     const shown = filterTestsByChip(tests);
-    if (mock || inputMode !== "jira" || !ticketId.trim() || !jiraUrl.trim() || !username || !password) {
+    if (mock || inputMode !== "jira" || !(key || ticketId).trim() || !jiraUrl.trim() || !username || !password) {
       setErr("Use JIRA mode and fill URL, ticket, username, and password.");
       return;
     }
@@ -579,7 +556,7 @@ export default function App() {
         skipped: 0,
         failed: 0,
       });
-      const tidU = ticketId.trim().toUpperCase();
+      const tidU = (key || ticketId).trim().toUpperCase();
       for (let i = 0; i < shown.length; i++) {
       const tcRow = shown[i];
       const rowFp = jiraPushFingerprint(tcRow);
@@ -594,7 +571,7 @@ export default function App() {
       const tc = testsRef.current[idx];
       const st = (tc.change_status || "new").toLowerCase().replace(/_/g, "-");
       const mainPushKey = `main:${tidU}:${jiraPushFingerprint(tc)}`;
-      const pushedKey = resolvePushedJiraKey(tc, ticketId, jiraPushedRef.current, "main");
+      const pushedKey = resolvePushedJiraKey(tc, tidU, jiraPushedRef.current, "main");
       const hideUpd = jiraHideUpdateAfterCreateRef.current[mainPushKey];
       let updateExisting = false;
       if (pushedKey && st === "unchanged") {
@@ -654,6 +631,7 @@ export default function App() {
     mock,
     inputMode,
     ticketId,
+    key,
     jiraUrl,
     username,
     password,
@@ -711,7 +689,7 @@ export default function App() {
   );
 
   const startBulkSync = useCallback(() => {
-    if (mock || inputMode !== "jira" || !ticketId.trim() || !jiraUrl.trim() || !String(username || "").trim() || !password) {
+    if (mock || inputMode !== "jira" || !(key || ticketId).trim() || !jiraUrl.trim() || !String(username || "").trim() || !password) {
       setErr("Use JIRA mode and fill URL, ticket, username, and password.");
       return;
     }
@@ -730,6 +708,7 @@ export default function App() {
     mock,
     inputMode,
     ticketId,
+    key,
     jiraUrl,
     username,
     password,
@@ -828,7 +807,7 @@ export default function App() {
   }, [jiraPushed]);
 
   useEffect(() => {
-    const tid = ticketId.trim().toUpperCase();
+    const tid = (key || ticketId).trim().toUpperCase();
     if (!tid || !tests?.length) return;
     const fpSet = new Set(tests.map((tc) => jiraPushFingerprint(tc)));
     setJiraPushed((prev) => {
@@ -843,7 +822,7 @@ export default function App() {
       }
       return next;
     });
-  }, [tests, ticketId]);
+  }, [tests, key, ticketId]);
 
   useEffect(() => {
     try {
@@ -981,28 +960,12 @@ export default function App() {
   }, [idleTimeoutNotice]);
 
   useEffect(() => {
-    if (!auditModalOpen) return undefined;
+    if (!auditModalOpen && !memoryPanel && editTcIdx == null) return undefined;
     const id = requestAnimationFrame(() => {
       document.getElementById("app-theme-toggle")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     return () => cancelAnimationFrame(id);
-  }, [auditModalOpen]);
-
-  useEffect(() => {
-    if (!memoryPanel) return undefined;
-    const id = requestAnimationFrame(() => {
-      document.getElementById("app-theme-toggle")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    return () => cancelAnimationFrame(id);
-  }, [memoryPanel]);
-
-  useEffect(() => {
-    if (editTcIdx == null) return undefined;
-    const id = requestAnimationFrame(() => {
-      document.getElementById("app-theme-toggle")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    return () => cancelAnimationFrame(id);
-  }, [editTcIdx]);
+  }, [auditModalOpen, memoryPanel, editTcIdx]);
 
   const runPasteGenerate = async () => {
     const desc = pasteText.trim();
@@ -1061,8 +1024,9 @@ export default function App() {
         const fd = await api("/fetch-ticket", "POST", credBody);
         setReq(fd.requirements);
         setKey(fd.ticket_id);
-        setLinkedJiraTests(Array.isArray(fd.linked_jira_tests) ? fd.linked_jira_tests : []);
-        setLinkedJiraWork(Array.isArray(fd.linked_jira_work) ? fd.linked_jira_work : []);
+        const ljFd = normalizeLinkedJiraFromApi(fd);
+        setLinkedJiraTests(ljFd.tests);
+        setLinkedJiraWork(ljFd.work);
         setLastFetchAt(new Date().toISOString());
         setAnnounce("Requirements loaded. Generating test cases…");
 
@@ -1084,8 +1048,9 @@ export default function App() {
         const d = await api("/fetch-ticket", "POST", cred());
         setReq(d.requirements);
         setKey(d.ticket_id);
-        setLinkedJiraTests(Array.isArray(d.linked_jira_tests) ? d.linked_jira_tests : []);
-        setLinkedJiraWork(Array.isArray(d.linked_jira_work) ? d.linked_jira_work : []);
+        const lj = normalizeLinkedJiraFromApi(d);
+        setLinkedJiraTests(lj.tests);
+        setLinkedJiraWork(lj.work);
         setReqFetchMeta({ hadSavedMemory: !!d.had_saved_memory });
         setDiff(d.requirements_diff != null && d.requirements_diff !== "" ? d.requirements_diff : null);
         setDiffExpanded(false);
@@ -1124,6 +1089,7 @@ export default function App() {
     }
     return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })).join(", ");
   }, [linkedJiraWork]);
+  const mainRequirementKey = useMemo(() => (key || ticketId).trim().toUpperCase(), [key, ticketId]);
   const diffLong = diff && diff.length > 600;
   const diffShown = diffLong && !diffExpanded ? `${diff.slice(0, 600)}…` : diff;
   const setAllTc = (v) => () => tests?.length && setTcOpen(Object.fromEntries(tests.map((_, i) => [String(i), v])));
@@ -1318,7 +1284,6 @@ export default function App() {
                                   type="button"
                                   className={`memory-item ${cur ? "current" : ""}`}
                                   onClick={() => {
-                                    setTicketId(e.ticket_id);
                                     openMemoryDetail(e.ticket_id);
                                   }}
                                   title="Open saved history (requirements and test cases)"
@@ -1967,79 +1932,16 @@ export default function App() {
                 <>
                   <PasteRequirementsPreview text={fmtReqMarkdown(req)} />
                   {inputMode === "jira" && linkedJiraTests?.length ? (
-                    <div className="linked-jira-tests" role="region" aria-label="Linked JIRA test issues">
-                      <h3 className="linked-jira-tests-title">
-                        Linked {jiraTestIssueType.trim() || "Test"}
-                      </h3>
-                      <ul className="linked-jira-tests-list">
-                        {linkedJiraTests.map((row) => {
-                          const title = String(row.summary || "").trim() || "—";
-                          const st = String(row.status_name || "").trim();
-                          const p = String(row.priority || "").trim();
-                          const pUrl = row.priority_icon_url ? String(row.priority_icon_url).trim() : "";
-                          return (
-                            <li key={row.issue_key} className="linked-jira-tests-line">
-                              <div className="linked-jira-tests-item">
-                                <div className="linked-jira-tests-head">
-                                  <a
-                                    className="linked-jira-tests-key"
-                                    href={row.browse_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    {row.issue_key}
-                                  </a>
-                                  {p || pUrl ? (
-                                    <PriorityTag priority={p} iconUrl={pUrl || undefined} />
-                                  ) : null}
-                                  {st ? (
-                                    <span className="linked-jira-tests-status">{st}</span>
-                                  ) : null}
-                                </div>
-                                <p className="linked-jira-tests-summary">{title}</p>
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
+                    <LinkedJiraTestsBlock
+                      rows={linkedJiraTests}
+                      heading={`Linked ${jiraTestIssueType.trim() || "Test"}`}
+                    />
                   ) : null}
                   {inputMode === "jira" && linkedJiraWork?.length ? (
-                    <div className="linked-jira-tests" role="region" aria-label="Linked JIRA work items">
-                      <h3 className="linked-jira-tests-title">
-                        Linked Issues ({linkedWorkHeadingTypes || "—"})
-                      </h3>
-                      <ul className="linked-jira-tests-list">
-                        {linkedJiraWork.map((row) => {
-                          const title = String(row.summary || "").trim() || "—";
-                          const it = String(row.issue_type_name || "").trim();
-                          const st = String(row.status_name || "").trim();
-                          return (
-                            <li key={row.issue_key} className="linked-jira-tests-line">
-                              <div className="linked-jira-tests-item">
-                                <div className="linked-jira-tests-head">
-                                  <a
-                                    className="linked-jira-tests-key"
-                                    href={row.browse_url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                  >
-                                    {row.issue_key}
-                                  </a>
-                                  {it ? (
-                                    <span className="linked-jira-work-type">{it}</span>
-                                  ) : null}
-                                  {st ? (
-                                    <span className="linked-jira-tests-status">{st}</span>
-                                  ) : null}
-                                </div>
-                                <p className="linked-jira-tests-summary">{title}</p>
-                              </div>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
+                    <LinkedJiraWorkBlock
+                      rows={linkedJiraWork}
+                      heading={`Linked Issues (${linkedWorkHeadingTypes || "—"})`}
+                    />
                   ) : null}
                   {inputMode === "jira" && reqFetchMeta.hadSavedMemory && !diff ? (
                     <p className="meta req-fetch-hint" role="status">
@@ -2173,15 +2075,15 @@ export default function App() {
                     const idx = tests.indexOf(tc);
                     const tcKey = String(idx);
                     const open = tcOpen[tcKey] !== false;
-                    const st = (tc.change_status || "new").replace("_", "-");
+                    const st = tcStatusSlug(tc.change_status);
                     const jiraPushDisabled =
                       mock ||
                       inputMode !== "jira" ||
                       pushingKey !== null ||
                       jiraPushConfigIncomplete ||
                       bulkJiraSync?.running;
-                    const mainPushKey = `main:${ticketId.trim().toUpperCase()}:${jiraPushFingerprint(tc)}`;
-                    const pushedKey = resolvePushedJiraKey(tc, ticketId, jiraPushed, "main");
+                    const mainPushKey = `main:${mainRequirementKey}:${jiraPushFingerprint(tc)}`;
+                    const pushedKey = resolvePushedJiraKey(tc, mainRequirementKey, jiraPushed, "main");
                     const isUpdatingJira = pushingKey === `${mainPushKey}:u`;
                     const isPushing = pushingKey === mainPushKey || isUpdatingJira;
                     const jiraPushTitle = pushedKey
@@ -2200,6 +2102,19 @@ export default function App() {
                         : pushedKey
                           ? `Added to JIRA as ${pushedKey}`
                           : "Add test case to JIRA";
+                    const jiraPushCommon = {
+                      disabled: jiraPushDisabled,
+                      isPushing,
+                      isUpdating: isUpdatingJira,
+                      pushedKey,
+                      jiraBaseUrl: jiraUrl,
+                      title: jiraPushTitle,
+                      ariaLabel: jiraPushLabel,
+                      onClick: (e) => {
+                        e.stopPropagation();
+                        pushTestToJira(tc, idx);
+                      },
+                    };
                     return (
                       <section key={tcKey} className={`tc status-${st}`}>
                         <div className="tc-summary-row">
@@ -2255,56 +2170,36 @@ export default function App() {
                                   </svg>
                                 </button>
                               </FloatingTooltip>
-                          <JiraTestPushButton
-                            displayMode="default"
-                            disabled={jiraPushDisabled}
-                            isPushing={isPushing}
-                            isUpdating={isUpdatingJira}
-                            pushedKey={pushedKey}
-                            showUpdateButton={
-                              st === "updated" && !jiraHideUpdateAfterCreate[mainPushKey]
-                            }
-                            jiraBaseUrl={jiraUrl}
-                            title={jiraPushTitle}
-                            ariaLabel={jiraPushLabel}
-                            updateTitle={
-                              jiraUpdateSucceededKeys[mainPushKey]
-                                ? `JIRA issue ${pushedKey || ""} was updated`
-                                : `Update JIRA issue ${pushedKey || ""}`
-                            }
-                            updateAriaLabel="Update existing JIRA test issue"
-                            updateSucceeded={!!jiraUpdateSucceededKeys[mainPushKey]}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              pushTestToJira(tc, idx);
-                            }}
-                            onUpdate={
-                              inputMode === "jira" && pushedKey
-                                ? (e) => {
-                                    e.stopPropagation();
-                                    pushTestToJira(tc, idx, { updateExisting: true });
-                                  }
-                                : undefined
-                            }
-                          />
+                              <JiraTestPushButton
+                                {...jiraPushCommon}
+                                displayMode="default"
+                                showUpdateButton={
+                                  st === "updated" && !jiraHideUpdateAfterCreate[mainPushKey]
+                                }
+                                updateTitle={
+                                  jiraUpdateSucceededKeys[mainPushKey]
+                                    ? `JIRA issue ${pushedKey || ""} was updated`
+                                    : `Update JIRA issue ${pushedKey || ""}`
+                                }
+                                updateAriaLabel="Update existing JIRA test issue"
+                                updateSucceeded={!!jiraUpdateSucceededKeys[mainPushKey]}
+                                onUpdate={
+                                  inputMode === "jira" && pushedKey
+                                    ? (e) => {
+                                        e.stopPropagation();
+                                        pushTestToJira(tc, idx, { updateExisting: true });
+                                      }
+                                    : undefined
+                                }
+                              />
                             </div>
                           ) : (
-                          <JiraTestPushButton
-                            displayMode="linkOnly"
-                            disabled={jiraPushDisabled}
-                            isPushing={isPushing}
-                            isUpdating={isUpdatingJira}
-                            pushedKey={pushedKey}
-                            showUpdateButton={false}
-                            jiraBaseUrl={jiraUrl}
-                            title={jiraPushTitle}
-                            ariaLabel={jiraPushLabel}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              pushTestToJira(tc, idx);
-                            }}
-                            onUpdate={undefined}
-                          />
+                            <JiraTestPushButton
+                              {...jiraPushCommon}
+                              displayMode="linkOnly"
+                              showUpdateButton={false}
+                              onUpdate={undefined}
+                            />
                           )}
                         </div>
                         {open ? (
