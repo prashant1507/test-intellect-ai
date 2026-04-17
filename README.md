@@ -69,6 +69,7 @@ flowchart LR
   - **Link Direction:** **`JIRA_LINK_INWARD_IS_REQUIREMENT`** (`true`/`false`) controls which side of the link is the requirement vs the test—swap if your site expects the opposite.
   - **Defaults From `.env`:** **`JIRA_TEST_PROJECT_KEY`**, **`JIRA_TEST_ISSUE_TYPE`**, **`JIRA_TEST_LINK_TYPE`** (also overridable per request from the UI where supported).
   - **UI:** Shows a **link** to the Jira issue when a test is pushed, and **create vs update** affordances (e.g. update when the scenario already has a linked issue).
+  - **Linked Issues & Status:** Fetch linked issues from JIRA for the requirement (configured test issue type); show priority and workflow status; rows matched to a linked issue are marked **EXISTING** and include the issue link.
 - **Bulk Push:** Push **filtered** test rows (e.g. by change-status chips: All, Unchanged, Updated, New) using the **same rules** as per-row push; the UI uses a **confirmation-style** control before running the bulk operation.
 - **Priorities:** Optional alignment with Jira—**`POST /api/jira/priorities`** returns priority **names** and **icon URLs**; the **+** flow can map AI priorities to Jira after the test project is set (see **Notes**).
 
@@ -104,6 +105,8 @@ flowchart LR
    ```bash
    cp .env.example .env
    ```
+
+   A full variable reference table lives in [resources/env-variables.md](resources/env-variables.md).
 
 2. Configure at least:
 
@@ -215,12 +218,13 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 ---
 
 ## Future Improvements & Features
-
+- Use linked issue to get knowledge of the Requiremenyt ticket
+- Choice to generate test cases based on BDD or somethign else
 - Agentic feature to validate created test cases
 - RAG feature
-- Automation
 - Image reading support
-- Choice to generate test cases based on BDD or somethign else
+- Automation skeleton using desired language
+- Link with QA test framework and DEV code
 
 
 ## Last

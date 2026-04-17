@@ -1,8 +1,22 @@
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ENV = Path(__file__).resolve().parent.parent / ".env"
+
+
+def _env_bool(v: object) -> bool:
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, str):
+        s = v.strip().lower()
+        if s in ("0", "false", "no", "off", ""):
+            return False
+        if s in ("1", "true", "yes", "on"):
+            return True
+        return bool(s)
+    return bool(v)
 
 
 class Settings(BaseSettings):
@@ -13,6 +27,19 @@ class Settings(BaseSettings):
         env_ignore_empty=False,
     )
 
+    @field_validator(
+        "jira_link_inward_is_requirement",
+        "jira_verify_ssl",
+        "mock",
+        "show_memory_ui",
+        "show_audit_ui",
+        "use_keycloak",
+        mode="before",
+    )
+    @classmethod
+    def _coerce_bool(cls, v: object) -> bool:
+        return _env_bool(v)
+
     jira_url: str = ""
     jira_username: str = ""
     jira_password: str = ""
@@ -21,6 +48,7 @@ class Settings(BaseSettings):
     jira_test_issue_type: str = "Test"
     jira_test_link_type: str = "Relates"
     jira_link_inward_is_requirement: bool = True
+    jira_linked_work_issue_types: str = ""
     mock: bool = False
     show_memory_ui: bool = True
     show_audit_ui: bool = True

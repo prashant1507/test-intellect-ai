@@ -91,6 +91,8 @@ export default function App() {
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState("");
   const [lastFetchAt, setLastFetchAt] = useState(null);
+  const [linkedJiraTests, setLinkedJiraTests] = useState([]);
+  const [linkedJiraWork, setLinkedJiraWork] = useState([]);
   const [lastGenerateAt, setLastGenerateAt] = useState(null);
   const [mock, setMock] = useState(false);
   const [announce, setAnnounce] = useState("");
@@ -161,6 +163,8 @@ export default function App() {
     setReq(d.requirements);
     setKey(d.ticket_id);
     setTests(d.test_cases || []);
+    setLinkedJiraTests(Array.isArray(d.linked_jira_tests) ? d.linked_jira_tests : []);
+    setLinkedJiraWork(Array.isArray(d.linked_jira_work) ? d.linked_jira_work : []);
     setReqFetchMeta({ hadSavedMemory: false });
     setJiraUpdateSucceededKeys({});
     setJiraHideUpdateAfterCreate({});
@@ -201,7 +205,13 @@ export default function App() {
     });
   }, [auditEntries, auditFilters]);
 
-  const cred = () => ({ jira_url: jiraUrl, username, password, ticket_id: ticketId });
+  const cred = () => ({
+    jira_url: jiraUrl,
+    username,
+    password,
+    ticket_id: ticketId,
+    jira_test_issue_type: jiraTestIssueType.trim(),
+  });
 
   const api = useCallback(
     async (path, method = "GET", body, afterRefresh = false) => {
@@ -530,13 +540,18 @@ export default function App() {
     ],
   );
 
+  const filterTestsByChip = useCallback(
+    (list) => {
+      if (!list?.length) return [];
+      if (tcFilter === "all") return list;
+      if (tcFilter === "existing") return list.filter((t) => t.jira_existing);
+      return list.filter((t) => (t.change_status || "new").toLowerCase() === tcFilter);
+    },
+    [tcFilter],
+  );
+
   const syncAllJiraBulk = useCallback(async () => {
-    const shown =
-      !tests?.length
-        ? []
-        : tcFilter === "all"
-          ? tests
-          : tests.filter((t) => (t.change_status || "new").toLowerCase() === tcFilter);
+    const shown = filterTestsByChip(tests);
     if (mock || inputMode !== "jira" || !ticketId.trim() || !jiraUrl.trim() || !username || !password) {
       setErr("Use JIRA mode and fill URL, ticket, username, and password.");
       return;
@@ -644,6 +659,7 @@ export default function App() {
     password,
     jiraTestProject,
     pushTestToJira,
+    filterTestsByChip,
   ]);
 
   const persistEditedTestCase = useCallback(
@@ -703,12 +719,7 @@ export default function App() {
       setErr("JIRA Test Project is required to sync test cases.");
       return;
     }
-    const shown =
-      !tests?.length
-        ? []
-        : tcFilter === "all"
-          ? tests
-          : tests.filter((t) => (t.change_status || "new").toLowerCase() === tcFilter);
+    const shown = filterTestsByChip(tests);
     if (!shown.length) {
       setErr("No test cases in the current filter to sync.");
       return;
@@ -726,6 +737,7 @@ export default function App() {
     tests,
     tcFilter,
     syncAllJiraBulk,
+    filterTestsByChip,
   ]);
 
   useEffect(() => {
@@ -1049,6 +1061,8 @@ export default function App() {
         const fd = await api("/fetch-ticket", "POST", credBody);
         setReq(fd.requirements);
         setKey(fd.ticket_id);
+        setLinkedJiraTests(Array.isArray(fd.linked_jira_tests) ? fd.linked_jira_tests : []);
+        setLinkedJiraWork(Array.isArray(fd.linked_jira_work) ? fd.linked_jira_work : []);
         setLastFetchAt(new Date().toISOString());
         setAnnounce("Requirements loaded. Generating test cases…");
 
@@ -1070,6 +1084,8 @@ export default function App() {
         const d = await api("/fetch-ticket", "POST", cred());
         setReq(d.requirements);
         setKey(d.ticket_id);
+        setLinkedJiraTests(Array.isArray(d.linked_jira_tests) ? d.linked_jira_tests : []);
+        setLinkedJiraWork(Array.isArray(d.linked_jira_work) ? d.linked_jira_work : []);
         setReqFetchMeta({ hadSavedMemory: !!d.had_saved_memory });
         setDiff(d.requirements_diff != null && d.requirements_diff !== "" ? d.requirements_diff : null);
         setDiffExpanded(false);
@@ -1099,8 +1115,15 @@ export default function App() {
   const canSubmitPaste = pasteText.trim().length > 0;
   const mf = memoryFilter.trim().toLowerCase();
   const memItems = mf ? memoryEntries.filter((e) => (e.ticket_id || "").toLowerCase().includes(mf)) : memoryEntries;
-  const testsShown =
-    !tests?.length ? [] : tcFilter === "all" ? tests : tests.filter((t) => (t.change_status || "new").toLowerCase() === tcFilter);
+  const testsShown = filterTestsByChip(tests);
+  const linkedWorkHeadingTypes = useMemo(() => {
+    const set = new Set();
+    for (const row of linkedJiraWork || []) {
+      const t = String(row.issue_type_name || "").trim();
+      if (t) set.add(t);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })).join(", ");
+  }, [linkedJiraWork]);
   const diffLong = diff && diff.length > 600;
   const diffShown = diffLong && !diffExpanded ? `${diff.slice(0, 600)}…` : diff;
   const setAllTc = (v) => () => tests?.length && setTcOpen(Object.fromEntries(tests.map((_, i) => [String(i), v])));
@@ -1569,6 +1592,8 @@ export default function App() {
                   setInputMode("paste");
                   setErr("");
                   setEditTcIdx(null);
+                  setLinkedJiraTests([]);
+                  setLinkedJiraWork([]);
                 }}
               >
                 Paste Requirements
@@ -1941,9 +1966,84 @@ export default function App() {
               ) : req ? (
                 <>
                   <PasteRequirementsPreview text={fmtReqMarkdown(req)} />
+                  {inputMode === "jira" && linkedJiraTests?.length ? (
+                    <div className="linked-jira-tests" role="region" aria-label="Linked JIRA test issues">
+                      <h3 className="linked-jira-tests-title">
+                        Linked {jiraTestIssueType.trim() || "Test"}
+                      </h3>
+                      <ul className="linked-jira-tests-list">
+                        {linkedJiraTests.map((row) => {
+                          const title = String(row.summary || "").trim() || "—";
+                          const st = String(row.status_name || "").trim();
+                          const p = String(row.priority || "").trim();
+                          const pUrl = row.priority_icon_url ? String(row.priority_icon_url).trim() : "";
+                          return (
+                            <li key={row.issue_key} className="linked-jira-tests-line">
+                              <div className="linked-jira-tests-item">
+                                <div className="linked-jira-tests-head">
+                                  <a
+                                    className="linked-jira-tests-key"
+                                    href={row.browse_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    {row.issue_key}
+                                  </a>
+                                  {p || pUrl ? (
+                                    <PriorityTag priority={p} iconUrl={pUrl || undefined} />
+                                  ) : null}
+                                  {st ? (
+                                    <span className="linked-jira-tests-status">{st}</span>
+                                  ) : null}
+                                </div>
+                                <p className="linked-jira-tests-summary">{title}</p>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {inputMode === "jira" && linkedJiraWork?.length ? (
+                    <div className="linked-jira-tests" role="region" aria-label="Linked JIRA work items">
+                      <h3 className="linked-jira-tests-title">
+                        Linked Issues ({linkedWorkHeadingTypes || "—"})
+                      </h3>
+                      <ul className="linked-jira-tests-list">
+                        {linkedJiraWork.map((row) => {
+                          const title = String(row.summary || "").trim() || "—";
+                          const it = String(row.issue_type_name || "").trim();
+                          const st = String(row.status_name || "").trim();
+                          return (
+                            <li key={row.issue_key} className="linked-jira-tests-line">
+                              <div className="linked-jira-tests-item">
+                                <div className="linked-jira-tests-head">
+                                  <a
+                                    className="linked-jira-tests-key"
+                                    href={row.browse_url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                  >
+                                    {row.issue_key}
+                                  </a>
+                                  {it ? (
+                                    <span className="linked-jira-work-type">{it}</span>
+                                  ) : null}
+                                  {st ? (
+                                    <span className="linked-jira-tests-status">{st}</span>
+                                  ) : null}
+                                </div>
+                                <p className="linked-jira-tests-summary">{title}</p>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ) : null}
                   {inputMode === "jira" && reqFetchMeta.hadSavedMemory && !diff ? (
                     <p className="meta req-fetch-hint" role="status">
-                      No text changes vs last saved history for this ticket (title + description).
+                      No text changes vs last saved history for this ticket.
                     </p>
                   ) : null}
                 </>
@@ -1998,7 +2098,7 @@ export default function App() {
               <>
                 <div className="filter-bar filter-bar--with-sync" role="toolbar" aria-label="Filter by change status">
                   <div className="filter-bar-chips">
-                    {["all", "unchanged", "updated", "new"].map((f) => (
+                    {["all", "existing", "unchanged", "updated", "new"].map((f) => (
                       <button
                         key={f}
                         type="button"
@@ -2006,7 +2106,11 @@ export default function App() {
                         onClick={() => setTcFilter(f)}
                         aria-pressed={tcFilter === f}
                       >
-                        {f === "all" ? "All" : changeStatusLabel(f)}
+                        {f === "all"
+                          ? "All"
+                          : f === "existing"
+                            ? "Existing"
+                            : changeStatusLabel(f)}
                       </button>
                     ))}
                   </div>
@@ -2109,40 +2213,50 @@ export default function App() {
                               {open ? "▼" : "▶"}
                             </span>
                             <span className={`badge badge--tc-${st}`}>{changeStatusLabel(tc.change_status)}</span>
+                            {tc.jira_existing ? (
+                              <FloatingTooltip text="Already in JIRA">
+                                <span className="badge badge--jira-existing">EXISTING</span>
+                              </FloatingTooltip>
+                            ) : null}
+                            {tc.jira_status ? (
+                              <FloatingTooltip text="Workflow Status">
+                                <span className="tc-jira-status">{tc.jira_status}</span>
+                              </FloatingTooltip>
+                            ) : null}
                             <PriorityTag priority={tc.priority} iconUrl={tc.priority_icon_url} />
                             <span className="tc-desc">{tc.description}</span>
                           </button>
                           {inputMode !== "paste" ? (
-                            <FloatingTooltip text="Edit this test case">
-                              <button
-                                type="button"
-                                className="tc-edit-icon-btn"
-                                disabled={generatingTestCases || bulkJiraSync?.running}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setEditTcIdx(idx);
-                                }}
-                                aria-label="Edit test case"
-                              >
-                                <svg
-                                  width="18"
-                                  height="18"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  aria-hidden
+                            <div className="tc-summary-actions">
+                              <FloatingTooltip text="Edit this test case">
+                                <button
+                                  type="button"
+                                  className="tc-edit-icon-btn"
+                                  disabled={generatingTestCases || bulkJiraSync?.running}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditTcIdx(idx);
+                                  }}
+                                  aria-label="Edit test case"
                                 >
-                                  <path d="M12 20h9" />
-                                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                                </svg>
-                              </button>
-                            </FloatingTooltip>
-                          ) : null}
+                                  <svg
+                                    width="18"
+                                    height="18"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden
+                                  >
+                                    <path d="M12 20h9" />
+                                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                  </svg>
+                                </button>
+                              </FloatingTooltip>
                           <JiraTestPushButton
-                            displayMode={inputMode === "paste" ? "linkOnly" : "default"}
+                            displayMode="default"
                             disabled={jiraPushDisabled}
                             isPushing={isPushing}
                             isUpdating={isUpdatingJira}
@@ -2173,6 +2287,25 @@ export default function App() {
                                 : undefined
                             }
                           />
+                            </div>
+                          ) : (
+                          <JiraTestPushButton
+                            displayMode="linkOnly"
+                            disabled={jiraPushDisabled}
+                            isPushing={isPushing}
+                            isUpdating={isUpdatingJira}
+                            pushedKey={pushedKey}
+                            showUpdateButton={false}
+                            jiraBaseUrl={jiraUrl}
+                            title={jiraPushTitle}
+                            ariaLabel={jiraPushLabel}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              pushTestToJira(tc, idx);
+                            }}
+                            onUpdate={undefined}
+                          />
+                          )}
                         </div>
                         {open ? (
                           <div className="tc-body">

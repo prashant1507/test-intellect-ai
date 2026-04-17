@@ -1,8 +1,9 @@
+import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { changeStatusLabel, fmtReqMarkdown, fmtTestsMarkdown, jiraWikiToMarkdown } from "../utils/format";
 import { resolvePushedJiraKey } from "../utils/jiraPushFingerprint";
-import { Copy, Spinner } from "./common";
+import { Copy, FloatingTooltip, Spinner } from "./common";
 import { JiraTestPushButton } from "./JiraTestPushButton";
 import { TestCaseBody } from "./TestCaseBody";
 import { PriorityTag } from "./PriorityTag";
@@ -31,6 +32,7 @@ function MemoryRequirementsView({ requirements }) {
 
 function MemoryTestCasesView({ testCases, memoryTicketId, jiraUrl, jiraPushed }) {
   const list = Array.isArray(testCases) ? testCases : [];
+  const [tcOpen, setTcOpen] = useState({});
   if (!list.length) return <p className="empty-state">—</p>;
   return (
     <div className="memory-detail-scroll memory-tc-formatted">
@@ -41,19 +43,46 @@ function MemoryTestCasesView({ testCases, memoryTicketId, jiraUrl, jiraPushed })
         const pushedKey = memoryTicketId
           ? resolvePushedJiraKey(tc, memoryTicketId, jiraPushed, "mem")
           : undefined;
+        const tcKey = String(idx);
+        const open = tcOpen[tcKey] !== false;
         return (
           <section key={idx} className={`tc memory-tc-block status-${safeSt}`}>
-            <div className="memory-tc-summary-row">
-              <div className="memory-tc-head">
+            <div className="tc-summary-row">
+              <button
+                type="button"
+                className="tc-summary"
+                aria-expanded={open}
+                onClick={() =>
+                  setTcOpen((prev) => {
+                    const cur = prev[tcKey] !== false;
+                    return { ...prev, [tcKey]: !cur };
+                  })
+                }
+              >
+                <span className="tc-chevron" aria-hidden>
+                  {open ? "▼" : "▶"}
+                </span>
                 <span className={`badge badge--tc-${safeSt}`}>{changeStatusLabel(tc.change_status)}</span>
+                {tc.jira_existing ? (
+                  <FloatingTooltip text="Already in JIRA">
+                    <span className="badge badge--jira-existing">EXISTING</span>
+                  </FloatingTooltip>
+                ) : null}
+                {tc.jira_status ? (
+                  <FloatingTooltip text="Workflow Status">
+                    <span className="tc-jira-status">{tc.jira_status}</span>
+                  </FloatingTooltip>
+                ) : null}
                 <PriorityTag priority={tc.priority} iconUrl={tc.priority_icon_url} />
                 <span className="tc-desc">{tc.description || "—"}</span>
-              </div>
+              </button>
               <JiraTestPushButton displayMode="linkOnly" pushedKey={pushedKey} jiraBaseUrl={jiraUrl} />
             </div>
-            <div className="tc-body">
-              <TestCaseBody tc={tc} />
-            </div>
+            {open ? (
+              <div className="tc-body">
+                <TestCaseBody tc={tc} />
+              </div>
+            ) : null}
           </section>
         );
       })}

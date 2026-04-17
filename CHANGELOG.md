@@ -19,3 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Mock mode:** Local development without real JIRA (`MOCK=true`); sample data, no generate-time history or audit writes from generation.
 - **UI:** Light/dark theme, requirements diffs and test change status on regenerate, accessibility helpers (skip link, live regions), tooltips.
 
+## [1.0.1]
+
+### Changed
+
+- Fetch linked issues from JIRA for the requirement (configured test issue type); show priority and workflow status; rows matched to a linked issue are marked **EXISTING** and include the issue link.
+

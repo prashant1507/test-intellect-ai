@@ -17,6 +17,8 @@ from requests.exceptions import HTTPError, RequestException
 from jira_client import (
     build_ai_to_jira_priority_map,
     fetch_issue,
+    fetch_linked_test_issues,
+    fetch_linked_work_issues,
     fetch_priorities,
     format_jira_http_error,
     push_test_case_to_jira,
@@ -24,6 +26,7 @@ from jira_client import (
 )
 from ai_client import (
     generate_test_cases,
+    merge_ai_cases_with_jira_existing,
     merge_test_cases_with_previous,
     resolve_priority_allowed_for_generation,
 )
@@ -56,6 +59,60 @@ class TicketIn(BaseModel):
     username: str = Field(..., min_length=1)
     password: str = Field(..., min_length=1)
     ticket_id: str = Field(..., min_length=1)
+    jira_test_issue_type: str = ""
+
+
+def _jira_test_issue_type_from_body(body: TicketIn) -> str:
+    return (body.jira_test_issue_type or "").strip() or settings.jira_test_issue_type or "Test"
+
+
+def _linked_jira_tests_light(entries: list) -> list[dict]:
+    out: list[dict] = []
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        pri = str(e.get("jira_priority_name") or e.get("priority") or "").strip()
+        icon = str(e.get("jira_priority_icon_url") or e.get("priority_icon_url") or "").strip()
+        out.append(
+            {
+                "issue_key": e.get("issue_key"),
+                "summary": e.get("summary"),
+                "status_name": e.get("status_name"),
+                "browse_url": e.get("browse_url"),
+                "priority": pri,
+                "priority_icon_url": icon or None,
+            }
+        )
+    return out
+
+
+def _linked_jira_work_light(entries: list) -> list[dict]:
+    out: list[dict] = []
+    for e in entries:
+        if not isinstance(e, dict):
+            continue
+        out.append(
+            {
+                "issue_key": e.get("issue_key"),
+                "summary": e.get("summary"),
+                "status_name": e.get("status_name"),
+                "browse_url": e.get("browse_url"),
+                "issue_type_name": e.get("issue_type_name") or "",
+            }
+        )
+    return out
+
+
+def _linked_work_type_labels_display(env_str: str, requirement_type: str) -> str:
+    parts = [x.strip() for x in (env_str or "").split(",") if x.strip()]
+    rt = (requirement_type or "").strip()
+    if rt and rt.casefold() not in {p.casefold() for p in parts}:
+        parts.append(rt)
+    if not parts:
+        return rt or "—"
+    return ", ".join(sorted(parts, key=lambda s: s.casefold()))
+
+
 
 
 class GenerateIn(TicketIn):
@@ -225,9 +282,21 @@ async def _generate_and_persist(
     *,
     paste_mode: bool = False,
     priority_labels: list[str] | None = None,
+    jira_entries: list | None = None,
+    linked_jira_work_entries: list | None = None,
+    linked_jira_work_type_labels: str = "",
 ) -> dict:
     req_diff = _diff(prev["requirements"], req) if prev else None
     allowed = resolve_priority_allowed_for_generation(paste_mode, priority_labels)
+    ej_llm = (
+        [
+            {"issue_key": e["issue_key"], "summary": e.get("summary"), "test_case": e.get("test_case")}
+            for e in (jira_entries or [])
+            if isinstance(e, dict) and e.get("issue_key")
+        ]
+        if jira_entries
+        else None
+    )
     try:
         cases = await generate_test_cases(
             req,
@@ -236,11 +305,14 @@ async def _generate_and_persist(
             min_test_cases=min_test_cases,
             max_test_cases=max_test_cases,
             paste_mode=paste_mode,
+            existing_jira_tests=ej_llm,
         )
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"LLM error: {e}") from e
+    if jira_entries:
+        cases = merge_ai_cases_with_jira_existing(cases, jira_entries, allowed_priorities=allowed)
     prior_union = _prior_cases_union_for_merge(key, prev)
     if prior_union:
         cases = merge_test_cases_with_previous(prior_union, cases, allowed_priorities=allowed)
@@ -255,6 +327,9 @@ async def _generate_and_persist(
         "requirements_diff": req_diff,
         "had_previous_memory": prev is not None,
         "memory_match": ("similar" if similar_used else "exact") if prev else None,
+        "linked_jira_tests": _linked_jira_tests_light(jira_entries or []),
+        "linked_jira_work": _linked_jira_work_light(linked_jira_work_entries or []),
+        "linked_jira_work_type_labels": linked_jira_work_type_labels,
     }
 
 
@@ -493,7 +568,42 @@ async def fetch_ticket(body: TicketIn, kc: Kc):
     key, raw = await _fetch_jira(body)
     _maybe_audit(kc, key, "fetch_requirements")
     prev = get_latest(key)
-    out: dict = {"ticket_id": key, "requirements": raw}
+    linked: list = []
+    linked_work: list = []
+    work_labels = ""
+    if not settings.mock:
+        try:
+            linked = await asyncio.to_thread(
+                fetch_linked_test_issues,
+                body.jira_url.strip(),
+                body.username,
+                body.password,
+                key,
+                _jira_test_issue_type_from_body(body),
+            )
+        except Exception:
+            linked = []
+        try:
+            linked_work, req_t = await asyncio.to_thread(
+                fetch_linked_work_issues,
+                body.jira_url.strip(),
+                body.username,
+                body.password,
+                key,
+                extra_issue_types_from_env=settings.jira_linked_work_issue_types,
+                test_issue_type_name=_jira_test_issue_type_from_body(body),
+            )
+            work_labels = _linked_work_type_labels_display(settings.jira_linked_work_issue_types, req_t)
+        except Exception:
+            linked_work = []
+            work_labels = _linked_work_type_labels_display(settings.jira_linked_work_issue_types, "")
+    out: dict = {
+        "ticket_id": key,
+        "requirements": raw,
+        "linked_jira_tests": _linked_jira_tests_light(linked),
+        "linked_jira_work": _linked_jira_work_light(linked_work),
+        "linked_jira_work_type_labels": work_labels,
+    }
     if prev and isinstance(prev.get("requirements"), dict):
         out["had_saved_memory"] = True
         out["requirements_diff"] = _diff(prev["requirements"], raw)
@@ -506,6 +616,35 @@ async def fetch_ticket(body: TicketIn, kc: Kc):
 @api.post("/generate-tests")
 async def generate_tests(body: GenerateIn, kc: Kc):
     key, req = await _fetch_jira(body)
+    jira_entries: list = []
+    linked_work_raw: list = []
+    work_labels = ""
+    if not settings.mock:
+        try:
+            jira_entries = await asyncio.to_thread(
+                fetch_linked_test_issues,
+                body.jira_url.strip(),
+                body.username,
+                body.password,
+                key,
+                _jira_test_issue_type_from_body(body),
+            )
+        except Exception:
+            jira_entries = []
+        try:
+            linked_work_raw, req_t = await asyncio.to_thread(
+                fetch_linked_work_issues,
+                body.jira_url.strip(),
+                body.username,
+                body.password,
+                key,
+                extra_issue_types_from_env=settings.jira_linked_work_issue_types,
+                test_issue_type_name=_jira_test_issue_type_from_body(body),
+            )
+            work_labels = _linked_work_type_labels_display(settings.jira_linked_work_issue_types, req_t)
+        except Exception:
+            linked_work_raw = []
+            work_labels = _linked_work_type_labels_display(settings.jira_linked_work_issue_types, "")
     prev = get_latest(key)
     similar_used = False
     thr = settings.memory_similarity_threshold
@@ -526,6 +665,9 @@ async def generate_tests(body: GenerateIn, kc: Kc):
         kc,
         paste_mode=False,
         priority_labels=jira_names,
+        jira_entries=jira_entries,
+        linked_jira_work_entries=linked_work_raw,
+        linked_jira_work_type_labels=work_labels,
     )
 
 

@@ -304,6 +304,207 @@ def fetch_issue(base_url: str, user: str, password: str, issue_key: str) -> dict
     return {"title": title, "description": description}
 
 
+def jira_browse_url(base_url: str, issue_key: str) -> str:
+    return f"{base_url.rstrip('/')}/browse/{issue_key.strip().upper()}"
+
+
+def _get_issue_json(
+    base_url: str,
+    user: str,
+    password: str,
+    issue_key: str,
+    *,
+    fields: str,
+    expand: str | None = None,
+) -> dict:
+    verify = settings.jira_verify_ssl
+    if not verify:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    params: dict[str, str] = {"fields": fields}
+    if expand:
+        params["expand"] = expand
+    r = requests.get(
+        f"{base_url.rstrip('/')}/rest/api/2/issue/{issue_key.strip().upper()}",
+        auth=(user, password),
+        headers={"Accept": "application/json"},
+        params=params,
+        timeout=60,
+        verify=verify,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def _parse_issue_type_names(raw: str) -> list[str]:
+    return [x.strip() for x in (raw or "").split(",") if x.strip()]
+
+
+def fetch_requirement_issue_type_name(
+    base_url: str,
+    user: str,
+    password: str,
+    requirement_key: str,
+) -> str:
+    if settings.mock:
+        return ""
+    data = _get_issue_json(base_url, user, password, requirement_key, fields="issuetype")
+    it = (data.get("fields") or {}).get("issuetype") or {}
+    return str(it.get("name") or "").strip()
+
+
+def fetch_linked_work_issues(
+    base_url: str,
+    user: str,
+    password: str,
+    requirement_key: str,
+    *,
+    extra_issue_types_from_env: str,
+    test_issue_type_name: str,
+) -> tuple[list[dict], str]:
+    """Linked issues whose type is in (env list ∪ requirement type), excluding test issue type."""
+    if settings.mock:
+        return [], ""
+    req_type = fetch_requirement_issue_type_name(base_url, user, password, requirement_key)
+    want_cf: set[str] = {t.casefold() for t in _parse_issue_type_names(extra_issue_types_from_env)}
+    if req_type:
+        want_cf.add(req_type.casefold())
+    if not want_cf:
+        return [], req_type
+    test_cf = (test_issue_type_name or "").strip().casefold() or (settings.jira_test_issue_type or "Test").casefold()
+    keys = list_linked_issue_keys(base_url, user, password, requirement_key)
+    out: list[dict] = []
+    for ik in keys:
+        try:
+            data = _get_issue_json(
+                base_url,
+                user,
+                password,
+                ik,
+                fields="summary,issuetype,status,description,renderedFields",
+                expand="renderedFields",
+            )
+        except Exception:
+            continue
+        fields = data.get("fields") or {}
+        it = fields.get("issuetype") or {}
+        it_name = str(it.get("name") or "").strip()
+        it_cf = it_name.casefold()
+        if it_cf == test_cf:
+            continue
+        if it_cf not in want_cf:
+            continue
+        summary = str(fields.get("summary") or "").strip() or ik
+        desc_plain = _desc(fields)
+        st = fields.get("status") or {}
+        status_name = str(st.get("name") or "").strip() or "—"
+        key = str(data.get("key") or ik).strip().upper()
+        browse = jira_browse_url(base_url, key)
+        out.append(
+            {
+                "issue_key": key,
+                "summary": summary,
+                "status_name": status_name,
+                "browse_url": browse,
+                "issue_type_name": it_name,
+                "description": desc_plain,
+            }
+        )
+    return out, req_type
+
+
+def list_linked_issue_keys(
+    base_url: str,
+    user: str,
+    password: str,
+    requirement_key: str,
+) -> list[str]:
+    data = _get_issue_json(base_url, user, password, requirement_key, fields="issuelinks")
+    req_u = requirement_key.strip().upper()
+    keys: list[str] = []
+    for link in (data.get("fields") or {}).get("issuelinks") or []:
+        for side in ("inwardIssue", "outwardIssue"):
+            iss = link.get(side)
+            if isinstance(iss, dict):
+                k = (iss.get("key") or "").strip().upper()
+                if k and k != req_u:
+                    keys.append(k)
+    return list(dict.fromkeys(keys))
+
+
+def _description_lines_to_steps(body: str) -> list[str]:
+    raw = (body or "").strip()
+    if not raw:
+        return ["Given Preconditions are met."]
+    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
+    steps: list[str] = []
+    for ln in lines:
+        if re.match(r"^(Given|When|Then|And)\s+", ln, re.I):
+            steps.append(ln)
+    if steps:
+        return steps
+    return [f"Given {lines[0]}"] if lines else ["Given Preconditions are met."]
+
+
+def fetch_linked_test_issues(
+    base_url: str,
+    user: str,
+    password: str,
+    requirement_key: str,
+    test_issue_type_name: str,
+) -> list[dict]:
+    if settings.mock:
+        return []
+    want = (test_issue_type_name or "").strip() or "Test"
+    want_l = want.casefold()
+    keys = list_linked_issue_keys(base_url, user, password, requirement_key)
+    out: list[dict] = []
+    for ik in keys:
+        try:
+            data = _get_issue_json(
+                base_url,
+                user,
+                password,
+                ik,
+                fields="summary,description,issuetype,status,priority,renderedFields",
+                expand="renderedFields",
+            )
+        except Exception:
+            continue
+        fields = data.get("fields") or {}
+        it = fields.get("issuetype") or {}
+        it_name = str(it.get("name") or "").strip()
+        if it_name.casefold() != want_l:
+            continue
+        summary = str(fields.get("summary") or "").strip() or ik
+        desc_plain = _desc(fields)
+        steps = _description_lines_to_steps(desc_plain)
+        st = fields.get("status") or {}
+        status_name = str(st.get("name") or "").strip() or "—"
+        key = str(data.get("key") or ik).strip().upper()
+        browse = jira_browse_url(base_url, key)
+        pri = fields.get("priority") if isinstance(fields.get("priority"), dict) else {}
+        jira_priority_name = str(pri.get("name") or "").strip()
+        jira_priority_icon_url = str(pri.get("iconUrl") or "").strip()
+        tc = {
+            "description": summary[:10000],
+            "preconditions": "",
+            "steps": steps,
+            "expected_result": "",
+        }
+        out.append(
+            {
+                "issue_key": key,
+                "summary": summary,
+                "status_name": status_name,
+                "browse_url": browse,
+                "jira_priority_name": jira_priority_name,
+                "jira_priority_icon_url": jira_priority_icon_url,
+                "test_case": tc,
+            }
+        )
+    return out
+
+
 def _test_case_description_text(tc: dict) -> str:
     lines: list[str] = []
     steps = tc.get("steps")

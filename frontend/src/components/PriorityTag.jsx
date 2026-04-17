@@ -55,7 +55,7 @@ export function PriorityTag({ priority, iconUrl }) {
   const fromJira = Boolean(iconUrl);
   const slug = fromJira ? "jira" : KNOWN.includes(label) ? label.toLowerCase() : "unknown";
   return (
-    <span className={`tc-priority tc-priority--${slug}`} title={`Priority: ${label}`}>
+    <span className={`tc-priority tc-priority--${slug}`}>
       {fromJira ? (
         <span className="tc-priority-icon" aria-hidden>
           <img src={iconUrl} alt="" className="tc-priority-icon-img" />

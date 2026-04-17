@@ -52,9 +52,11 @@ _WS_NORM = re.compile(r"\s+")
 _AND_SPLIT = re.compile(r"\s+and\s+", re.IGNORECASE)
 
 SYS = """
-You are a senior QA engineer. Derive test cases only from Requirements (title + description). Do not invent product behavior, integrations, or concrete values (IDs, codes, limits, exact messages) that are not stated or clearly implied by the text.
+You are a senior QA engineer. Derive test cases from the **Requirements** (title + description) and from **Prior** and **Linked JIRA tests** when those sections appear in the user message.
 
-Traceability: Every scenario must tie to a specific idea in the title/description. The test case "description" is a short scenario title (no Gherkin keywords) that names that link (e.g. theme + outcome). Prefer wording from the requirement.
+Do not invent behavior, integrations, or concrete values that appear nowhere in the sections that are actually present.
+
+Traceability: Every scenario must tie to the Requirements **or** to Prior / linked tests when present. Prefer wording from the requirement or from included sections.
 
 Depth and variety (within the budget of min/max test cases from the Task):
 - Include a primary happy path when the requirement describes success.
@@ -213,6 +215,15 @@ def _pick_jira_issue_key(*vals: object) -> str | None:
     return None
 
 
+def _merge_jira_row_meta(row: dict, n: dict) -> None:
+    if n.get("jira_existing"):
+        row["jira_existing"] = True
+    for k in ("jira_status", "jira_browse_url", "priority_icon_url"):
+        v = n.get(k)
+        if isinstance(v, str) and v.strip():
+            row[k] = v.strip()
+
+
 def _norm(c: dict, *, default_change_status: str = "new", allowed_priorities: list[str]) -> dict:
     st = _steps_list(c.get("steps"))
     pre = str(c.get("preconditions") or "").strip()
@@ -233,14 +244,30 @@ def _norm(c: dict, *, default_change_status: str = "new", allowed_priorities: li
     def _collapse_lines(s: str) -> str:
         return "\n".join(_WS_NORM.sub(" ", ln).strip() for ln in s.split("\n"))
 
+    if c.get("jira_existing"):
+        pr = str(c.get("priority") or "").strip()
+        prio = pr if pr else _norm_priority(None, allowed_priorities)
+    else:
+        prio = _norm_priority(c.get("priority"), allowed_priorities)
     out = {
         "description": _collapse_lines(_cap_lines(str(c.get("description") or ""))),
         "preconditions": _collapse_lines(_cap_lines(pre)),
         "steps": st,
         "expected_result": _collapse_lines(_cap_lines(exp)),
         "change_status": cs,
-        "priority": _norm_priority(c.get("priority"), allowed_priorities),
+        "priority": prio,
     }
+    if c.get("jira_existing"):
+        out["jira_existing"] = True
+    js = str(c.get("jira_status") or "").strip()
+    if js:
+        out["jira_status"] = js
+    jb = str(c.get("jira_browse_url") or "").strip()
+    if jb:
+        out["jira_browse_url"] = jb
+    pi = str(c.get("priority_icon_url") or "").strip()
+    if pi:
+        out["priority_icon_url"] = pi
     jk = _pick_jira_issue_key(c.get("jira_issue_key"))
     if jk:
         out["jira_issue_key"] = jk
@@ -264,6 +291,86 @@ def _tc_signature_norm(tc: dict) -> str:
 
 
 _SIMILAR_THRESHOLD = 0.92
+_JIRA_EXISTING_MATCH_THRESHOLD = 0.88
+
+
+def merge_ai_cases_with_jira_existing(
+    ai_cases: list[dict],
+    jira_entries: list[dict],
+    *,
+    allowed_priorities: list[str],
+) -> list[dict]:
+    if not jira_entries:
+        return ai_cases
+    pairs: list[tuple[float, int, int]] = []
+    for i, ai in enumerate(ai_cases):
+        if not isinstance(ai, dict):
+            continue
+        na = _norm(ai, default_change_status="new", allowed_priorities=allowed_priorities)
+        for j, je in enumerate(jira_entries):
+            tc = je.get("test_case") if isinstance(je, dict) else None
+            if not isinstance(tc, dict):
+                continue
+            nj = _norm(tc, default_change_status="unchanged", allowed_priorities=allowed_priorities)
+            sim = _tc_similarity_for_merge(na, nj)
+            if sim >= _JIRA_EXISTING_MATCH_THRESHOLD:
+                pairs.append((sim, i, j))
+    pairs.sort(key=lambda x: -x[0])
+    matched_ai: set[int] = set()
+    matched_jira: set[int] = set()
+    ai_to_jira: dict[int, int] = {}
+    for _sim, i, j in pairs:
+        if i in matched_ai or j in matched_jira:
+            continue
+        matched_ai.add(i)
+        matched_jira.add(j)
+        ai_to_jira[i] = j
+    out: list[dict] = []
+    for i, ai in enumerate(ai_cases):
+        if not isinstance(ai, dict):
+            continue
+        if i in ai_to_jira:
+            je = jira_entries[ai_to_jira[i]]
+            base_tc = je.get("test_case")
+            if not isinstance(base_tc, dict):
+                base_tc = {}
+            row = _norm(base_tc, default_change_status="unchanged", allowed_priorities=allowed_priorities)
+            row["change_status"] = "unchanged"
+            row["jira_issue_key"] = je["issue_key"]
+            row["jira_status"] = str(je.get("status_name") or "")
+            row["jira_browse_url"] = str(je.get("browse_url") or "")
+            row["jira_existing"] = True
+            jp = str(je.get("jira_priority_name") or "").strip()
+            if jp:
+                row["priority"] = jp
+            ji = str(je.get("jira_priority_icon_url") or "").strip()
+            if ji:
+                row["priority_icon_url"] = ji
+            out.append(row)
+        else:
+            out.append(ai)
+    for j, je in enumerate(jira_entries):
+        if j in matched_jira:
+            continue
+        if not isinstance(je, dict):
+            continue
+        base_tc = je.get("test_case")
+        if not isinstance(base_tc, dict):
+            base_tc = {}
+        row = _norm(base_tc, default_change_status="unchanged", allowed_priorities=allowed_priorities)
+        row["change_status"] = "unchanged"
+        row["jira_issue_key"] = je["issue_key"]
+        row["jira_status"] = str(je.get("status_name") or "")
+        row["jira_browse_url"] = str(je.get("browse_url") or "")
+        row["jira_existing"] = True
+        jp = str(je.get("jira_priority_name") or "").strip()
+        if jp:
+            row["priority"] = jp
+        ji = str(je.get("jira_priority_icon_url") or "").strip()
+        if ji:
+            row["priority_icon_url"] = ji
+        out.append(row)
+    return out
 
 
 def _tc_similarity(a: dict, b: dict) -> float:
@@ -382,6 +489,7 @@ def merge_test_cases_with_previous(
                     row["steps"] = n["steps"]
                     row["expected_result"] = n.get("expected_result", "")
                     row["priority"] = n.get("priority") or row.get("priority")
+                    _merge_jira_row_meta(row, n)
                     jk = _pick_jira_issue_key(n.get("jira_issue_key"), row.get("jira_issue_key"))
                     if jk:
                         row["jira_issue_key"] = jk
@@ -403,6 +511,7 @@ def merge_test_cases_with_previous(
         inc_cs = str(n.get("change_status") or "new")
         by_fp[fp]["change_status"] = _merge_change_status(prev_cs, inc_cs)
         by_fp[fp]["priority"] = n.get("priority") or by_fp[fp].get("priority")
+        _merge_jira_row_meta(by_fp[fp], n)
         jk = _pick_jira_issue_key(n.get("jira_issue_key"), by_fp[fp].get("jira_issue_key"))
         if jk:
             by_fp[fp]["jira_issue_key"] = jk
@@ -468,6 +577,7 @@ async def generate_test_cases(
     min_test_cases: int = 1,
     max_test_cases: int = 10,
     paste_mode: bool = False,
+    existing_jira_tests: list[dict] | None = None,
 ) -> list[dict]:
     base = settings.llm_url.rstrip("/")
     if not base:
@@ -482,12 +592,34 @@ async def generate_test_cases(
         if prev
         else "No prior memory."
     )
+    ej = [x for x in (existing_jira_tests or []) if isinstance(x, dict)]
+    linked_block = ""
+    if ej:
+        linked_block = (
+            "Linked JIRA tests already on this requirement (reference only—fill gaps, improve clarity, avoid redundant "
+            "duplicate scenarios where the idea is already covered):\n"
+            + json.dumps(
+                [
+                    {
+                        "issue_key": x.get("issue_key"),
+                        "summary": x.get("summary"),
+                        "steps": (x.get("test_case") or {}).get("steps")
+                        if isinstance(x.get("test_case"), dict)
+                        else [],
+                    }
+                    for x in ej
+                ],
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n\n"
+        )
     max_note = "no upper limit" if max_test_cases == 0 else f"at most {max_test_cases}"
     pri_line = _priority_guidance(allowed_priorities, paste_mode)
     parts = [
         f"Requirements:\n{json.dumps(req, ensure_ascii=False, indent=2)}",
-        prior,
-        f"Task: Build test_cases per system rules from Requirements. {pri_line}"
+        linked_block + prior,
+        f"Task: Build test_cases per system rules from Requirements and Prior / linked tests when present. {pri_line}"
         f"Aim for strong BDD coverage: mix happy path with edge, negative, and alternative scenarios where the text supports them (not only trivial happy cases). "
         f"Return at least {min_test_cases} test case(s) and {max_note} total in test_cases. "
         "Use correct English grammar in every description and step line. "

@@ -75,7 +75,10 @@ export function fmtTestsMarkdown(t) {
   return t
     .map((c) => {
       if (!c || typeof c !== "object") return "";
-      const status = changeStatusLabel(c.change_status);
+      let status = changeStatusLabel(c.change_status);
+      if (c.jira_existing) status = `${status} · EXISTING`;
+      if (c.jira_status) status = `${status} · ${c.jira_status}`;
+      if (c.jira_issue_key) status = `${status} (${String(c.jira_issue_key).trim()})`;
       const title = String(c.description || "Test case").trim().replace(/\r?\n/g, " ");
       let body = "";
       if (isUnifiedGherkin(c)) {
