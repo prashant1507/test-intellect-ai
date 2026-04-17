@@ -9,6 +9,14 @@
 [![LLM](https://img.shields.io/badge/LLM-OpenAI%20compatible-8B5CF6?style=flat-square&logo=openai&logoColor=white)](https://platform.openai.com/docs/api-reference)
 [![Keycloak](https://img.shields.io/badge/Keycloak-OIDC-5C6BC0?style=flat-square&logo=keycloak&logoColor=white)](https://www.keycloak.org/)
 
+<p align="center">
+  <video controls playsinline width="880" preload="metadata">
+    <source src="resources/demo.mp4" type="video/mp4" />
+    <source src="resources/video.mov" type="video/quicktime" />
+    <a href="resources/video.mov">Open demo video</a>
+  </video>
+</p>
+
 Web app that pulls **JIRA** requirements (or pasted text), calls an **OpenAI-compatible** LLM (**local** or **cloud**) to generate **Gherkin-style test cases**. 
 
 Configure the model with **`LLM_URL`** (base URL including `/v1`) and optional **`LLM_ACCESS_TOKEN`** for providers that require a **Bearer API key**. 

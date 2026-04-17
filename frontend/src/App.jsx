@@ -1568,6 +1568,7 @@ export default function App() {
                 onClick={() => {
                   setInputMode("paste");
                   setErr("");
+                  setEditTcIdx(null);
                 }}
               >
                 Paste Requirements
@@ -2111,33 +2112,35 @@ export default function App() {
                             <PriorityTag priority={tc.priority} iconUrl={tc.priority_icon_url} />
                             <span className="tc-desc">{tc.description}</span>
                           </button>
-                          <FloatingTooltip text="Edit this test case">
-                            <button
-                              type="button"
-                              className="tc-edit-icon-btn"
-                              disabled={generatingTestCases || bulkJiraSync?.running}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setEditTcIdx(idx);
-                              }}
-                              aria-label="Edit test case"
-                            >
-                              <svg
-                                width="18"
-                                height="18"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                aria-hidden
+                          {inputMode !== "paste" ? (
+                            <FloatingTooltip text="Edit this test case">
+                              <button
+                                type="button"
+                                className="tc-edit-icon-btn"
+                                disabled={generatingTestCases || bulkJiraSync?.running}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditTcIdx(idx);
+                                }}
+                                aria-label="Edit test case"
                               >
-                                <path d="M12 20h9" />
-                                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                              </svg>
-                            </button>
-                          </FloatingTooltip>
+                                <svg
+                                  width="18"
+                                  height="18"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  aria-hidden
+                                >
+                                  <path d="M12 20h9" />
+                                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                                </svg>
+                              </button>
+                            </FloatingTooltip>
+                          ) : null}
                           <JiraTestPushButton
                             displayMode={inputMode === "paste" ? "linkOnly" : "default"}
                             disabled={jiraPushDisabled}
