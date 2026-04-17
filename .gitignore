@@ -13,3 +13,4 @@ bakend/.venv
 .cursor
 .idea
 .dockerignore
+resources/video.mov
