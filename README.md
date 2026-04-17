@@ -91,7 +91,8 @@ flowchart LR
 
 ---
 
-## Environment (`.env`)
+<details>
+<summary><strong>Environment</strong> (<code>.env</code>)</summary>
 
 1. Copy the example file to the **repository root**:
 
@@ -119,9 +120,12 @@ flowchart LR
 
 The backend reads the root `.env`. **`GET /api/config`** exposes safe **defaults** for the UI (Jira URL, username, test project key, issue type, link type, mock/UI/Keycloak flags)—**never** the Jira password or LLM token.
 
+</details>
+
 ---
 
-## Run locally
+<details>
+<summary><strong>Run locally</strong></summary>
 
 **Backend (Python 3.10+):**
 
@@ -143,9 +147,12 @@ npm run dev
 
 Open **http://127.0.0.1:5173** (Vite). The dev server proxies `/api` to the backend on port **8000**. Start a local LLM server (e.g. **LM Studio**) or point **`LLM_URL`** / **`LLM_ACCESS_TOKEN`** at a cloud API; with **`MOCK=true`**, dummy JIRA fields are fine.
 
+</details>
+
 ---
 
-## Docker Compose
+<details>
+<summary><strong>Docker Compose</strong></summary>
 
 1. `docker build -t test-intellect-ai:1.0 .`
 2. Point [docker-compose.yml](docker-compose.yml) at that image.
@@ -160,9 +167,12 @@ The compose file can override **`LLM_URL`** to **`http://host.docker.internal:12
 - With **`USE_KEYCLOAK=true`**, **`KEYCLOAK_URL`**, **`KEYCLOAK_REALM`**, and **`KEYCLOAK_CLIENT_ID`** must be non-empty or the API will fail at startup. **`KEYCLOAK_INTERNAL_URL`** is for token verification from inside the container (compose defaults it to **`http://host.docker.internal:8080`** when Keycloak runs on the host).
 - In Keycloak, add **Valid redirect URIs** for the app (e.g. **`http://localhost:8001/*`** when using Compose on port 8001).
 
+</details>
+
 ---
 
-## API overview
+<details>
+<summary><strong>API overview</strong></summary>
 
 | Method | Path | Description |
 |--------|------|---------------|
@@ -180,6 +190,8 @@ The compose file can override **`LLM_URL`** to **`http://host.docker.internal:12
 | `POST` | `/api/jira/push-test-case` | Create or update a test issue and link it to the requirement (see `backend/main.py` / `jira_client.py` for bodies). |
 
 Other routes and request schemas: see **`backend/main.py`**.
+
+</details>
 
 ---
 
