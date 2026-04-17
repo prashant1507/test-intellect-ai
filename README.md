@@ -23,28 +23,24 @@ Optional **Keycloak** sign-in ties users to audit entries.
 
 ```mermaid
 flowchart LR
-  UI[React UI] -->|/api| API[FastAPI main.py]
-  API --> JIRA[jira_client]
-  API --> LLM[ai_client]
-  API --> MEM[memory_store SQLite]
-  API --> AUD[audit_store SQLite]
-  API --> KC[keycloak_auth]
+  UI["React UI"] -->|/api| API["FastAPI main.py"]
+  API --> JIRA["jira_client"]
+  API --> LLM["ai_client"]
+  API --> MEM["memory_store (SQLite)"]
+  API --> AUD["audit_store (SQLite)"]
+  API --> KC["keycloak_auth"]
 ```
 
 ---
 
 ## Features
 
-<details>
-<summary><strong>Requirements</strong></summary>
+### Requirements
 
 - **JIRA mode:** Fetch a ticket’s summary and description. The API normalizes Atlassian Document Format, wiki markup, and rendered HTML into plain text for the model.
 - **Paste mode:** Generate tests from pasted plain text or Markdown without JIRA credentials.
 
-</details>
-
-<details>
-<summary><strong>AI Test Generation</strong></summary>
+### AI Test Generation
 
 - **Local / Cloud Models:** Any OpenAI-compatible **`POST …/v1/chat/completions`** endpoint.
   - **Local:** e.g. **LM Studio** on `http://127.0.0.1:1234/v1`.
@@ -53,20 +49,14 @@ flowchart LR
 - **Structured Output:** Scenarios with steps (Gherkin-style); configurable **minimum** and **maximum** test cases per run (`max_test_cases = 0` means no upper limit).
 - **Priorities in Generated Tests:** In **paste mode**, allowed priority labels come from **`PASTE_MODE_PRIORITIES`** in `.env`. In **JIRA mode**, generation can use your project’s **JIRA priority names** (loaded for the run) so labels stay aligned with what you can map and push.
 
-</details>
-
-<details>
-<summary><strong>History &amp; Comparison</strong></summary>
+### History & Comparison
 
 - **Per-Ticket Storage:** SQLite keeps the latest requirements and generated tests per ticket (when saving is enabled).
 - **Similar Ticket Matching:** If there is no exact saved row for a key, optional **similar title + description** matching via **`MEMORY_SIMILARITY_THRESHOLD`** in `.env` (`0` = off; try ~`0.88`–`0.95`).
 - **History UI:** List saved tickets, filter by ticket id, open a detail view with full requirements and tests.
 - **Requirements Diffs:** When you regenerate with prior saved data for the **same requirement ticket**, the UI can show a **requirements diff** and **change status** tags on test cases (e.g. new / updated / unchanged).
 
-</details>
-
-<details>
-<summary><strong>JIRA Integration</strong></summary>
+### JIRA Integration
 
 - **Fetch & generate:** Load requirements from JIRA, then generate test cases in-app (same ticket flow as above).
 - **Push to JIRA:** Create **new** test issues in a configurable **test project** and **issue type**, or **update** an existing test issue when an issue key is already linked.
@@ -77,29 +67,20 @@ flowchart LR
 - **Bulk Push:** Push **filtered** test rows (e.g. by change-status chips: All, Unchanged, Updated, New) using the **same rules** as per-row push; the UI uses a **confirmation-style** control before running the bulk operation.
 - **Priorities:** Optional alignment with Jira—**`POST /api/jira/priorities`** returns priority **names** and **icon URLs**; the **+** flow can map AI priorities to Jira after the test project is set (see **Notes**).
 
-</details>
-
-<details>
-<summary><strong>Audit &amp; Export</strong></summary>
+### Audit & export
 
 - **Audit Log:** Records fetch, generate, login/logout, and related actions. With Keycloak enabled, entries include **username**.
 - **Filters:** Filter audit rows by user, ticket, and action.
 - **PDF Export:** Download full or filtered audit records as a PDF.
 
-</details>
-
-<details>
-<summary><strong>Authentication &amp; Modes</strong></summary>
+### Authentication & Modes
 
 - **Keycloak OIDC (Optional):** Login for API and UI; idle-timeout hints in the UI.
 - **Mock Mode (Development Only):** No real JIRA HTTP; built-in sample requirements; 
   - No audit persistence from generate.
   - No history saves from generate.
 
-</details>
-
-<details>
-<summary><strong>User Experience</strong></summary>
+### User Experience
 
 - **Light / Dark Theme:** Toggle in the header.
 - **Copy as Markdown:** Copy requirements and test cases where supported.
@@ -107,8 +88,6 @@ flowchart LR
 - **Help Tooltips:** Shared **FloatingTooltip** (React portal + positioned near the anchor) so help text is not clipped inside modals or the sidebar; avoids relying on slow native `title` tooltips for primary actions.
 - **JIRA Actions:** Per-row and bulk controls use the same tooltip pattern for short status text (e.g. “Added to JIRA as …”) without extra empty padding on one-line hints.
 - **Form Layout:** In **JIRA mode**, **minimum / maximum test cases** sit with the main JIRA form (e.g. near password). In **paste mode**, min/max stay **below** the requirements block.
-
-</details>
 
 ---
 
