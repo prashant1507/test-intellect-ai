@@ -11,9 +11,7 @@
 
 <p align="center">
   <video controls playsinline width="880" preload="metadata">
-    <source src="resources/demo.mp4" type="video/mp4" />
-    <source src="resources/video.mov" type="video/quicktime" />
-    <a href="resources/video.mov">Open demo video</a>
+    <source src="resources/video.mp4" type="video/mp4" />
   </video>
 </p>
 
