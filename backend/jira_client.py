@@ -1,0 +1,443 @@
+from __future__ import annotations
+
+import html as html_module
+import json
+import re
+
+import requests
+import urllib3
+
+from settings import settings
+
+
+def _semantic_tier_labels_for_jira_mapping() -> list[str]:
+    """Fixed tiers for spreading AI output across JIRA priorities (not PASTE_MODE_PRIORITIES)."""
+    return ["Highest", "High", "Medium", "Low", "Lowest"]
+
+
+def fetch_priorities(base_url: str, user: str, password: str) -> list[dict]:
+    """Return JIRA priorities sorted highest-first (lowest sequence first)."""
+    verify = settings.jira_verify_ssl
+    if not verify:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    base = base_url.rstrip("/")
+    auth = (user, password)
+    headers = {"Accept": "application/json"}
+    r = requests.get(
+        f"{base}/rest/api/2/priority",
+        auth=auth,
+        headers=headers,
+        timeout=60,
+        verify=verify,
+    )
+    r.raise_for_status()
+    data = r.json()
+    if not isinstance(data, list):
+        return []
+
+    def sort_key(p: dict) -> float:
+        s = p.get("sequence")
+        if s is not None:
+            try:
+                return float(s)
+            except (TypeError, ValueError):
+                pass
+        try:
+            return float(p.get("id", 0))
+        except (TypeError, ValueError):
+            return 0.0
+
+    return sorted(data, key=sort_key)
+
+
+def build_ai_to_jira_priority_map(jira_priorities: list[dict]) -> dict[str, str]:
+    """Map each AI tier label to a JIRA priority name (evenly along the sorted list, high → low)."""
+    labels = _semantic_tier_labels_for_jira_mapping()
+    if not labels or not jira_priorities:
+        return {}
+    n = len(jira_priorities)
+    out: dict[str, str] = {}
+    denom = max(len(labels) - 1, 1)
+    for i, lab in enumerate(labels):
+        j = min(n - 1, round(i * (n - 1) / denom)) if n > 1 else 0
+        name = str(jira_priorities[j].get("name") or "").strip()
+        if name:
+            out[lab] = name
+    return out
+
+
+def map_test_priority_to_jira(
+    ai_or_name: str | None,
+    jira_priorities: list[dict],
+) -> dict | None:
+    """Resolve test_case.priority (AI label or JIRA name) to one JIRA priority dict."""
+    if not jira_priorities:
+        return None
+    raw = str(ai_or_name or "").strip()
+    if not raw:
+        labs = _semantic_tier_labels_for_jira_mapping()
+        raw = labs[len(labs) // 2] if labs else "Medium"
+    by_name = {str(p.get("name") or "").lower(): p for p in jira_priorities}
+    if raw.lower() in by_name:
+        return by_name[raw.lower()]
+    ai_map = build_ai_to_jira_priority_map(jira_priorities)
+    labels = _semantic_tier_labels_for_jira_mapping()
+    for lab in labels:
+        if lab.lower() == raw.lower():
+            jname = ai_map.get(lab)
+            if jname and jname.lower() in by_name:
+                return by_name[jname.lower()]
+            break
+    for lab, jname in ai_map.items():
+        if lab.lower() == raw.lower() and jname and jname.lower() in by_name:
+            return by_name[jname.lower()]
+    for lab in labels:
+        if lab.lower() in raw.lower() or raw.lower() in lab.lower():
+            jname = ai_map.get(lab)
+            if jname and jname.lower() in by_name:
+                return by_name[jname.lower()]
+    return jira_priorities[len(jira_priorities) // 2]
+
+
+def _priority_payload_for_issue(pick: dict) -> dict:
+    pid = pick.get("id")
+    if pid is not None and str(pid).strip() != "":
+        return {"id": str(pid)}
+    name = str(pick.get("name") or "").strip()
+    return {"name": name} if name else {}
+
+
+def _adf(
+    node: object,
+    *,
+    list_kind: str | None = None,
+    index: int = 0,
+    depth: int = 0,
+) -> str:
+    if not node:
+        return ""
+    if isinstance(node, str):
+        return node
+    if isinstance(node, list):
+        return "".join(_adf(x, depth=depth) for x in node)
+    if not isinstance(node, dict):
+        return str(node)
+
+    t = node.get("type", "")
+    content = node.get("content") or []
+
+    def render_children(**kwargs: object) -> str:
+        return "".join(_adf(c, **kwargs) for c in content)
+
+    if t == "text":
+        return str(node.get("text", ""))
+    if t == "hardBreak":
+        return "\n"
+    if t == "heading":
+        level = max(1, min(6, int((node.get("attrs") or {}).get("level") or 1)))
+        return f"{'#' * level} {render_children(depth=depth).strip()}\n"
+    if t in {"bulletList", "orderedList"}:
+        kind = "bullet" if t == "bulletList" else "ordered"
+        lines = (_adf(c, list_kind=kind, index=i, depth=depth) for i, c in enumerate(content))
+        return "".join(lines) + "\n"
+    if t == "listItem":
+        body = render_children(depth=depth + 1).strip()
+        pad = "  " * depth
+        marker = {"bullet": "-", "ordered": f"{index + 1}."}.get(list_kind, "•")
+        return f"{pad}{marker} {body}\n"
+
+    inner = render_children(depth=depth)
+    return inner + "\n" if t == "paragraph" else inner
+
+
+def _html_to_plain(html: str) -> str:
+    t = html_module.unescape(html)
+    t = re.sub(r"<br\s*/?>", "\n", t, flags=re.I)
+    for n in range(1, 7):
+        t = re.sub(rf"<h{n}[^>]*>(.*?)</h{n}>", rf"\n\n{'#' * n} \1\n\n", t, flags=re.I | re.S)
+    t = re.sub(r"</p>\s*<p[^>]*>", "\n\n", t, flags=re.I)
+    t = re.sub(r"<p[^>]*>", "", t, flags=re.I)
+    t = re.sub(r"</p>", "\n\n", t, flags=re.I)
+    t = re.sub(r"<li[^>]*>", "\n- ", t, flags=re.I)
+    t = re.sub(r"</li>", "", t, flags=re.I)
+    t = re.sub(r"<[^>]+>", "", t)
+    t = re.sub(r"[ \t]+\n", "\n", t)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip()
+
+
+def _desc(fields: dict) -> str:
+    html = (fields.get("renderedFields") or {}).get("description")
+    if isinstance(html, str) and html.strip():
+        return _html_to_plain(html)
+    d = fields.get("description")
+    if isinstance(d, str):
+        return d.strip()
+    if isinstance(d, dict) and d.get("type") == "doc":
+        return _adf(d).strip()
+    return str(d or "").strip()
+
+
+def _mock_issue(issue_key: str) -> dict[str, str]:
+    k = issue_key.strip().upper()
+    title = f"Login Page Implementation | {k}"
+    desc = f"""
+Develop a secure and user-friendly login page that allows registered users to access the application using their credentials. The page should follow UI/UX guidelines and ensure proper validation, authentication, and error handling.
+
+User Story:
+As a registered user, I want to log in to the application using my email/username and password so that I can securely access my account.
+
+## Acceptance Criteria
+
+1. UI Elements
+
+* Login form should include:
+
+    * Email/Username field
+    * Password field
+    * Login button
+    * "Forgot Password" link
+* Password field should have show/hide toggle option
+
+2. Validation
+
+* Email/Username field should not be empty
+* Password field should not be empty
+* Email format should be validated (if email is used)
+* Display proper validation messages
+
+3. Authentication
+
+* On valid input, system should authenticate user credentials via backend API
+* On successful login, redirect user to dashboard/home page
+* Store authentication token/session securely
+
+4. Error Handling
+
+* Display error message for:
+
+    * Invalid credentials
+    * User not found
+    * Server/API errors
+* Error messages should be user-friendly
+
+5. Security
+
+* Password should be masked by default
+* Implement secure API communication (HTTPS)
+* Protect against common vulnerabilities (e.g., brute force, injection)
+
+6. Performance
+
+* Login response time should be within acceptable limits (<2 seconds ideally)
+
+7. Accessibility & UX
+
+* Form should be accessible (keyboard navigation, labels)
+* Responsive design for mobile, tablet, and desktop
+    """
+    return {"title": title.strip(), "description": desc.strip()}
+
+
+def format_jira_http_error(response: requests.Response) -> str:
+    """Human-readable message from a failed JIRA REST response."""
+    status = response.status_code
+
+    def extract_body() -> str:
+        try:
+            data = response.json()
+        except (json.JSONDecodeError, ValueError, TypeError):
+            text = (response.text or "").strip()
+            return text[:500] if text else ""
+
+        if not isinstance(data, dict):
+            return ""
+
+        msgs = data.get("errorMessages")
+        if isinstance(msgs, list):
+            text = " ".join(m.strip() for m in msgs if isinstance(m, str) and m.strip())
+            if text:
+                return text
+
+        errs = data.get("errors")
+        if isinstance(errs, dict):
+            text = "; ".join(f"{k}: {v}" for k, v in errs.items() if v)
+            if text:
+                return text
+
+        text = (response.text or "").strip()
+        return text[:500] if text else ""
+
+    body = extract_body() or (response.reason or "Unknown error").strip()
+    status_hints = {
+        401: "Check your email and password. For Atlassian Cloud, use an API token as the password if required.",
+        403: "Your account may not have permission to view this project or issue.",
+        404: "The ticket may not exist, or you may not have access. Confirm the ticket key and site URL.",
+    }
+    lines = [f"JIRA returned HTTP {status}.", body]
+    if status in status_hints:
+        lines.append(status_hints[status])
+    elif status >= 500:
+        lines.append("The JIRA service reported an error. Try again in a moment.")
+    return "\n".join(lines)
+
+
+def fetch_issue(base_url: str, user: str, password: str, issue_key: str) -> dict[str, str]:
+    if settings.mock:
+        return _mock_issue(issue_key)
+    verify = settings.jira_verify_ssl
+    if not verify:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    response = requests.get(
+        f"{base_url.rstrip('/')}/rest/api/2/issue/{issue_key}",
+        auth=(user, password),
+        headers={"Accept": "application/json"},
+        params={"expand": "renderedFields"},
+        timeout=60,
+        verify=verify,
+    )
+    response.raise_for_status()
+    data = response.json()
+    fields = data.get("fields") or {}
+    title = (fields.get("summary") or "").strip()
+    description = _desc(fields)
+    return {"title": title, "description": description}
+
+
+def _test_case_description_text(tc: dict) -> str:
+    lines: list[str] = []
+    steps = tc.get("steps")
+    if isinstance(steps, list):
+        lines.extend(str(x) for x in steps)
+    pre = str(tc.get("preconditions") or "").strip()
+    exp = str(tc.get("expected_result") or "").strip()
+    if pre or exp:
+        if lines:
+            lines.append("")
+        if pre:
+            lines.extend(["Preconditions:", pre, ""])
+        if exp:
+            lines.extend(["Expected:", exp])
+    return "\n".join(lines).strip()
+
+
+def push_test_case_to_jira(
+    base_url: str,
+    user: str,
+    password: str,
+    requirement_key: str,
+    test_project_key: str,
+    test_case: dict,
+    issue_type_override: str | None = None,
+    link_type_override: str | None = None,
+) -> dict[str, str]:
+    verify = settings.jira_verify_ssl
+    if not verify:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    base = base_url.rstrip("/")
+    auth = (user, password)
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    summary = str((test_case or {}).get("description") or "Test case").strip() or "Test case"
+    summary = summary[:254]
+    desc = _test_case_description_text(test_case)
+    raw_type = (issue_type_override or "").strip() or None
+    issue_type = (raw_type or settings.jira_test_issue_type or "Test").strip() or "Test"
+    proj = test_project_key.strip().upper()
+    payload = {
+        "fields": {
+            "project": {"key": proj},
+            "summary": summary,
+            "description": desc,
+            "issuetype": {"name": issue_type},
+        }
+    }
+    try:
+        prior_list = fetch_priorities(base_url, user, password)
+        pick = map_test_priority_to_jira((test_case or {}).get("priority"), prior_list)
+        if pick:
+            payload["fields"]["priority"] = _priority_payload_for_issue(pick)
+    except Exception:
+        pass
+    r = requests.post(
+        f"{base}/rest/api/2/issue",
+        json=payload,
+        auth=auth,
+        headers=headers,
+        timeout=60,
+        verify=verify,
+    )
+    r.raise_for_status()
+    created = r.json()
+    new_key = created.get("key") or ""
+    if not new_key:
+        raise ValueError("JIRA did not return an issue key")
+    raw_link = (link_type_override or "").strip() or None
+    link_type = (raw_link or settings.jira_test_link_type or "Relates").strip() or "Relates"
+    req_k = requirement_key.strip().upper()
+    # JIRA REST issueLink requires both inwardIssue and outwardIssue. The link type's inward/outward
+    # strings describe how each side appears in the UI; permission to create the link often applies to
+    # the "from (outward)" issue's project (see Atlassian docs). Swap via JIRA_LINK_INWARD_IS_REQUIREMENT.
+    if settings.jira_link_inward_is_requirement:
+        inward_key, outward_key = req_k, new_key
+    else:
+        inward_key, outward_key = new_key, req_k
+    link_payload = {
+        "type": {"name": link_type},
+        "inwardIssue": {"key": inward_key},
+        "outwardIssue": {"key": outward_key},
+    }
+    r2 = requests.post(
+        f"{base}/rest/api/2/issueLink",
+        json=link_payload,
+        auth=auth,
+        headers=headers,
+        timeout=60,
+        verify=verify,
+    )
+    r2.raise_for_status()
+    self_url = (created.get("self") or "").strip()
+    return {"key": new_key, "self": self_url}
+
+
+def update_test_case_in_jira(
+    base_url: str,
+    user: str,
+    password: str,
+    issue_key: str,
+    test_case: dict,
+) -> dict[str, str]:
+    """Update summary, description, and priority on an existing issue (no new link)."""
+    verify = settings.jira_verify_ssl
+    if not verify:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    base = base_url.rstrip("/")
+    auth = (user, password)
+    headers = {"Accept": "application/json", "Content-Type": "application/json"}
+    ik = issue_key.strip().upper()
+    summary = str((test_case or {}).get("description") or "Test case").strip() or "Test case"
+    summary = summary[:254]
+    desc = _test_case_description_text(test_case)
+    payload: dict = {
+        "fields": {
+            "summary": summary,
+            "description": desc,
+        }
+    }
+    try:
+        prior_list = fetch_priorities(base_url, user, password)
+        pick = map_test_priority_to_jira((test_case or {}).get("priority"), prior_list)
+        if pick:
+            payload["fields"]["priority"] = _priority_payload_for_issue(pick)
+    except Exception:
+        pass
+    r = requests.put(
+        f"{base}/rest/api/2/issue/{ik}",
+        json=payload,
+        auth=auth,
+        headers=headers,
+        timeout=60,
+        verify=verify,
+    )
+    r.raise_for_status()
+    self_url = f"{base}/rest/api/2/issue/{ik}"
+    return {"key": ik, "self": self_url}

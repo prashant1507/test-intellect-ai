@@ -1,0 +1,42 @@
+# Container env only — no ${VAR} substitution, so the project .env file is not used by Compose.
+# Edit values below for Docker. For local uvicorn/vite without Docker, use a root `.env` file (see backend/settings.py).
+
+services:
+  test-intellect-ai:
+    image: test-intellect-ai:1.0
+    build: .
+    ports:
+      - "8001:8000"
+    environment:
+      JIRA_URL: ""
+      JIRA_USERNAME: ""
+      JIRA_PASSWORD: ""
+      JIRA_VERIFY_SSL: "false"
+      JIRA_TEST_PROJECT_KEY: ""
+      JIRA_TEST_ISSUE_TYPE: Test
+      JIRA_TEST_LINK_TYPE: Relates
+      JIRA_LINK_INWARD_IS_REQUIREMENT: "true"
+
+      MOCK: "false"
+      SHOW_MEMORY_UI: "true"
+      SHOW_AUDIT_UI: "true"
+
+      USE_KEYCLOAK: "true"
+      KEYCLOAK_URL: http://localhost:8080
+      KEYCLOAK_REALM: master
+      KEYCLOAK_CLIENT_ID: user-client-id-jira
+      KEYCLOAK_CLIENT_SECRET: ""
+      KEYCLOAK_IDLE_TIMEOUT_MINUTES: "60"
+      KEYCLOAK_INTERNAL_URL: http://host.docker.internal:8080
+
+      LLM_URL: http://host.docker.internal:1234/v1
+      LLM_MODEL: qwen/qwen3-coder-30b
+      LLM_ACCESS_TOKEN: ""
+
+      MEMORY_SIMILARITY_THRESHOLD: "0.92"
+      PASTE_MODE_PRIORITIES: "Highest, High, Medium, Low, Lowest"
+
+    volumes:
+      - ./data:/app/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

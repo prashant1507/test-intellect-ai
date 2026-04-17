@@ -208,3 +208,9 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 
 - **`qwen/qwen3-coder-30b`**
 ---
+
+## Future Improvements & Features
+
+- Agentic feature to validate created test cases
+- RAG feature
+- Automation

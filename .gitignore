@@ -1,0 +1,15 @@
+.env
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+backend/.venv/
+testing-stuff/
+node_modules/
+frontend/dist/
+data/
+.DS_Store
+bakend/.venv
+.cursor
+.idea
+.dockerignore
