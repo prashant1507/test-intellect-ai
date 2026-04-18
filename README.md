@@ -53,6 +53,7 @@ flowchart LR
   - Leave **`LLM_ACCESS_TOKEN`** empty for typical local servers (a placeholder bearer is used where the server ignores auth).
 - **Structured Output:** Scenarios with steps (Gherkin-style); configurable **minimum** and **maximum** test cases per run (`max_test_cases = 0` means no upper limit).
 - **Priorities in Generated Tests:** In **paste mode**, allowed priority labels come from **`PASTE_MODE_PRIORITIES`** in `.env`. In **JIRA mode**, generation can use your project’s **JIRA priority names** (loaded for the run) so labels stay aligned with what you can map and push.
+- **Automation skeleton:** Button on each generated test case to open a dialog and generate skeleton automation code (language/framework) via the LLM.
 
 ### History & Comparison
 
@@ -223,7 +224,6 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 - Agentic feature to validate created test cases
 - RAG feature
 - Image reading support
-- Automation skeleton using desired language
 - Link with QA test framework and DEV code
 
 

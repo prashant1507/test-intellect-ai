@@ -633,3 +633,45 @@ async def generate_test_cases(
     out = [_norm(c, allowed_priorities=allowed_priorities) for c in cases if isinstance(c, dict)]
     out = _dedupe_similar_test_cases(out)
     return out[:max_test_cases] if max_test_cases else out
+
+
+_AUTOMATION_SKELETON_SYS = """
+You are an expert test automation engineer. You receive one JSON test case (BDD-style steps or classic steps).
+
+Task: Output a single **skeleton** test file for the requested programming language and test framework.
+- Map Given/When/Then steps into comments or structured placeholders; use TODO comments for unknown URLs, selectors, or credentials.
+- Do not invent product-specific URLs or selectors; use example.com or obvious placeholders where needed.
+- No explanation prose before or after the code. No markdown fences wrapping the answer unless the language convention requires nothing else (prefer raw source only).
+- Imports and project structure should match common conventions for that stack (e.g. pytest-playwright for Python+Playwright if typical).
+""".strip()
+
+
+def _strip_code_fence(s: str) -> str:
+    t = (s or "").strip()
+    m = re.match(r"^```(?:\w+)?\s*\n?([\s\S]*?)```\s*$", t)
+    return m.group(1).rstrip() if m else t
+
+
+async def generate_automation_skeleton(test_case: dict, language: str, framework: str) -> str:
+    if settings.mock:
+        desc = str((test_case or {}).get("description") or "scenario").strip() or "scenario"
+        return (
+            f"# Automation skeleton (mock mode — no LLM)\n"
+            f"# Stack: {language} + {framework}\n"
+            f"# Scenario: {desc[:200]}\n"
+            f"def test_placeholder():\n    raise NotImplementedError('TODO')\n"
+        )
+    base = settings.llm_url.rstrip("/")
+    if not base:
+        raise ValueError("LLM_URL is not set in .env")
+    tc_in = test_case if isinstance(test_case, dict) else {}
+    payload = json.dumps(tc_in, ensure_ascii=False, indent=2)
+    user = (
+        f"Programming language (lowercase id): {language}\n"
+        f"Test framework (lowercase id): {framework}\n\n"
+        f"Test case JSON:\n{payload}"
+    )
+    model = (settings.llm_model or "").strip() or "local-model"
+    msgs = [{"role": "system", "content": _AUTOMATION_SKELETON_SYS}, {"role": "user", "content": user}]
+    raw = await asyncio.to_thread(_chat, base, model, msgs, 0.2)
+    return _strip_code_fence(raw.strip())

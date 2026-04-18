@@ -15,6 +15,7 @@ import { JiraTestPushButton } from "./components/JiraTestPushButton";
 import { LinkedJiraTestsBlock, LinkedJiraWorkBlock } from "./components/LinkedJiraLists";
 import { PriorityTag } from "./components/PriorityTag";
 import { MemoryDetailContent } from "./components/Memory";
+import { AutomationSkeletonIconButton, AutomationSkeletonModal } from "./components/AutomationSkeletonModal";
 import { TestCaseEditModal } from "./components/TestCaseEditModal";
 import { TestCaseBody } from "./components/TestCaseBody";
 import {
@@ -78,6 +79,7 @@ export default function App() {
   const [auditEntries, setAuditEntries] = useState([]);
   const [auditModalOpen, setAuditModalOpen] = useState(false);
   const [editTcIdx, setEditTcIdx] = useState(null);
+  const [automationSkelIdx, setAutomationSkelIdx] = useState(null);
   const [auditFilters, setAuditFilters] = useState({ user: "", ticket: "", action: "" });
   const [showMemoryUi, setShowMemoryUi] = useState(true);
   const [showAuditUi, setShowAuditUi] = useState(true);
@@ -862,11 +864,12 @@ export default function App() {
   }, [memoryPanel?.phase, memoryPanel?.ticket_id, memoryPanel?.test_cases]);
 
   useEffect(() => {
-    const anyOpen = auditModalOpen || !!memoryPanel || editTcIdx != null;
+    const anyOpen = auditModalOpen || !!memoryPanel || editTcIdx != null || automationSkelIdx != null;
     if (!anyOpen) return;
     const onKey = (e) => {
       if (e.key !== "Escape") return;
       if (editTcIdx != null) setEditTcIdx(null);
+      else if (automationSkelIdx != null) setAutomationSkelIdx(null);
       else if (memoryPanel) setMemoryPanel(null);
       else setAuditModalOpen(false);
     };
@@ -878,8 +881,12 @@ export default function App() {
       const auditDialog = document.getElementById("audit-dialog");
       const memoryDialog = document.getElementById("memory-dialog");
       const tcEditDialog = document.getElementById("tc-edit-dialog");
+      const automationSkelDialog = document.getElementById("automation-skel-dialog");
       if (editTcIdx != null && tcEditDialog && !tcEditDialog.contains(e.target)) {
         setEditTcIdx(null);
+      }
+      if (automationSkelIdx != null && automationSkelDialog && !automationSkelDialog.contains(e.target)) {
+        setAutomationSkelIdx(null);
       }
       if (auditModalOpen && auditDialog && !auditDialog.contains(e.target)) {
         setAuditModalOpen(false);
@@ -898,7 +905,7 @@ export default function App() {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [auditModalOpen, memoryPanel, editTcIdx]);
+  }, [auditModalOpen, memoryPanel, editTcIdx, automationSkelIdx]);
 
   useEffect(() => {
     if (!oidcMgr || !useKeycloak) return undefined;
@@ -960,12 +967,12 @@ export default function App() {
   }, [idleTimeoutNotice]);
 
   useEffect(() => {
-    if (!auditModalOpen && !memoryPanel && editTcIdx == null) return undefined;
+    if (!auditModalOpen && !memoryPanel && editTcIdx == null && automationSkelIdx == null) return undefined;
     const id = requestAnimationFrame(() => {
       document.getElementById("app-theme-toggle")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     return () => cancelAnimationFrame(id);
-  }, [auditModalOpen, memoryPanel, editTcIdx]);
+  }, [auditModalOpen, memoryPanel, editTcIdx, automationSkelIdx]);
 
   const runPasteGenerate = async () => {
     const desc = pasteText.trim();
@@ -1488,6 +1495,33 @@ export default function App() {
                   tc={tests[editTcIdx]}
                   onClose={() => setEditTcIdx(null)}
                   onSave={(next) => void persistEditedTestCase(editTcIdx, next)}
+                />
+              </div>
+            </div>
+          ) : null}
+
+          {automationSkelIdx != null && tests?.[automationSkelIdx] ? (
+            <div
+              className="modal-backdrop modal-backdrop--main-area"
+              role="presentation"
+              onClick={() => setAutomationSkelIdx(null)}
+            >
+              <div
+                id="automation-skel-dialog"
+                className="modal-dialog modal-dialog-automation-skel"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="automation-skel-title"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <AutomationSkeletonModal
+                  key={String(automationSkelIdx)}
+                  tc={tests[automationSkelIdx]}
+                  ticketId={mainRequirementKey}
+                  jiraBaseUrl={jiraUrl}
+                  api={api}
+                  onClose={() => setAutomationSkelIdx(null)}
+                  onAnnounce={setAnnounce}
                 />
               </div>
             </div>
@@ -2141,8 +2175,8 @@ export default function App() {
                             <PriorityTag priority={tc.priority} iconUrl={tc.priority_icon_url} />
                             <span className="tc-desc">{tc.description}</span>
                           </button>
-                          {inputMode !== "paste" ? (
-                            <div className="tc-summary-actions">
+                          <div className="tc-summary-actions">
+                            {inputMode !== "paste" ? (
                               <FloatingTooltip text="Edit this test case">
                                 <button
                                   type="button"
@@ -2170,6 +2204,19 @@ export default function App() {
                                   </svg>
                                 </button>
                               </FloatingTooltip>
+                            ) : null}
+                            <AutomationSkeletonIconButton
+                              disabled={generatingTestCases || bulkJiraSync?.running}
+                              onClick={() => setAutomationSkelIdx(idx)}
+                            />
+                            {inputMode === "paste" ? (
+                              <JiraTestPushButton
+                                {...jiraPushCommon}
+                                displayMode="linkOnly"
+                                showUpdateButton={false}
+                                onUpdate={undefined}
+                              />
+                            ) : (
                               <JiraTestPushButton
                                 {...jiraPushCommon}
                                 displayMode="default"
@@ -2192,15 +2239,8 @@ export default function App() {
                                     : undefined
                                 }
                               />
-                            </div>
-                          ) : (
-                            <JiraTestPushButton
-                              {...jiraPushCommon}
-                              displayMode="linkOnly"
-                              showUpdateButton={false}
-                              onUpdate={undefined}
-                            />
-                          )}
+                            )}
+                          </div>
                         </div>
                         {open ? (
                           <div className="tc-body">

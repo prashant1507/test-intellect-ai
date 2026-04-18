@@ -862,6 +862,124 @@ button.logout-icon-btn:focus-visible {
   height: auto;
 }
 
+.modal-dialog.modal-dialog-automation-skel {
+  max-width: min(52rem, 100%);
+  max-height: min(90vh, max(0px, calc(100vh - 10rem)), calc(100% - 2rem));
+  max-height: min(90dvh, max(0px, calc(100dvh - 10rem)), calc(100% - 2rem));
+  height: auto;
+}
+
+.modal-dialog-automation-skel-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  padding: 0.75rem 0 0.75rem;
+}
+
+.automation-skel-scenario {
+  margin: 0 1rem 0.65rem;
+  padding-top: 0.15rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.automation-skel-scenario-title {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.automation-skel-scenario-key {
+  font-weight: 600;
+  color: var(--label);
+}
+
+.automation-skel-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem;
+  padding: 0 1rem 0.75rem;
+  border-bottom: 1px solid var(--card-border);
+}
+
+.automation-skel-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 9rem;
+}
+
+.automation-skel-select {
+  min-width: 11rem;
+}
+
+.automation-skel-generate-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: var(--secondary-bg);
+  color: var(--text);
+  font-size: 0.88rem;
+  font-weight: 500;
+  cursor: pointer;
+  margin-bottom: 0.05rem;
+}
+
+.automation-skel-generate-btn:hover:not(:disabled) {
+  background: var(--chip-bg, rgba(0, 0, 0, 0.06));
+}
+
+.automation-skel-generate-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.automation-skel-err {
+  margin: 0 1rem 0.5rem;
+}
+
+.automation-skel-code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem 0.35rem;
+}
+
+.automation-skel-code-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.automation-skel-pre-wrap {
+  margin: 0 1rem;
+  flex: 1;
+  min-height: 10rem;
+  max-height: min(48vh, 26rem);
+  overflow: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--secondary-bg);
+}
+
+.automation-skel-pre {
+  margin: 0;
+  padding: 0.75rem;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 .modal-dialog-tc-edit-body {
   padding: 0.75rem 1rem 1rem;
   border-bottom: 1px solid var(--card-border);

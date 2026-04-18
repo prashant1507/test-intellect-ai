@@ -25,6 +25,7 @@ from jira_client import (
     update_test_case_in_jira,
 )
 from ai_client import (
+    generate_automation_skeleton,
     generate_test_cases,
     merge_ai_cases_with_jira_existing,
     merge_test_cases_with_previous,
@@ -208,6 +209,19 @@ class PastedGenerateIn(BaseModel):
 
 class AuthAuditIn(BaseModel):
     event: Literal["login", "logout"]
+
+
+class AutomationSkeletonIn(BaseModel):
+    test_case: dict = Field(default_factory=dict)
+    language: Literal["python", "java", "javascript", "typescript", "csharp"]
+    framework: Literal["playwright", "selenium", "cypress"]
+    ticket_id: str = ""
+
+    @model_validator(mode="after")
+    def _framework_lang_pair(self) -> "AutomationSkeletonIn":
+        if self.framework == "cypress" and self.language not in ("javascript", "typescript"):
+            raise ValueError("Cypress is only available with JavaScript or TypeScript.")
+        return self
 
 
 class PushTestToJiraIn(BaseModel):
@@ -644,6 +658,17 @@ async def generate_tests(body: GenerateIn, kc: Kc):
         linked_jira_work_entries=linked_work_raw,
         linked_jira_work_type_labels=work_labels,
     )
+
+
+@api.post("/generate-automation-skeleton")
+async def generate_automation_skeleton_route(body: AutomationSkeletonIn, kc: Kc):
+    try:
+        code = await generate_automation_skeleton(body.test_case, body.language, body.framework)
+    except ValueError as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"LLM error: {e}") from e
+    return {"code": code}
 
 
 @api.post("/generate-from-paste")
