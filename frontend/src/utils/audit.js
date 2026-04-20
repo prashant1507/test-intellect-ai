@@ -83,6 +83,7 @@ export function jiraBrowseHref(baseUrl, key) {
 
 export const AUDIT_USER_EMPTY = "__empty__";
 export const AUDIT_TICKET_EMPTY = "__empty_ticket__";
+export const AUDIT_JIRA_USER_EMPTY = "__empty_jira_user__";
 
 export async function downloadAuditPdf(entries) {
   if (!Array.isArray(entries) || entries.length === 0) return;

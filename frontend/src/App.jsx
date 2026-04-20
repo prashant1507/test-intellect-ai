@@ -19,6 +19,7 @@ import { AgenticPipelineOptions } from "./components/AgenticPipelineOptions";
 import { MinMaxTestCaseFields } from "./components/MinMaxTestCaseFields";
 import { TestCaseEditModal } from "./components/TestCaseEditModal";
 import {
+  AUDIT_JIRA_USER_EMPTY,
   AUDIT_TICKET_EMPTY,
   AUDIT_USER_EMPTY,
   auditActionLabel,
@@ -91,7 +92,7 @@ export default function App() {
   const [editTcIdx, setEditTcIdx] = useState(null);
   const [automationSkelIdx, setAutomationSkelIdx] = useState(null);
   const [memoryAutomationSkelIdx, setMemoryAutomationSkelIdx] = useState(null);
-  const [auditFilters, setAuditFilters] = useState({ user: "", ticket: "", action: "" });
+  const [auditFilters, setAuditFilters] = useState({ user: "", ticket: "", action: "", jiraUser: "" });
   const [showMemoryUi, setShowMemoryUi] = useState(true);
   const [showAuditUi, setShowAuditUi] = useState(true);
   const [bootPhase, setBootPhase] = useState("loading");
@@ -204,6 +205,11 @@ export default function App() {
     return [...s].filter(Boolean).sort((a, b) => auditActionLabel(a).localeCompare(auditActionLabel(b)));
   }, [auditEntries]);
 
+  const auditJiraUserOptions = useMemo(() => {
+    const s = new Set(auditEntries.map((r) => String(r.jira_username ?? "").trim()));
+    return [...s].sort((a, b) => (a || "\uFFFF").localeCompare(b || "\uFFFF"));
+  }, [auditEntries]);
+
   const filteredAuditEntries = useMemo(() => {
     return auditEntries.filter((row) => {
       if (auditFilters.user !== "") {
@@ -214,6 +220,11 @@ export default function App() {
         const want =
           auditFilters.ticket === AUDIT_TICKET_EMPTY ? "" : auditFilters.ticket;
         if (String(row.ticket_id ?? "") !== want) return false;
+      }
+      if (auditFilters.jiraUser !== "") {
+        const want =
+          auditFilters.jiraUser === AUDIT_JIRA_USER_EMPTY ? "" : auditFilters.jiraUser;
+        if (String(row.jira_username ?? "").trim() !== want) return false;
       }
       if (auditFilters.action !== "" && (row.action || "") !== auditFilters.action) return false;
       return true;
@@ -885,7 +896,7 @@ export default function App() {
   }, [showMemoryUi, showAuditUi]);
 
   useEffect(() => {
-    if (!auditModalOpen) setAuditFilters({ user: "", ticket: "", action: "" });
+    if (!auditModalOpen) setAuditFilters({ user: "", ticket: "", action: "", jiraUser: "" });
   }, [auditModalOpen]);
 
   useEffect(() => {
@@ -1521,6 +1532,28 @@ export default function App() {
                       </select>
                     </div>
                     <div className="audit-filter-field">
+                      <label htmlFor="audit-filter-jira-user" className="label-with-info">
+                        <span>JIRA User</span>
+                        <FieldInfo text="Filter by the JIRA account used for the action (when recorded)." />
+                      </label>
+                      <select
+                        id="audit-filter-jira-user"
+                        className="audit-filter-select"
+                        value={auditFilters.jiraUser}
+                        onChange={(e) => setAuditFilters((f) => ({ ...f, jiraUser: e.target.value }))}
+                      >
+                        <option value="">All JIRA users</option>
+                        {auditJiraUserOptions.map((ju) => (
+                          <option
+                            key={ju === "" ? "ju-empty" : ju}
+                            value={ju === "" ? AUDIT_JIRA_USER_EMPTY : ju}
+                          >
+                            {ju || "—"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="audit-filter-field">
                       <label htmlFor="audit-filter-action" className="label-with-info">
                         <span>Action</span>
                         <FieldInfo text="Filter by the type of audit event." />
@@ -1539,11 +1572,16 @@ export default function App() {
                         ))}
                       </select>
                     </div>
-                    {(auditFilters.user || auditFilters.ticket || auditFilters.action) ? (
+                    {(auditFilters.user ||
+                      auditFilters.ticket ||
+                      auditFilters.jiraUser ||
+                      auditFilters.action) ? (
                       <button
                         type="button"
                         className="audit-filters-clear"
-                        onClick={() => setAuditFilters({ user: "", ticket: "", action: "" })}
+                        onClick={() =>
+                          setAuditFilters({ user: "", ticket: "", action: "", jiraUser: "" })
+                        }
                       >
                         Clear filters
                       </button>

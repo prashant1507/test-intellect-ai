@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copy icon will be enabled after Requirements or Test Cases data is loaded
 - Now for UPDATED test cases, new changes will be displayed in red and old one in red
 - Added Expand All and Collapse All for Test Cases in Saved History
+- Filter by JIRA User in Audit Records
 
 ### Changed
 - Minor bug fixes

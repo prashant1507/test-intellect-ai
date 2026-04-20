@@ -1236,7 +1236,7 @@ button.logout-icon-btn:focus-visible {
 
 .audit-filters {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.65rem 1rem;
   padding: 0.5rem 1rem 0;
   flex-shrink: 0;
