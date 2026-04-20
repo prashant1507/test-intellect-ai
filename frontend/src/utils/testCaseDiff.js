@@ -1,3 +1,5 @@
+import { jiraPushFingerprint } from "./jiraPushFingerprint";
+
 export function stripTestCaseDiffMeta(tc) {
   if (!tc || typeof tc !== "object") return tc;
   const out = { ...tc };
@@ -9,6 +11,27 @@ export function stripTestCaseDiffMeta(tc) {
 
 export function settleUpdatedRowAfterPersist(tc) {
   return stripTestCaseDiffMeta(tc);
+}
+
+export function settleTestCaseAfterJiraPush(tc) {
+  return { ...stripTestCaseDiffMeta(tc), change_status: "unchanged" };
+}
+
+export function mergeTestCaseChangeStatusFromMemory(tests, memoryTestCases) {
+  if (!Array.isArray(memoryTestCases) || memoryTestCases.length === 0) {
+    return tests;
+  }
+  if (!Array.isArray(tests) || tests.length === 0) {
+    return tests;
+  }
+  const map = new Map(memoryTestCases.map((tc) => [jiraPushFingerprint(tc), tc]));
+  return tests.map((t) => {
+    const m = map.get(jiraPushFingerprint(t));
+    if (!m) return t;
+    const cs = m.change_status;
+    if (!cs) return t;
+    return { ...t, change_status: cs };
+  });
 }
 
 export function lineDiff(a, b) {

@@ -83,9 +83,10 @@ function MemoryTestCasesView({
                 <FloatingTooltip text="Copy this test case as Markdown">
                   <Copy
                     text={fmtTestsMarkdown([tc])}
-                    label="Copy test case as Markdown"
+                    label="Copy this test case as Markdown"
                     onAnnounce={onAnnounce}
                     disabled={automationSkeletonDisabled}
+                    omitTitle
                   />
                 </FloatingTooltip>
               </div>
@@ -129,14 +130,28 @@ export function MemoryDetailContent({
           <div className="memory-detail-pane">
             <div className="memory-detail-pane-head">
               <h3>Requirements</h3>
-              <Copy text={fmtReqMarkdown(memoryPanel.requirements)} label="Copy requirements (Markdown)" onAnnounce={onAnnounce} />
+              <FloatingTooltip text="Copy requirements as Markdown">
+                <Copy
+                  text={fmtReqMarkdown(memoryPanel.requirements)}
+                  label="Copy requirements as Markdown"
+                  onAnnounce={onAnnounce}
+                  omitTitle
+                />
+              </FloatingTooltip>
             </div>
             <MemoryRequirementsView requirements={memoryPanel.requirements} />
           </div>
           <div className="memory-detail-pane">
             <div className="memory-detail-pane-head">
               <h3>Test Cases</h3>
-              <Copy text={fmtTestsMarkdown(memoryPanel.test_cases)} label="Copy test cases (Markdown)" onAnnounce={onAnnounce} />
+              <FloatingTooltip text="Copy test cases as Markdown">
+                <Copy
+                  text={fmtTestsMarkdown(memoryPanel.test_cases)}
+                  label="Copy test cases as Markdown"
+                  onAnnounce={onAnnounce}
+                  omitTitle
+                />
+              </FloatingTooltip>
             </div>
             <MemoryTestCasesView
               testCases={memoryPanel.test_cases}

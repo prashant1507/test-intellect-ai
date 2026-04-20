@@ -40,7 +40,11 @@ import { normalizeLinkedJiraFromApi } from "./utils/linkedJiraPayload";
 import { readStoredJiraLinkType, readStoredJiraTestIssueType, readStoredJiraUrl } from "./utils/storage";
 import { isAnyGenBusy, isJiraGenBusy, isPasteGenBusy } from "./utils/generationBusy";
 import { clampAgenticMaxRounds, parseMinTc, parseMaxTc, testCaseBounds } from "./utils/testCase";
-import { settleUpdatedRowAfterPersist, stripTestCaseDiffMeta } from "./utils/testCaseDiff";
+import {
+  mergeTestCaseChangeStatusFromMemory,
+  settleTestCaseAfterJiraPush,
+  stripTestCaseDiffMeta,
+} from "./utils/testCaseDiff";
 
 export default function App() {
   const [theme, setTheme] = useState(readTheme);
@@ -554,7 +558,7 @@ export default function App() {
           remappedForMemory && remappedForMemory.length ? remappedForMemory : testsRef.current;
         const withKey = (baseList || []).map((t, i) =>
           i === idx
-            ? settleUpdatedRowAfterPersist({ ...t, jira_issue_key: createdKey })
+            ? settleTestCaseAfterJiraPush({ ...t, jira_issue_key: createdKey })
             : t,
         );
         setTests(withKey);
@@ -1172,6 +1176,15 @@ export default function App() {
         setDiff(d.requirements_diff != null && d.requirements_diff !== "" ? d.requirements_diff : null);
         setDiffExpanded(false);
         setLastFetchAt(new Date().toISOString());
+        const tidFetch = String(d.ticket_id || "").trim().toUpperCase();
+        if (!mock && tidFetch) {
+          try {
+            const mem = await api(`/memory/item/${encodeURIComponent(tidFetch)}`);
+            if (Array.isArray(mem.test_cases) && mem.test_cases.length) {
+              setTests((prev) => mergeTestCaseChangeStatusFromMemory(prev ?? [], mem.test_cases));
+            }
+          } catch (_) {}
+        }
         if (d.had_saved_memory && d.requirements_diff) {
           setAnnounce("Requirements loaded. Diff vs saved history is shown below.");
         } else if (d.had_saved_memory) {
@@ -2376,9 +2389,10 @@ export default function App() {
                             <FloatingTooltip text="Copy this test case as Markdown">
                               <Copy
                                 text={fmtTestsMarkdown([tc])}
-                                label="Copy test case as Markdown"
+                                label="Copy this test case as Markdown"
                                 onAnnounce={setAnnounce}
                                 disabled={generatingTestCases || bulkJiraSync?.running}
+                                omitTitle
                               />
                             </FloatingTooltip>
                           </div>

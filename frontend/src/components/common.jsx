@@ -217,14 +217,15 @@ export function FieldInfo({ text }) {
   );
 }
 
-export function Copy({ text, label = "Copy", onAnnounce, disabled = false }) {
+export function Copy({ text, label = "Copy", onAnnounce, disabled = false, omitTitle = false }) {
   const [ok, setOk] = useState(false);
+  const title = omitTitle && !ok ? undefined : ok ? "Copied" : label;
   return (
     <button
       type="button"
       className="copy-icon"
       disabled={disabled || !text}
-      title={ok ? "Copied" : label}
+      title={title}
       aria-label={ok ? "Copied" : label}
       onClick={async () => {
         if (!text) return;
