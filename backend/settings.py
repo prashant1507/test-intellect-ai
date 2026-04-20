@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     keycloak_idle_timeout_minutes: int = 5
     llm_url: str = ""
     llm_model: str = ""
-    llm_access_token: str = "" 
+    llm_access_token: str = ""
     paste_mode_priorities: str = ""
     memory_similarity_threshold: float = 0.92
 

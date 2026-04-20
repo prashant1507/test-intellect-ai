@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { fmtReqMarkdown, fmtTestsMarkdown, jiraWikiToMarkdown } from "../utils/format";
@@ -39,9 +39,10 @@ function MemoryTestCasesView({
   onOpenAutomationSkeleton,
   automationSkeletonDisabled,
   onAnnounce,
+  tcOpen,
+  setTcOpen,
 }) {
   const list = Array.isArray(testCases) ? testCases : [];
-  const [tcOpen, setTcOpen] = useState({});
   if (!list.length) return <p className="empty-state">—</p>;
   return (
     <div className="memory-detail-scroll memory-tc-formatted">
@@ -85,7 +86,6 @@ function MemoryTestCasesView({
                     text={fmtTestsMarkdown([tc])}
                     label="Copy this test case as Markdown"
                     onAnnounce={onAnnounce}
-                    disabled={automationSkeletonDisabled}
                     omitTitle
                   />
                 </FloatingTooltip>
@@ -112,6 +112,11 @@ export function MemoryDetailContent({
   onOpenAutomationSkeleton,
   automationSkeletonDisabled,
 }) {
+  const [tcOpen, setTcOpen] = useState({});
+  useEffect(() => {
+    if (memoryPanel?.ticket_id != null) setTcOpen({});
+  }, [memoryPanel?.ticket_id]);
+
   if (!memoryPanel) return null;
   return (
     <>
@@ -142,8 +147,40 @@ export function MemoryDetailContent({
             <MemoryRequirementsView requirements={memoryPanel.requirements} />
           </div>
           <div className="memory-detail-pane">
-            <div className="memory-detail-pane-head">
-              <h3>Test Cases</h3>
+            <div className="memory-detail-pane-head memory-detail-pane-head--tc">
+              <div className="memory-tc-head-left">
+                <h3>Test Cases</h3>
+                {Array.isArray(memoryPanel.test_cases) && memoryPanel.test_cases.length ? (
+                  <span className="memory-tc-expand-actions">
+                    <button
+                      type="button"
+                      className="linkish"
+                      onClick={() =>
+                        setTcOpen(
+                          Object.fromEntries(
+                            memoryPanel.test_cases.map((_, i) => [String(i), true]),
+                          ),
+                        )
+                      }
+                    >
+                      Expand All
+                    </button>
+                    <button
+                      type="button"
+                      className="linkish"
+                      onClick={() =>
+                        setTcOpen(
+                          Object.fromEntries(
+                            memoryPanel.test_cases.map((_, i) => [String(i), false]),
+                          ),
+                        )
+                      }
+                    >
+                      Collapse All
+                    </button>
+                  </span>
+                ) : null}
+              </div>
               <FloatingTooltip text="Copy test cases as Markdown">
                 <Copy
                   text={fmtTestsMarkdown(memoryPanel.test_cases)}
@@ -161,6 +198,8 @@ export function MemoryDetailContent({
               onOpenAutomationSkeleton={onOpenAutomationSkeleton}
               automationSkeletonDisabled={automationSkeletonDisabled}
               onAnnounce={onAnnounce}
+              tcOpen={tcOpen}
+              setTcOpen={setTcOpen}
             />
           </div>
         </div>

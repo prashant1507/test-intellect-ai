@@ -631,6 +631,20 @@ button.logout-icon-btn:focus-visible {
   font-weight: 600;
 }
 
+.memory-detail-pane-head--tc .memory-tc-head-left {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.45rem 1rem;
+  min-width: 0;
+}
+
+.memory-tc-expand-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
 .memory-detail-scroll {
   max-height: min(55vh, 420px);
   overflow: auto;

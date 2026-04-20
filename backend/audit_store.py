@@ -2,15 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlite_util import open_sqlite
-
-
-def _db():
-    return open_sqlite("audit.db")
+from sqlite_util import open_audit_db
 
 
 def init_audit_db() -> None:
-    with _db() as c:
+    with open_audit_db() as c:
         c.execute(
             """CREATE TABLE IF NOT EXISTS audit_log (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,7 +31,7 @@ def append_audit(username: str, ticket_id: str, action: str, jira_username: str 
     ju = (jira_username or "").strip()
     if not k or not a:
         return
-    with _db() as c:
+    with open_audit_db() as c:
         c.execute(
             "INSERT INTO audit_log (created_at, username, ticket_id, action, jira_username) VALUES (?,?,?,?,?)",
             (now, u, k, a, ju),
@@ -44,7 +40,7 @@ def append_audit(username: str, ticket_id: str, action: str, jira_username: str 
 
 def list_audit(limit: int = 200) -> list[dict]:
     limit = max(1, min(limit, 500))
-    with _db() as c:
+    with open_audit_db() as c:
         rows = c.execute(
             "SELECT created_at, username, ticket_id, action, jira_username FROM audit_log ORDER BY id DESC LIMIT ?",
             (limit,),

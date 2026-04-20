@@ -192,6 +192,12 @@ async def _fetch_issue_attachments(body: TicketIn, key: str) -> list:
         return []
 
 
+async def _enrich_out_with_attachments(body: TicketIn, out: dict) -> None:
+    tk = str(out.get("ticket_id") or "").strip().upper()
+    if tk:
+        out["requirement_attachments"] = await _fetch_issue_attachments(body, tk)
+
+
 class GenerateIn(TicketIn):
     test_project_key: str = ""
     save_memory: bool = True
@@ -272,10 +278,7 @@ class PushTestToJiraIn(BaseModel):
     jira_test_issue_type: str = ""
     jira_link_type: str = ""
     test_case: dict = Field(default_factory=dict)
-    existing_issue_key: str = Field(
-        default="",
-        description="When set, PUT this issue instead of creating a new one (no new link).",
-    )
+    existing_issue_key: str = ""
 
 
 class JiraPrioritiesIn(BaseModel):
@@ -419,6 +422,32 @@ def _generate_response_base(
     }
 
 
+async def _finalize_cases_after_llm(
+    key: str,
+    req: dict,
+    cases: list,
+    prev: dict | None,
+    *,
+    jira_entries: list | None,
+    allowed: list[str],
+    save_memory: bool,
+    kc: dict | None,
+    jira_username: str | None,
+    audit_action: str,
+) -> list:
+    if jira_entries:
+        cases = merge_ai_cases_with_jira_existing(cases, jira_entries, allowed_priorities=allowed)
+    prior_union = _prior_cases_union_for_merge(key, prev)
+    if prior_union:
+        cases = merge_test_cases_with_previous(prior_union, cases, allowed_priorities=allowed)
+    await asyncio.to_thread(score_merged_test_cases, req, cases)
+    if not settings.mock:
+        if save_memory:
+            save(key, req, cases)
+        _maybe_audit(kc, key, audit_action, jira_username)
+    return cases
+
+
 async def _generate_and_persist(
     key: str,
     req: dict,
@@ -451,16 +480,18 @@ async def _generate_and_persist(
         )
     except Exception as e:
         _raise_llm_route_error(e)
-    if jira_entries:
-        cases = merge_ai_cases_with_jira_existing(cases, jira_entries, allowed_priorities=allowed)
-    prior_union = _prior_cases_union_for_merge(key, prev)
-    if prior_union:
-        cases = merge_test_cases_with_previous(prior_union, cases, allowed_priorities=allowed)
-    await asyncio.to_thread(score_merged_test_cases, req, cases)
-    if not settings.mock:
-        if save_memory:
-            save(key, req, cases)
-        _maybe_audit(kc, key, "generate_test_cases", jira_username)
+    cases = await _finalize_cases_after_llm(
+        key,
+        req,
+        cases,
+        prev,
+        jira_entries=jira_entries,
+        allowed=allowed,
+        save_memory=save_memory,
+        kc=kc,
+        jira_username=jira_username,
+        audit_action="generate_test_cases",
+    )
     return _generate_response_base(
         key,
         req,
@@ -509,15 +540,18 @@ async def _generate_and_persist_agentic(
         cases = out.get("test_cases") or []
     except Exception as e:
         _raise_llm_route_error(e)
-    if jira_entries:
-        cases = merge_ai_cases_with_jira_existing(cases, jira_entries, allowed_priorities=allowed)
-    prior_union = _prior_cases_union_for_merge(key, prev)
-    if prior_union:
-        cases = merge_test_cases_with_previous(prior_union, cases, allowed_priorities=allowed)
-    if not settings.mock:
-        if save_memory:
-            save(key, req, cases)
-        _maybe_audit(kc, key, "generate_test_cases_agentic", jira_username)
+    cases = await _finalize_cases_after_llm(
+        key,
+        req,
+        cases,
+        prev,
+        jira_entries=jira_entries,
+        allowed=allowed,
+        save_memory=save_memory,
+        kc=kc,
+        jira_username=jira_username,
+        audit_action="generate_test_cases_agentic",
+    )
     return {
         **_generate_response_base(
             key,
@@ -832,9 +866,7 @@ async def generate_tests(body: GenerateIn, kc: Kc):
         kc,
         **shared,
     )
-    tk = str(out.get("ticket_id") or "").strip().upper()
-    if tk:
-        out["requirement_attachments"] = await _fetch_issue_attachments(body, tk)
+    await _enrich_out_with_attachments(body, out)
     return out
 
 
@@ -853,9 +885,7 @@ async def generate_tests_agentic(body: GenerateAgenticIn, kc: Kc):
         kc,
         **shared,
     )
-    tk = str(out.get("ticket_id") or "").strip().upper()
-    if tk:
-        out["requirement_attachments"] = await _fetch_issue_attachments(body, tk)
+    await _enrich_out_with_attachments(body, out)
     return out
 
 

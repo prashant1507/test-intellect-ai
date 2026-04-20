@@ -566,6 +566,26 @@ def fetch_linked_test_issues(
     return out
 
 
+def _issue_fields_summary_desc_priority(
+    base_url: str,
+    user: str,
+    password: str,
+    test_case: dict,
+) -> dict:
+    summary = str((test_case or {}).get("description") or "Test case").strip() or "Test case"
+    summary = summary[:254]
+    desc = _test_case_description_text(test_case)
+    fields: dict = {"summary": summary, "description": desc}
+    try:
+        prior_list = fetch_priorities(base_url, user, password)
+        pick = map_test_priority_to_jira((test_case or {}).get("priority"), prior_list)
+        if pick:
+            fields["priority"] = _priority_payload_for_issue(pick)
+    except Exception:
+        pass
+    return fields
+
+
 def _test_case_description_text(tc: dict) -> str:
     lines: list[str] = []
     steps = tc.get("steps")
@@ -597,27 +617,17 @@ def push_test_case_to_jira(
     base = base_url.rstrip("/")
     auth = (user, password)
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
-    summary = str((test_case or {}).get("description") or "Test case").strip() or "Test case"
-    summary = summary[:254]
-    desc = _test_case_description_text(test_case)
     raw_type = (issue_type_override or "").strip() or None
     issue_type = (raw_type or settings.jira_test_issue_type or "Test").strip() or "Test"
     proj = test_project_key.strip().upper()
+    fld = _issue_fields_summary_desc_priority(base_url, user, password, test_case)
     payload = {
         "fields": {
             "project": {"key": proj},
-            "summary": summary,
-            "description": desc,
             "issuetype": {"name": issue_type},
+            **fld,
         }
     }
-    try:
-        prior_list = fetch_priorities(base_url, user, password)
-        pick = map_test_priority_to_jira((test_case or {}).get("priority"), prior_list)
-        if pick:
-            payload["fields"]["priority"] = _priority_payload_for_issue(pick)
-    except Exception:
-        pass
     r = requests.post(
         f"{base}/rest/api/2/issue",
         json=payload,
@@ -668,22 +678,7 @@ def update_test_case_in_jira(
     auth = (user, password)
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
     ik = issue_key.strip().upper()
-    summary = str((test_case or {}).get("description") or "Test case").strip() or "Test case"
-    summary = summary[:254]
-    desc = _test_case_description_text(test_case)
-    payload: dict = {
-        "fields": {
-            "summary": summary,
-            "description": desc,
-        }
-    }
-    try:
-        prior_list = fetch_priorities(base_url, user, password)
-        pick = map_test_priority_to_jira((test_case or {}).get("priority"), prior_list)
-        if pick:
-            payload["fields"]["priority"] = _priority_payload_for_issue(pick)
-    except Exception:
-        pass
+    payload: dict = {"fields": _issue_fields_summary_desc_priority(base_url, user, password, test_case)}
     r = requests.put(
         f"{base}/rest/api/2/issue/{ik}",
         json=payload,

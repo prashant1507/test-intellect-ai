@@ -6,18 +6,43 @@ import re
 from datetime import datetime, timezone
 
 from ai_client import strip_test_case_diff_meta
-from sqlite_util import open_sqlite
+from sqlite_util import open_memory_db
 
 _WS = re.compile(r"\s+")
 _TEST_HASH_KEY = re.compile(r"^TEST-[0-9A-F]{10}$")
 
 
-def _db():
-    return open_sqlite("memory.db")
+def _loads_req(raw: str) -> dict | None:
+    try:
+        o = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    return o if isinstance(o, dict) else None
+
+
+def _loads_tc_list(raw: str) -> list:
+    try:
+        tc_raw = json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return []
+    if not isinstance(tc_raw, list):
+        return []
+    return [x for x in tc_raw if isinstance(x, dict)]
+
+
+def _prev_bundle(stored_req: dict, test_cases_json: str) -> dict | None:
+    try:
+        tc_raw = json.loads(test_cases_json)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(tc_raw, list):
+        return None
+    tc_list = [x for x in tc_raw if isinstance(x, dict)]
+    return {"requirements": stored_req, "test_cases": tc_list}
 
 
 def init_db() -> None:
-    with _db() as c:
+    with open_memory_db() as c:
         c.execute(
             """CREATE TABLE IF NOT EXISTS ticket_memory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,30 +56,24 @@ def init_db() -> None:
 
 
 def _norm_req_text(req: dict) -> str:
-    """Normalize title+description for similarity (whitespace + case-insensitive)."""
     t = _WS.sub(" ", str(req.get("title") or "").strip()).casefold()
     d = _WS.sub(" ", str(req.get("description") or "").strip()).casefold()
     return f"title: {t}\n\ndescription:\n{d}"
 
 
 def normalized_paste_key_material(title: str, description: str) -> str:
-    """Stable key from pasted title+body (collapse whitespace) so the same req maps to one key."""
     t = _WS.sub(" ", str(title or "").strip())
     d = _WS.sub(" ", str(description or "").strip())
     return f"{t}\n{d}"
 
 
 def find_similar_memory(req: dict, threshold: float) -> tuple[str | None, dict | None]:
-    """
-    Return (jira_key, {requirements, test_cases}) for the best stored row whose requirements
-    match req at or above threshold, or (None, None).
-    """
     if threshold <= 0:
         return None, None
     target = _norm_req_text(req)
     if len(target) < 12:
         return None, None
-    with _db() as c:
+    with open_memory_db() as c:
         rows = c.execute(
             "SELECT jira_key, requirements_json, test_cases_json FROM ticket_memory"
         ).fetchall()
@@ -63,26 +82,15 @@ def find_similar_memory(req: dict, threshold: float) -> tuple[str | None, dict |
     best_prev: dict | None = None
     for row in rows:
         k = row["jira_key"]
-        try:
-            stored_req = json.loads(row["requirements_json"])
-        except (json.JSONDecodeError, TypeError):
+        stored_req = _loads_req(row["requirements_json"])
+        if stored_req is None:
             continue
-        cand = _norm_req_text(stored_req if isinstance(stored_req, dict) else {})
+        cand = _norm_req_text(stored_req)
         score = difflib.SequenceMatcher(None, target, cand).ratio()
         if score > best_score:
             best_score = score
             best_key = str(k)
-            try:
-                tc_raw = json.loads(row["test_cases_json"])
-                if not isinstance(tc_raw, list):
-                    tc_raw = []
-                tc_list = [x for x in tc_raw if isinstance(x, dict)]
-                best_prev = {
-                    "requirements": stored_req if isinstance(stored_req, dict) else {},
-                    "test_cases": tc_list,
-                }
-            except (json.JSONDecodeError, TypeError):
-                best_prev = None
+            best_prev = _prev_bundle(stored_req, row["test_cases_json"])
     if best_score >= threshold and best_prev and best_key:
         return best_key.upper(), best_prev
     return None, None
@@ -102,29 +110,21 @@ def find_latest_memory_by_title(req: dict) -> tuple[str | None, dict | None]:
     if len(t) < 4 or t == _DEFAULT_PASTE_TITLE_CF:
         return None, None
     candidates: list[tuple[str, str, dict]] = []
-    with _db() as c:
+    with open_memory_db() as c:
         rows = c.execute(
             "SELECT jira_key, requirements_json, test_cases_json, updated_at FROM ticket_memory"
         ).fetchall()
     for row in rows:
-        try:
-            stored_req = json.loads(row["requirements_json"])
-        except (json.JSONDecodeError, TypeError):
-            continue
-        if not isinstance(stored_req, dict):
+        stored_req = _loads_req(row["requirements_json"])
+        if stored_req is None:
             continue
         st = _WS.sub(" ", str(stored_req.get("title") or "").strip()).casefold()
         if st != t:
             continue
         k = str(row["jira_key"])
         ts = str(row["updated_at"] or "")
-        try:
-            tc_raw = json.loads(row["test_cases_json"])
-            if not isinstance(tc_raw, list):
-                tc_raw = []
-            tc_list = [x for x in tc_raw if isinstance(x, dict)]
-            prev = {"requirements": stored_req, "test_cases": tc_list}
-        except (json.JSONDecodeError, TypeError):
+        prev = _prev_bundle(stored_req, row["test_cases_json"])
+        if prev is None:
             continue
         candidates.append((k, ts, prev))
     if not candidates:
@@ -135,29 +135,22 @@ def find_latest_memory_by_title(req: dict) -> tuple[str | None, dict | None]:
 
 def get_latest(key: str) -> dict | None:
     k = key.upper()
-    with _db() as c:
+    with open_memory_db() as c:
         row = c.execute(
             "SELECT requirements_json, test_cases_json FROM ticket_memory WHERE jira_key=? ORDER BY id DESC LIMIT 1",
             (k,),
         ).fetchone()
     if not row:
         return None
-    try:
-        rj = json.loads(row[0])
-    except (json.JSONDecodeError, TypeError):
+    rj = _loads_req(row[0])
+    if rj is None:
         rj = {}
-    try:
-        tc_raw = json.loads(row[1])
-    except (json.JSONDecodeError, TypeError):
-        tc_raw = []
-    if not isinstance(tc_raw, list):
-        tc_raw = []
-    tc = [x for x in tc_raw if isinstance(x, dict)]
-    return {"requirements": rj if isinstance(rj, dict) else {}, "test_cases": tc}
+    tc = _loads_tc_list(row[1])
+    return {"requirements": rj, "test_cases": tc}
 
 
 def list_saved() -> list[dict]:
-    with _db() as c:
+    with open_memory_db() as c:
         rows = c.execute(
             """
             SELECT jira_key, created_at, updated_at, requirements_json, test_cases_json
@@ -167,12 +160,14 @@ def list_saved() -> list[dict]:
         ).fetchall()
     out: list[dict] = []
     for row in rows:
+        req = _loads_req(row[3])
+        if req is None:
+            continue
         try:
-            req = json.loads(row[3])
-            tc = json.loads(row[4])
+            tc_raw = json.loads(row[4])
         except (json.JSONDecodeError, TypeError):
             continue
-        n = len(tc) if isinstance(tc, list) else 0
+        n = len(tc_raw) if isinstance(tc_raw, list) else 0
         out.append(
             {
                 "ticket_id": row[0],
@@ -193,7 +188,7 @@ def save(jira_key: str, requirements: dict, test_cases: list) -> None:
         else test_cases
     )
     rj, tj = json.dumps(requirements, ensure_ascii=False), json.dumps(tcs, ensure_ascii=False)
-    with _db() as c:
+    with open_memory_db() as c:
         prev = c.execute(
             "SELECT id FROM ticket_memory WHERE jira_key=? ORDER BY id DESC LIMIT 1",
             (k,),

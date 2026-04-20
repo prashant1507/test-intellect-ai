@@ -9,3 +9,11 @@ def open_sqlite(filename: str):
     c = sqlite3.connect(str(_DATA / filename))
     c.row_factory = sqlite3.Row
     return c
+
+
+def open_memory_db():
+    return open_sqlite("memory.db")
+
+
+def open_audit_db():
+    return open_sqlite("audit.db")

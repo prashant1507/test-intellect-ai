@@ -46,20 +46,18 @@ def _json_mode_response() -> dict | None:
     return None
 
 
-def _llm_chat(messages: list[dict], *, temperature: float, max_tokens: int) -> str:
+def _llm_chat(
+    messages: list[dict],
+    *,
+    temperature: float,
+    max_tokens: int,
+    json_response_format: bool = False,
+) -> str:
     base = settings.llm_url.rstrip("/")
     if not base:
         raise ValueError("LLM_URL is not set in .env")
     model = (settings.llm_model or "").strip() or "local-model"
-    return _chat(base, model, messages, temperature, max_tokens=max_tokens, response_format=None)
-
-
-def _llm_chat_json(messages: list[dict], *, temperature: float, max_tokens: int) -> str:
-    base = settings.llm_url.rstrip("/")
-    if not base:
-        raise ValueError("LLM_URL is not set in .env")
-    model = (settings.llm_model or "").strip() or "local-model"
-    fmt = _json_mode_response()
+    fmt = _json_mode_response() if json_response_format else None
     return _chat(base, model, messages, temperature, max_tokens=max_tokens, response_format=fmt)
 
 
@@ -212,7 +210,7 @@ def score_node(state: AgentState) -> dict:
     body = json.dumps({"test_cases": [c.model_dump() for c in env.test_cases]}, ensure_ascii=False, indent=2)
     user = f"Requirements:\n{req}\n\nGenerated:\n{body}\n\nReturn only the scoring JSON."
     msgs = [{"role": "system", "content": VAL_SYS}, {"role": "user", "content": user}]
-    raw = _llm_chat_json(msgs, temperature=0.08, max_tokens=1024)
+    raw = _llm_chat(msgs, temperature=0.08, max_tokens=1024, json_response_format=True)
     data = parse_llm_json(raw)
     vr = ValidatorResult.model_validate(data)
     mx = _max_rounds_cap(state)
@@ -279,7 +277,7 @@ def merge_suggestions_node(state: AgentState) -> dict:
     )
     msgs2 = [{"role": "system", "content": RANK_SYS}, {"role": "user", "content": user2}]
     try:
-        raw2 = _llm_chat_json(msgs2, temperature=0.05, max_tokens=1024)
+        raw2 = _llm_chat(msgs2, temperature=0.05, max_tokens=1024, json_response_format=True)
         rank = parse_llm_json(raw2)
         bs = rank.get("base_scores")
         cs = rank.get("candidate_scores")

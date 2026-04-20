@@ -11,22 +11,20 @@ import {
   ThemeToggle,
 } from "./components/common";
 import { AuditActionCell } from "./components/AuditActionCell";
-import { JiraTestPushButton } from "./components/JiraTestPushButton";
 import { LinkedJiraTestsBlock, LinkedJiraWorkBlock, RequirementAttachmentsInline } from "./components/LinkedJiraLists";
 import { MemoryDetailContent } from "./components/Memory";
-import { AutomationSkeletonIconButton, AutomationSkeletonModal } from "./components/AutomationSkeletonModal";
+import { MainTestCasesPanel } from "./components/MainTestCasesPanel";
+import { AutomationSkeletonModal } from "./components/AutomationSkeletonModal";
 import { AgenticPipelineOptions } from "./components/AgenticPipelineOptions";
 import { MinMaxTestCaseFields } from "./components/MinMaxTestCaseFields";
-import { TestCaseSummaryBadges } from "./components/TestCaseSummaryBadges";
 import { TestCaseEditModal } from "./components/TestCaseEditModal";
-import { TestCaseBody } from "./components/TestCaseBody";
 import {
   AUDIT_TICKET_EMPTY,
   AUDIT_USER_EMPTY,
   auditActionLabel,
   downloadAuditPdf,
 } from "./utils/audit";
-import { changeStatusLabel, fmtReqMarkdown, fmtTestsMarkdown, formatTime, readTheme, tcStatusSlug } from "./utils/format";
+import { fmtReqMarkdown, fmtTestsMarkdown, formatTime, readTheme } from "./utils/format";
 import { parseApiError } from "./utils/parseApiError";
 import {
   jiraPushFingerprint,
@@ -45,6 +43,7 @@ import {
   settleTestCaseAfterJiraPush,
   stripTestCaseDiffMeta,
 } from "./utils/testCaseDiff";
+import { withOidcAuthorization } from "./utils/oidcFetchHeaders";
 
 export default function App() {
   const [theme, setTheme] = useState(readTheme);
@@ -126,28 +125,26 @@ export default function App() {
     jiraHideUpdateAfterCreateRef.current = jiraHideUpdateAfterCreate;
   }, [jiraHideUpdateAfterCreate]);
 
+  const clearFetchedTicketState = useCallback(() => {
+    setReq(null);
+    setReqAttachments([]);
+    setLinkedJiraTests([]);
+    setLinkedJiraWork([]);
+    setDiff(null);
+    setLastFetchAt(null);
+    setKey("");
+  }, []);
+
   useEffect(() => {
     const t = ticketId.trim().toUpperCase();
     if (!t) {
-      setReq(null);
-      setReqAttachments([]);
-      setLinkedJiraTests([]);
-      setLinkedJiraWork([]);
-      setDiff(null);
-      setLastFetchAt(null);
-      setKey("");
+      clearFetchedTicketState();
       return;
     }
     if (key && t !== key.trim().toUpperCase()) {
-      setReq(null);
-      setReqAttachments([]);
-      setLinkedJiraTests([]);
-      setLinkedJiraWork([]);
-      setDiff(null);
-      setLastFetchAt(null);
-      setKey("");
+      clearFetchedTicketState();
     }
-  }, [ticketId, key]);
+  }, [ticketId, key, clearFetchedTicketState]);
 
   const generationInFlightRef = useRef(false);
   const redirectingToLoginRef = useRef(false);
@@ -233,17 +230,11 @@ export default function App() {
 
   const api = useCallback(
     async (path, method = "GET", body, afterRefresh = false) => {
-      const headers = {};
+      const headers = await withOidcAuthorization(
+        {},
+        { useKeycloak, oidcMgr, oidcUser, setOidcUser },
+      );
       if (body !== undefined) headers["Content-Type"] = "application/json";
-      if (useKeycloak && oidcMgr) {
-        const fresh = await oidcMgr.getUser();
-        if (fresh?.access_token && fresh.access_token !== oidcUser?.access_token) {
-          setOidcUser(fresh);
-        }
-        if (fresh?.access_token) headers.Authorization = `Bearer ${fresh.access_token}`;
-      } else if (oidcUser?.access_token) {
-        headers.Authorization = `Bearer ${oidcUser.access_token}`;
-      }
       const r = await fetch(`/api${path}`, {
         method,
         headers,
@@ -291,14 +282,10 @@ export default function App() {
           jira_test_issue_type: jiraTestIssueType.trim(),
           attachment_id: attachmentId,
         });
-        const headers = { "Content-Type": "application/json" };
-        if (useKeycloak && oidcMgr) {
-          const fresh = await oidcMgr.getUser();
-          if (fresh?.access_token && fresh.access_token !== oidcUser?.access_token) setOidcUser(fresh);
-          if (fresh?.access_token) headers.Authorization = `Bearer ${fresh.access_token}`;
-        } else if (oidcUser?.access_token) {
-          headers.Authorization = `Bearer ${oidcUser.access_token}`;
-        }
+        let headers = await withOidcAuthorization(
+          { "Content-Type": "application/json" },
+          { useKeycloak, oidcMgr, oidcUser, setOidcUser },
+        );
         let r = await fetch("/api/jira/attachment-download", { method: "POST", headers, body });
         if (r.status === 401 && useKeycloak && oidcMgr) {
           try {
@@ -306,7 +293,10 @@ export default function App() {
             const u2 = await oidcMgr.getUser();
             if (u2?.access_token) {
               setOidcUser(u2);
-              headers.Authorization = `Bearer ${u2.access_token}`;
+              headers = await withOidcAuthorization(
+                { "Content-Type": "application/json" },
+                { useKeycloak, oidcMgr, oidcUser: u2, setOidcUser },
+              );
               r = await fetch("/api/jira/attachment-download", { method: "POST", headers, body });
             }
           } catch (_) {}
@@ -1225,12 +1215,12 @@ export default function App() {
   const mainRequirementKey = useMemo(() => (key || ticketId).trim().toUpperCase(), [key, ticketId]);
   const diffLong = diff && diff.length > 600;
   const diffShown = diffLong && !diffExpanded ? `${diff.slice(0, 600)}…` : diff;
-  const setAllTc = (v) => () => tests?.length && setTcOpen(Object.fromEntries(tests.map((_, i) => [String(i), v])));
 
   const loadingRequirements =
     busy === "/fetch-ticket" || (isJiraGenBusy(busy) && !req) || isPasteGenBusy(busy);
   const loadingTestCases = (isJiraGenBusy(busy) && !!req) || isPasteGenBusy(busy);
   const generatingTestCases = isAnyGenBusy(busy);
+  const genOrBulkBusy = generatingTestCases || bulkJiraSync?.running;
 
   const jiraPushConfigIncomplete =
     !jiraUrl.trim() ||
@@ -1419,7 +1409,6 @@ export default function App() {
                                   onClick={() => {
                                     openMemoryDetail(e.ticket_id);
                                   }}
-                                  title="Open saved history (requirements and test cases)"
                                 >
                                   <div className="memory-item-top">
                                     <span className="memory-ticket-line">{e.ticket_id}</span>
@@ -1694,7 +1683,7 @@ export default function App() {
                       setAutomationSkelIdx(null);
                       setMemoryAutomationSkelIdx(idx);
                     }}
-                    automationSkeletonDisabled={generatingTestCases || bulkJiraSync?.running}
+                    automationSkeletonDisabled={genOrBulkBusy}
                   />
                 </div>
               </div>
@@ -2092,12 +2081,15 @@ export default function App() {
                   <h2>Requirements {key ? `(${key})` : ""}</h2>
                   {lastFetchAt ? <p className="last-run">Last loaded {formatTime(lastFetchAt)}</p> : null}
                 </div>
-                <Copy
-                  text={fmtReqMarkdown(req)}
-                  label="Copy as Markdown"
-                  onAnnounce={setAnnounce}
-                  disabled={loadingRequirements || !req}
-                />
+                <FloatingTooltip text="Copy requirements as Markdown">
+                  <Copy
+                    text={fmtReqMarkdown(req)}
+                    label="Copy requirements as Markdown"
+                    onAnnounce={setAnnounce}
+                    disabled={loadingRequirements || !req}
+                    omitTitle
+                  />
+                </FloatingTooltip>
               </div>
               {loadingRequirements ? (
                 <div className="section-loading" role="status" aria-live="polite">
@@ -2164,256 +2156,46 @@ export default function App() {
                 <h2>Test Cases</h2>
                 {lastGenerateAt ? <p className="last-run">Last Generated {formatTime(lastGenerateAt)}</p> : null}
               </div>
-              <Copy
-                text={fmtTestsMarkdown(tests)}
-                label="Copy as Markdown"
-                onAnnounce={setAnnounce}
-                disabled={loadingTestCases || !tests?.length}
-              />
+              <FloatingTooltip text="Copy test cases as Markdown">
+                <Copy
+                  text={fmtTestsMarkdown(tests)}
+                  label="Copy test cases as Markdown"
+                  onAnnounce={setAnnounce}
+                  disabled={loadingTestCases || !tests?.length}
+                  omitTitle
+                />
+              </FloatingTooltip>
             </div>
-            {hadPriorMemory ? (
-              <p className="meta">
-                {memoryMatch === "similar"
-                  ? "Prior history was matched by similar requirements (not only the exact saved key). Tags reflect changes vs that saved snapshot."
-                  : "Prior history was used for this run"}
-              </p>
-            ) : null}
-
-            {loadingTestCases ? (
-              <div className="section-loading" role="status" aria-live="polite">
-                <Spinner />
-                <span>Generating test cases…</span>
-              </div>
-            ) : tests?.length ? (
-              <>
-                <div className="filter-bar filter-bar--with-sync" role="toolbar" aria-label="Filter by change status">
-                  <div className="filter-bar-chips">
-                    {["all", "existing", "unchanged", "updated", "new"].map((f) => (
-                      <button
-                        key={f}
-                        type="button"
-                        className={`chip ${tcFilter === f ? "active" : ""}`}
-                        onClick={() => setTcFilter(f)}
-                        aria-pressed={tcFilter === f}
-                      >
-                        {f === "all"
-                          ? "All"
-                          : f === "existing"
-                            ? "Existing"
-                            : changeStatusLabel(f)}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="filter-bar-sync-slot">
-                    {!bulkJiraSync?.running ? (
-                      <FloatingTooltip text="Add all to JIRA">
-                        <button
-                          type="button"
-                          className="bulk-sync-icon-btn"
-                          disabled={
-                            mock ||
-                            inputMode !== "jira" ||
-                            pushingKey !== null ||
-                            jiraPushConfigIncomplete ||
-                            !testsShown.length
-                          }
-                          onClick={() => startBulkSync()}
-                          aria-label="Add all to JIRA"
-                        >
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                            <path d="M12 15V3" />
-                            <path d="m7 8 5-5 5 5" />
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                          </svg>
-                        </button>
-                      </FloatingTooltip>
-                    ) : null}
-                  </div>
-                </div>
-                {bulkJiraSync?.running ? (
-                  <div className="bulk-sync-progress-row" aria-live="polite">
-                    <div
-                      className="bulk-sync-progress-track"
-                      role="progressbar"
-                      aria-valuemin={0}
-                      aria-valuemax={bulkJiraSync.total}
-                      aria-valuenow={bulkJiraSync.current}
-                      aria-label={`${bulkJiraSync.current} of ${bulkJiraSync.total}`}
-                    >
-                      <div
-                        className="bulk-sync-progress-fill"
-                        style={{
-                          width: `${bulkJiraSync.total ? Math.min(100, (bulkJiraSync.current / bulkJiraSync.total) * 100) : 0}%`,
-                        }}
-                      />
-                    </div>
-                    <span className="bulk-sync-progress-count">{bulkJiraSync.current}/{bulkJiraSync.total}</span>
-                  </div>
-                ) : null}
-                <div className="expand-bar">
-                  <button type="button" className="linkish" onClick={setAllTc(true)}>
-                    Expand All
-                  </button>
-                  <button type="button" className="linkish" onClick={setAllTc(false)}>
-                    Collapse All
-                  </button>
-                </div>
-                {testsShown.length ? (
-                  testsShown.map((tc) => {
-                    const idx = tests.indexOf(tc);
-                    const tcKey = String(idx);
-                    const open = tcOpen[tcKey] !== false;
-                    const st = tcStatusSlug(tc.change_status);
-                    const jiraPushDisabled =
-                      mock ||
-                      inputMode !== "jira" ||
-                      pushingKey !== null ||
-                      jiraPushConfigIncomplete ||
-                      bulkJiraSync?.running;
-                    const mainPushKey = `main:${mainRequirementKey}:${jiraPushFingerprint(tc)}`;
-                    const pushedKey = resolvePushedJiraKey(tc, mainRequirementKey, jiraPushed, "main");
-                    const isUpdatingJira = pushingKey === `${mainPushKey}:u`;
-                    const isPushing = pushingKey === mainPushKey || isUpdatingJira;
-                    const jiraPushTitle = pushedKey
-                      ? `Added to JIRA as ${pushedKey}`
-                      : mock
-                        ? "JIRA push is disabled in mock mode"
-                        : inputMode !== "jira"
-                          ? "Use JIRA mode with a requirement ticket to push test cases"
-                          : jiraPushConfigIncomplete
-                            ? "Provide JIRA URL, username, password, and Test Project to add to JIRA"
-                            : "Create this test as a JIRA issue and link to the requirement";
-                    const jiraPushLabel = isUpdatingJira
-                      ? "Updating JIRA…"
-                      : isPushing
-                        ? "Adding to JIRA…"
-                        : pushedKey
-                          ? `Added to JIRA as ${pushedKey}`
-                          : "Add test case to JIRA";
-                    const jiraPushCommon = {
-                      disabled: jiraPushDisabled,
-                      isPushing,
-                      isUpdating: isUpdatingJira,
-                      pushedKey,
-                      jiraBaseUrl: jiraUrl,
-                      title: jiraPushTitle,
-                      ariaLabel: jiraPushLabel,
-                      onClick: (e) => {
-                        e.stopPropagation();
-                        pushTestToJira(tc, idx);
-                      },
-                    };
-                    return (
-                      <section key={tcKey} className={`tc status-${st}`}>
-                        <div className="tc-summary-row">
-                          <button
-                            type="button"
-                            className="tc-summary"
-                            aria-expanded={open}
-                            onClick={() => setTcOpen((prev) => ({ ...prev, [tcKey]: !open }))}
-                          >
-                            <span className="tc-chevron" aria-hidden>
-                              {open ? "▼" : "▶"}
-                            </span>
-                            <TestCaseSummaryBadges tc={tc} statusSlug={st} />
-                            <span className="tc-desc">{tc.description}</span>
-                          </button>
-                          <div className="tc-summary-actions">
-                            {inputMode !== "paste" ? (
-                              <FloatingTooltip text="Edit this test case">
-                                <button
-                                  type="button"
-                                  className="tc-edit-icon-btn"
-                                  disabled={generatingTestCases || bulkJiraSync?.running}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setEditTcIdx(idx);
-                                  }}
-                                  aria-label="Edit test case"
-                                >
-                                  <svg
-                                    width="18"
-                                    height="18"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="2"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    aria-hidden
-                                  >
-                                    <path d="M12 20h9" />
-                                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                                  </svg>
-                                </button>
-                              </FloatingTooltip>
-                            ) : null}
-                            <AutomationSkeletonIconButton
-                              disabled={generatingTestCases || bulkJiraSync?.running}
-                              onClick={() => {
-                                setMemoryAutomationSkelIdx(null);
-                                setAutomationSkelIdx(idx);
-                              }}
-                            />
-                            {inputMode === "paste" ? (
-                              <JiraTestPushButton
-                                {...jiraPushCommon}
-                                displayMode="linkOnly"
-                                showUpdateButton={false}
-                                onUpdate={undefined}
-                              />
-                            ) : (
-                              <JiraTestPushButton
-                                {...jiraPushCommon}
-                                displayMode="default"
-                                showUpdateButton={
-                                  st === "updated" && !jiraHideUpdateAfterCreate[mainPushKey]
-                                }
-                                updateTitle={
-                                  jiraUpdateSucceededKeys[mainPushKey]
-                                    ? `JIRA issue ${pushedKey || ""} was updated`
-                                    : `Update JIRA issue ${pushedKey || ""}`
-                                }
-                                updateAriaLabel="Update existing JIRA test issue"
-                                updateSucceeded={!!jiraUpdateSucceededKeys[mainPushKey]}
-                                onUpdate={
-                                  inputMode === "jira" && pushedKey
-                                    ? (e) => {
-                                        e.stopPropagation();
-                                        pushTestToJira(tc, idx, { updateExisting: true });
-                                      }
-                                    : undefined
-                                }
-                              />
-                            )}
-                            <FloatingTooltip text="Copy this test case as Markdown">
-                              <Copy
-                                text={fmtTestsMarkdown([tc])}
-                                label="Copy this test case as Markdown"
-                                onAnnounce={setAnnounce}
-                                disabled={generatingTestCases || bulkJiraSync?.running}
-                                omitTitle
-                              />
-                            </FloatingTooltip>
-                          </div>
-                        </div>
-                        {open ? (
-                          <div className="tc-body">
-                            <TestCaseBody tc={tc} />
-                          </div>
-                        ) : null}
-                      </section>
-                    );
-                  })
-                ) : (
-                  <p className="empty-state">No cases match this filter. Try <strong>All</strong>.</p>
-                )}
-              </>
-            ) : (
-              <p className="empty-state">
-                <strong>No test cases yet.</strong>
-              </p>
-            )}
+            <MainTestCasesPanel
+              loadingTestCases={loadingTestCases}
+              tests={tests}
+              testsShown={testsShown}
+              hadPriorMemory={hadPriorMemory}
+              memoryMatch={memoryMatch}
+              tcFilter={tcFilter}
+              onTcFilter={setTcFilter}
+              bulkJiraSync={bulkJiraSync}
+              onStartBulkSync={startBulkSync}
+              mock={mock}
+              inputMode={inputMode}
+              pushingKey={pushingKey}
+              jiraPushConfigIncomplete={jiraPushConfigIncomplete}
+              tcOpen={tcOpen}
+              setTcOpen={setTcOpen}
+              mainRequirementKey={mainRequirementKey}
+              jiraUrl={jiraUrl}
+              jiraPushed={jiraPushed}
+              jiraHideUpdateAfterCreate={jiraHideUpdateAfterCreate}
+              jiraUpdateSucceededKeys={jiraUpdateSucceededKeys}
+              pushTestToJira={pushTestToJira}
+              onEditTestCase={setEditTcIdx}
+              onOpenMainAutomationSkeleton={(idx) => {
+                setMemoryAutomationSkelIdx(null);
+                setAutomationSkelIdx(idx);
+              }}
+              setAnnounce={setAnnounce}
+              genOrBulkBusy={genOrBulkBusy}
+            />
           </div>
           </main>
         </div>
