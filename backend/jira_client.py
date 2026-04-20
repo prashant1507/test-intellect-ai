@@ -302,6 +302,72 @@ def fetch_issue(base_url: str, user: str, password: str, issue_key: str) -> dict
     return {"title": title, "description": description}
 
 
+def fetch_issue_attachment_meta(base_url: str, user: str, password: str, issue_key: str) -> list[dict]:
+    if settings.mock:
+        return []
+    data = _get_issue_json(base_url, user, password, issue_key, fields="attachment")
+    fields = data.get("fields") or {}
+    raw = fields.get("attachment")
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for a in raw:
+        if not isinstance(a, dict):
+            continue
+        aid = str(a.get("id") or "").strip()
+        if not aid:
+            continue
+        fn = str(a.get("filename") or "attachment").strip() or "attachment"
+        sz = a.get("size")
+        try:
+            size_i = int(sz) if sz is not None else None
+        except (TypeError, ValueError):
+            size_i = None
+        mime = str(a.get("mimeType") or "").strip()
+        out.append(
+            {
+                "id": aid,
+                "filename": fn,
+                "size": size_i,
+                "mime_type": mime or None,
+            }
+        )
+    return out
+
+
+def download_attachment_for_ticket(
+    base_url: str,
+    user: str,
+    password: str,
+    attachment_id: str,
+    expected_issue_key: str,
+) -> tuple[bytes, str, str]:
+    if settings.mock:
+        return b"", "attachment", "application/octet-stream"
+    exp = expected_issue_key.strip().upper()
+    meta_list = fetch_issue_attachment_meta(base_url, user, password, exp)
+    aid = str(attachment_id or "").strip()
+    if not aid or not any(str(x.get("id")) == aid for x in meta_list if isinstance(x, dict)):
+        raise ValueError("Attachment not found on this ticket")
+    filename = "attachment"
+    for x in meta_list:
+        if isinstance(x, dict) and str(x.get("id")) == aid:
+            filename = str(x.get("filename") or "attachment").strip() or "attachment"
+            break
+    verify = _requests_verify()
+    base = base_url.rstrip("/")
+    r = requests.get(
+        f"{base}/rest/api/2/attachment/content/{aid}",
+        auth=(user, password),
+        headers={"Accept": "*/*"},
+        timeout=120,
+        verify=verify,
+    )
+    r.raise_for_status()
+    ct = (r.headers.get("Content-Type") or "application/octet-stream").split(";")[0].strip()
+    return r.content, filename, ct
+
+
 def jira_browse_url(base_url: str, issue_key: str) -> str:
     return f"{base_url.rstrip('/')}/browse/{issue_key.strip().upper()}"
 

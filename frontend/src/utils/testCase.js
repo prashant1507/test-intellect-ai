@@ -7,16 +7,17 @@ export function isUnifiedGherkin(tc) {
   );
 }
 
-export function parseMinTc(s) {
+function parseIntTc(s, fallback) {
   const n = parseInt(String(s ?? "").trim(), 10);
-  if (!Number.isFinite(n)) return 1;
-  return Math.max(1, n);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+export function parseMinTc(s) {
+  return Math.max(1, parseIntTc(s, 1));
 }
 
 export function parseMaxTc(s) {
-  const n = parseInt(String(s ?? "").trim(), 10);
-  if (!Number.isFinite(n)) return 10;
-  return Math.max(0, n);
+  return Math.max(0, parseIntTc(s, 10));
 }
 
 export function testCaseBounds(minStr, maxStr) {

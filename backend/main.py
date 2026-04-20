@@ -10,13 +10,16 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
 from requests.exceptions import HTTPError, RequestException
 
 from jira_client import (
     build_ai_to_jira_priority_map,
+    download_attachment_for_ticket,
     fetch_issue,
+    fetch_issue_attachment_meta,
     fetch_linked_test_issues,
     fetch_linked_work_issues,
     fetch_priorities,
@@ -63,6 +66,10 @@ class TicketIn(BaseModel):
     password: str = Field(..., min_length=1)
     ticket_id: str = Field(..., min_length=1)
     jira_test_issue_type: str = ""
+
+
+class AttachmentDownloadIn(TicketIn):
+    attachment_id: str = Field(..., min_length=1)
 
 
 def _jira_test_issue_type_from_body(body: TicketIn) -> str:
@@ -164,6 +171,26 @@ async def _load_ticket_linked_jira(body: TicketIn, key: str) -> tuple[list, list
     return linked, linked_work, work_labels
 
 
+def _ascii_filename(name: str) -> str:
+    s = (name or "file").strip() or "file"
+    return "".join(c if 32 <= ord(c) < 127 and c not in '";\\' else "_" for c in s)[:200]
+
+
+async def _fetch_issue_attachments(body: TicketIn, key: str) -> list:
+    if settings.mock:
+        return []
+    try:
+        return await asyncio.to_thread(
+            fetch_issue_attachment_meta,
+            body.jira_url.strip(),
+            body.username,
+            body.password,
+            key,
+        )
+    except Exception:
+        return []
+
+
 class GenerateIn(TicketIn):
     test_project_key: str = ""
     save_memory: bool = True
@@ -193,6 +220,7 @@ class MemorySaveAfterEditIn(BaseModel):
     requirements: dict = Field(default_factory=dict)
     test_cases: list = Field(default_factory=list)
     edited_jira_issue_key: str = ""
+    jira_username: str = ""
 
 
 class PastedGenerateIn(BaseModel):
@@ -405,6 +433,7 @@ async def _generate_and_persist(
     jira_entries: list | None = None,
     linked_jira_work_entries: list | None = None,
     linked_jira_work_type_labels: str = "",
+    jira_username: str | None = None,
 ) -> dict:
     req_diff = _diff(prev["requirements"], req) if prev else None
     allowed = resolve_priority_allowed_for_generation(paste_mode, priority_labels)
@@ -430,7 +459,7 @@ async def _generate_and_persist(
     if not settings.mock:
         if save_memory:
             save(key, req, cases)
-        _maybe_audit(kc, key, "generate_test_cases")
+        _maybe_audit(kc, key, "generate_test_cases", jira_username)
     return _generate_response_base(
         key,
         req,
@@ -460,6 +489,7 @@ async def _generate_and_persist_agentic(
     jira_entries: list | None = None,
     linked_jira_work_entries: list | None = None,
     linked_jira_work_type_labels: str = "",
+    jira_username: str | None = None,
 ) -> dict:
     req_diff = _diff(prev["requirements"], req) if prev else None
     allowed = resolve_priority_allowed_for_generation(paste_mode, priority_labels)
@@ -486,7 +516,7 @@ async def _generate_and_persist_agentic(
     if not settings.mock:
         if save_memory:
             save(key, req, cases)
-        _maybe_audit(kc, key, "generate_test_cases_agentic")
+        _maybe_audit(kc, key, "generate_test_cases_agentic", jira_username)
     return {
         **_generate_response_base(
             key,
@@ -535,11 +565,11 @@ def get_keycloak_claims(authorization: str | None = Header(None)) -> dict | None
 Kc = Annotated[dict | None, Depends(get_keycloak_claims)]
 
 
-def _maybe_audit(kc: dict | None, key: str, action: str) -> None:
+def _maybe_audit(kc: dict | None, key: str, action: str, jira_username: str | None = None) -> None:
     if settings.mock:
         return
     u = claims_username(kc) if settings.use_keycloak and kc else ""
-    append_audit(u, key, action)
+    append_audit(u, key, action, jira_username)
 
 
 def _raise_llm_route_error(e: Exception) -> None:
@@ -558,6 +588,7 @@ async def _jira_generate_route_kwargs(body: GenerateIn) -> tuple[str, dict, dict
         jira_entries=jira_entries,
         linked_jira_work_entries=linked_work_raw,
         linked_jira_work_type_labels=work_labels,
+        jira_username=body.username,
     )
     return key, req, prev, similar_used, shared
 
@@ -568,8 +599,6 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
         "http://localhost:8001",
         "http://127.0.0.1:8001",
     ],
@@ -631,7 +660,7 @@ def memory_save_after_edit(body: MemorySaveAfterEditIn, kc: Kc):
     save(key, req, tc)
     jk = (body.edited_jira_issue_key or "").strip()
     if jk:
-        _maybe_audit(kc, key, f"Edited {jk}")
+        _maybe_audit(kc, key, f"Edited {jk}", (body.jira_username or "").strip() or None)
     return {"ok": True}
 
 
@@ -713,7 +742,7 @@ async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
             raise _jira_request_http_exception(e) from e
         except ValueError as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
-        _maybe_audit(kc, rk, f"Updated {result['key']}")
+        _maybe_audit(kc, rk, f"Updated {result['key']}", body.username)
         return {"created_key": result["key"], "self": result.get("self", ""), "updated": True}
     if not body.test_project_key.strip():
         raise HTTPException(
@@ -737,22 +766,24 @@ async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
         raise _jira_request_http_exception(e) from e
     except ValueError as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
-    _maybe_audit(kc, rk, f"Created {result['key']}")
+    _maybe_audit(kc, rk, f"Created {result['key']}", body.username)
     return {"created_key": result["key"], "self": result.get("self", ""), "updated": False}
 
 
 @api.post("/fetch-ticket")
 async def fetch_ticket(body: TicketIn, kc: Kc):
     key, raw = await _fetch_jira(body)
-    _maybe_audit(kc, key, "fetch_requirements")
+    _maybe_audit(kc, key, "fetch_requirements", body.username)
     prev = get_latest(key)
     linked, linked_work, work_labels = await _load_ticket_linked_jira(body, key)
+    attachments = await _fetch_issue_attachments(body, key)
     out: dict = {
         "ticket_id": key,
         "requirements": raw,
         "linked_jira_tests": _linked_jira_tests_light(linked),
         "linked_jira_work": _linked_jira_work_light(linked_work),
         "linked_jira_work_type_labels": work_labels,
+        "requirement_attachments": attachments,
     }
     if prev and isinstance(prev.get("requirements"), dict):
         out["had_saved_memory"] = True
@@ -761,6 +792,28 @@ async def fetch_ticket(body: TicketIn, kc: Kc):
         out["had_saved_memory"] = False
         out["requirements_diff"] = None
     return out
+
+
+@api.post("/jira/attachment-download")
+async def jira_attachment_download(body: AttachmentDownloadIn, _kc: Kc):
+    if settings.mock:
+        raise HTTPException(status_code=400, detail="Attachments are not available in mock mode.")
+    key = body.ticket_id.strip().upper()
+    try:
+        content, filename, ctype = await asyncio.to_thread(
+            download_attachment_for_ticket,
+            body.jira_url.strip(),
+            body.username,
+            body.password,
+            body.attachment_id.strip(),
+            key,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RequestException as e:
+        raise _jira_request_http_exception(e) from e
+    disp = f'attachment; filename="{_ascii_filename(filename)}"'
+    return Response(content=content, media_type=ctype, headers={"Content-Disposition": disp})
 
 
 @api.post("/generate-tests")

@@ -11,7 +11,6 @@ from settings import settings
 
 
 def _paste_priority_list() -> list[str]:
-    """Labels from PASTE_MODE_PRIORITIES (and default five if unset). Used for Paste mode, and for JIRA mode when no Test Project / JIRA fetch."""
     raw = (settings.paste_mode_priorities or "").strip()
     if not raw:
         return ["Highest", "High", "Medium", "Low", "Lowest"]
@@ -89,7 +88,6 @@ def _cap_first_line(s: str) -> str:
 
 
 def _cap_gherkin_line(s: str) -> str:
-    """Given/When/Then/And + capitalize first letter of the first word after the keyword."""
     s = s.strip()
     if not s:
         return s
@@ -145,7 +143,6 @@ def _expand_keyword_and_chains(lines: list[str]) -> list[str]:
 
 
 def _split_natural_and_in_line(line: str) -> list[str]:
-    """Split prose like 'Given A and B' into Given + And lines (no 'and' inside one step)."""
     s = line.strip()
     if not s:
         return []
@@ -181,7 +178,6 @@ _ORPHAN_AND = re.compile(r"^And\s+(\S+)\s*$", re.I)
 
 
 def _merge_orphan_and_words(lines: list[str]) -> list[str]:
-    """Join 'And Password'-style fragments left after bad splits (e.g. 'email and password')."""
     out: list[str] = []
     for line in lines:
         s = line.strip()
@@ -297,6 +293,25 @@ _SIMILAR_THRESHOLD = 0.92
 _JIRA_EXISTING_MATCH_THRESHOLD = 0.88
 
 
+def _jira_row_from_entry(je: dict, allowed_priorities: list[str]) -> dict:
+    base_tc = je.get("test_case")
+    if not isinstance(base_tc, dict):
+        base_tc = {}
+    row = _norm(base_tc, default_change_status="unchanged", allowed_priorities=allowed_priorities)
+    row["change_status"] = "unchanged"
+    row["jira_issue_key"] = je["issue_key"]
+    row["jira_status"] = str(je.get("status_name") or "")
+    row["jira_browse_url"] = str(je.get("browse_url") or "")
+    row["jira_existing"] = True
+    jp = str(je.get("jira_priority_name") or "").strip()
+    if jp:
+        row["priority"] = jp
+    ji = str(je.get("jira_priority_icon_url") or "").strip()
+    if ji:
+        row["priority_icon_url"] = ji
+    return row
+
+
 def merge_ai_cases_with_jira_existing(
     ai_cases: list[dict],
     jira_entries: list[dict],
@@ -334,22 +349,7 @@ def merge_ai_cases_with_jira_existing(
             continue
         if i in ai_to_jira:
             je = jira_entries[ai_to_jira[i]]
-            base_tc = je.get("test_case")
-            if not isinstance(base_tc, dict):
-                base_tc = {}
-            row = _norm(base_tc, default_change_status="unchanged", allowed_priorities=allowed_priorities)
-            row["change_status"] = "unchanged"
-            row["jira_issue_key"] = je["issue_key"]
-            row["jira_status"] = str(je.get("status_name") or "")
-            row["jira_browse_url"] = str(je.get("browse_url") or "")
-            row["jira_existing"] = True
-            jp = str(je.get("jira_priority_name") or "").strip()
-            if jp:
-                row["priority"] = jp
-            ji = str(je.get("jira_priority_icon_url") or "").strip()
-            if ji:
-                row["priority_icon_url"] = ji
-            out.append(row)
+            out.append(_jira_row_from_entry(je, allowed_priorities))
         else:
             out.append(ai)
     for j, je in enumerate(jira_entries):
@@ -357,22 +357,7 @@ def merge_ai_cases_with_jira_existing(
             continue
         if not isinstance(je, dict):
             continue
-        base_tc = je.get("test_case")
-        if not isinstance(base_tc, dict):
-            base_tc = {}
-        row = _norm(base_tc, default_change_status="unchanged", allowed_priorities=allowed_priorities)
-        row["change_status"] = "unchanged"
-        row["jira_issue_key"] = je["issue_key"]
-        row["jira_status"] = str(je.get("status_name") or "")
-        row["jira_browse_url"] = str(je.get("browse_url") or "")
-        row["jira_existing"] = True
-        jp = str(je.get("jira_priority_name") or "").strip()
-        if jp:
-            row["priority"] = jp
-        ji = str(je.get("jira_priority_icon_url") or "").strip()
-        if ji:
-            row["priority_icon_url"] = ji
-        out.append(row)
+        out.append(_jira_row_from_entry(je, allowed_priorities))
     return out
 
 
@@ -401,7 +386,6 @@ def _best_prior_similarity(
     *,
     allowed_priorities: list[str],
 ) -> float:
-    """Max similarity of `n` to any normalized prior test case (0 if no priors)."""
     best = 0.0
     for tc in prev_list:
         if not isinstance(tc, dict):
@@ -441,7 +425,6 @@ _CS_ORDER = ("unchanged", "new", "updated")
 
 
 def _merge_change_status(a: str, b: str) -> str:
-    """Pick the stronger label when the same scenario appears twice (updated > new > unchanged)."""
     x = a if a in _CS_ORDER else "unchanged"
     y = b if b in _CS_ORDER else "new"
     return _CS_ORDER[max(_CS_ORDER.index(x), _CS_ORDER.index(y))]
@@ -453,13 +436,6 @@ def merge_test_cases_with_previous(
     *,
     allowed_priorities: list[str],
 ) -> list:
-    """
-    Append newly generated cases to prior memory without losing old ones.
-    Order: previous first, then incoming; same description+steps merge into one row with a combined change_status.
-    Stored rows without change_status are treated as unchanged; the LLM wrongly tagging an existing scenario as new is demoted.
-    If an incoming scenario differs from prior fingerprints but is still highly similar (>= threshold) to a prior
-    scenario — including when only numbers changed (digit-collapsed signature) — label it as updated instead of new.
-    """
     prev_list = previous if isinstance(previous, list) else []
     inc_list = incoming if isinstance(incoming, list) else []
 

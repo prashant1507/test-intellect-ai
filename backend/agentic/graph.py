@@ -317,21 +317,22 @@ def merge_suggestions_node(state: AgentState) -> dict:
     }
 
 
+def _final_cases_from_env(env: GenerationEnvelope, allowed: list[str], max_hi: int) -> list[dict]:
+    out = [_norm(c.model_dump(), allowed_priorities=allowed) for c in env.test_cases]
+    if max_hi:
+        out = out[:max_hi]
+    return out
+
+
 def finalize_node(state: AgentState) -> dict:
     env = state.get("envelope")
     allowed = state.get("allowed_priorities") or ["Medium"]
     vp = state.get("validation_passed")
+    hi = int(state.get("max_test_cases") or 0)
     if env and vp is True:
-        out = [_norm(c.model_dump(), allowed_priorities=allowed) for c in env.test_cases]
-        hi = int(state.get("max_test_cases") or 0)
-        if hi:
-            out = out[:hi]
-        return {"final_cases": out, "error": None}
+        return {"final_cases": _final_cases_from_env(env, allowed, hi), "error": None}
     if env and vp is False:
-        out = [_norm(c.model_dump(), allowed_priorities=allowed) for c in env.test_cases]
-        hi = int(state.get("max_test_cases") or 0)
-        if hi:
-            out = out[:hi]
+        out = _final_cases_from_env(env, allowed, hi)
         vr = state.get("validator")
         parts: list[str] = ["validation did not fully pass; returning best attempt"]
         if vr:

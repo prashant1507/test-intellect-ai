@@ -12,7 +12,7 @@ import {
 } from "./components/common";
 import { AuditActionCell } from "./components/AuditActionCell";
 import { JiraTestPushButton } from "./components/JiraTestPushButton";
-import { LinkedJiraTestsBlock, LinkedJiraWorkBlock } from "./components/LinkedJiraLists";
+import { LinkedJiraTestsBlock, LinkedJiraWorkBlock, RequirementAttachmentsInline } from "./components/LinkedJiraLists";
 import { MemoryDetailContent } from "./components/Memory";
 import { AutomationSkeletonIconButton, AutomationSkeletonModal } from "./components/AutomationSkeletonModal";
 import { AgenticPipelineOptions } from "./components/AgenticPipelineOptions";
@@ -74,6 +74,7 @@ export default function App() {
   const [lastFetchAt, setLastFetchAt] = useState(null);
   const [linkedJiraTests, setLinkedJiraTests] = useState([]);
   const [linkedJiraWork, setLinkedJiraWork] = useState([]);
+  const [reqAttachments, setReqAttachments] = useState([]);
   const [lastGenerateAt, setLastGenerateAt] = useState(null);
   const [mock, setMock] = useState(false);
   const [announce, setAnnounce] = useState("");
@@ -150,9 +151,10 @@ export default function App() {
     setReq(d.requirements);
     setKey(d.ticket_id);
     setTests(d.test_cases || []);
-    const { tests: ljTests, work: ljWork } = normalizeLinkedJiraFromApi(d);
-    setLinkedJiraTests(ljTests);
-    setLinkedJiraWork(ljWork);
+    const lj = normalizeLinkedJiraFromApi(d);
+    setLinkedJiraTests(lj.tests);
+    setLinkedJiraWork(lj.work);
+    if (lj.attachments !== undefined) setReqAttachments(lj.attachments);
     setReqFetchMeta({ hadSavedMemory: false });
     setJiraUpdateSucceededKeys({});
     setJiraHideUpdateAfterCreate({});
@@ -247,6 +249,64 @@ export default function App() {
       return d;
     },
     [oidcUser, useKeycloak, oidcMgr, redirectToKeycloakLogin],
+  );
+
+  const downloadReqAttachment = useCallback(
+    async (attachmentId, filename) => {
+      setErr("");
+      try {
+        const body = JSON.stringify({
+          jira_url: jiraUrl,
+          username,
+          password,
+          ticket_id: ticketId,
+          jira_test_issue_type: jiraTestIssueType.trim(),
+          attachment_id: attachmentId,
+        });
+        const headers = { "Content-Type": "application/json" };
+        if (useKeycloak && oidcMgr) {
+          const fresh = await oidcMgr.getUser();
+          if (fresh?.access_token && fresh.access_token !== oidcUser?.access_token) setOidcUser(fresh);
+          if (fresh?.access_token) headers.Authorization = `Bearer ${fresh.access_token}`;
+        } else if (oidcUser?.access_token) {
+          headers.Authorization = `Bearer ${oidcUser.access_token}`;
+        }
+        let r = await fetch("/api/jira/attachment-download", { method: "POST", headers, body });
+        if (r.status === 401 && useKeycloak && oidcMgr) {
+          try {
+            await oidcMgr.signinSilent();
+            const u2 = await oidcMgr.getUser();
+            if (u2?.access_token) {
+              setOidcUser(u2);
+              headers.Authorization = `Bearer ${u2.access_token}`;
+              r = await fetch("/api/jira/attachment-download", { method: "POST", headers, body });
+            }
+          } catch (_) {}
+        }
+        if (!r.ok) {
+          let d = {};
+          try {
+            d = await r.json();
+          } catch {
+            throw new Error(r.statusText || "Download failed");
+          }
+          throw new Error(parseApiError(d));
+        }
+        const blob = await r.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename || "attachment";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setAnnounce("Attachment downloaded.");
+      } catch (e) {
+        setErr(e?.message || "Download failed");
+      }
+    },
+    [jiraUrl, username, password, ticketId, jiraTestIssueType, oidcUser, useKeycloak, oidcMgr],
   );
 
   const syncLists = useCallback(async () => {
@@ -690,6 +750,7 @@ export default function App() {
           requirements: req,
           test_cases: nextList,
           edited_jira_issue_key: jiraTestId,
+          jira_username: String(username || "").trim(),
         });
         setAnnounce("Test case saved.");
         await syncLists();
@@ -698,7 +759,7 @@ export default function App() {
         setErr(e.message || "Failed to save.");
       }
     },
-    [tests, key, ticketId, mock, req, api, syncLists, refreshMemoryPanelIfOpen],
+    [tests, key, ticketId, mock, req, api, syncLists, refreshMemoryPanelIfOpen, username],
   );
 
   const startBulkSync = useCallback(() => {
@@ -1058,6 +1119,7 @@ export default function App() {
         const genPath = useAgenticGen ? "/generate-tests-agentic" : "/generate-tests";
         const credBody = cred();
         setReq(null);
+        setReqAttachments([]);
         setTests(null);
         setDiff(null);
         setReqFetchMeta({ hadSavedMemory: false });
@@ -1071,6 +1133,7 @@ export default function App() {
         const ljFd = normalizeLinkedJiraFromApi(fd);
         setLinkedJiraTests(ljFd.tests);
         setLinkedJiraWork(ljFd.work);
+        if (ljFd.attachments !== undefined) setReqAttachments(ljFd.attachments);
         setLastFetchAt(new Date().toISOString());
         setAnnounce("Requirements loaded. Generating test cases…");
 
@@ -1096,6 +1159,7 @@ export default function App() {
         const lj = normalizeLinkedJiraFromApi(d);
         setLinkedJiraTests(lj.tests);
         setLinkedJiraWork(lj.work);
+        if (lj.attachments !== undefined) setReqAttachments(lj.attachments);
         setReqFetchMeta({ hadSavedMemory: !!d.had_saved_memory });
         setDiff(d.requirements_diff != null && d.requirements_diff !== "" ? d.requirements_diff : null);
         setDiffExpanded(false);
@@ -1486,6 +1550,7 @@ export default function App() {
                         <tr>
                           <th scope="col">Date &amp; time</th>
                           <th scope="col">User</th>
+                          <th scope="col">JIRA User</th>
                           <th scope="col">Ticket ID</th>
                           <th scope="col">Action</th>
                         </tr>
@@ -1495,6 +1560,7 @@ export default function App() {
                           <tr key={`${row.created_at}-${row.ticket_id}-${row.action}-${i}`}>
                             <td>{formatTime(row.created_at)}</td>
                             <td>{row.username || "—"}</td>
+                            <td>{row.jira_username ? String(row.jira_username) : "—"}</td>
                             <td>
                               {row.ticket_id === "AUTH" ? (
                                 <span className="audit-context-muted">—</span>
@@ -1666,6 +1732,7 @@ export default function App() {
                   setEditTcIdx(null);
                   setLinkedJiraTests([]);
                   setLinkedJiraWork([]);
+                  setReqAttachments([]);
                 }}
               >
                 Paste Requirements
@@ -2002,6 +2069,13 @@ export default function App() {
               ) : req ? (
                 <>
                   <PasteRequirementsPreview text={fmtReqMarkdown(req)} />
+                  {inputMode === "jira" && reqAttachments?.length ? (
+                    <RequirementAttachmentsInline
+                      attachments={reqAttachments}
+                      onDownload={downloadReqAttachment}
+                      disabled={mock}
+                    />
+                  ) : null}
                   {inputMode === "jira" && linkedJiraTests?.length ? (
                     <LinkedJiraTestsBlock
                       rows={linkedJiraTests}

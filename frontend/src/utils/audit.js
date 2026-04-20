@@ -96,10 +96,11 @@ export async function downloadAuditPdf(entries) {
   doc.setTextColor(0, 0, 0);
   autoTable(doc, {
     startY: 26,
-    head: [["Date & time", "User", "Ticket ID", "Action"]],
+    head: [["Date & time", "User", "JIRA User", "Ticket ID", "Action"]],
     body: entries.map((row) => [
       formatTime(row.created_at),
       String(row.username || "—"),
+      row.jira_username ? String(row.jira_username) : "—",
       row.ticket_id === "AUTH" ? "—" : String(row.ticket_id || "—"),
       auditActionLabel(row.action),
     ]),

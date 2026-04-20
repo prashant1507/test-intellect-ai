@@ -20,7 +20,7 @@ Optionally:
 ---
 ### Product Sample Images
 
-<img src="resources/product-images/img-1.png" alt="UI" width="200" />  <img src="resources/product-images/img-2.png" alt="UI" width="200" />  <img src="resources/product-images/img-3.png" alt="UI" width="200" />  <img src="resources/product-images/img-4.png" alt="UI" width="200" />  <img src="resources/product-images/img-5.png" alt="UI" width="200" />  <img src="resources/product-images/img-6.png" alt="UI" width="200" />
+<img src="resources/product-images/img-1.png" alt="UI" width="200" />  <img src="resources/product-images/img-2.png" alt="UI" width="200" />  <img src="resources/product-images/img-2a.png" alt="UI" width="200" />  <img src="resources/product-images/img-3.png" alt="UI" width="200" />  <img src="resources/product-images/img-4.png" alt="UI" width="200" />  <img src="resources/product-images/img-5.png" alt="UI" width="200" />  <img src="resources/product-images/img-6.png" alt="UI" width="200" />
 
 ---
 ### Product Sample Video
@@ -71,7 +71,8 @@ flowchart LR
 - **Requirements Diffs:** When you regenerate with prior saved data for the **same requirement ticket**, the UI can show a **requirements diff** and **change status** tags on test cases (e.g. new / updated / unchanged).
 
 ### JIRA Integration
-- Fetch requirements and generate tests 
+- Fetch requirements, linked issues, linked tests, attachments
+- Generate tests 
 - Create or update test issues in JIRA 
 - Link tests to requirements (default: Relates)
 - Control link direction via `JIRA_LINK_INWARD_IS_REQUIREMENT` in [.env](.env)
