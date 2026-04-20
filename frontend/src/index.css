@@ -2387,6 +2387,12 @@ section.tc.status-unchanged {
   white-space: nowrap;
 }
 
+.linked-jira-scroll-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .linked-jira-tests-scroll {
   max-height: min(85vh, 32rem);
   overflow-y: auto;
@@ -2396,6 +2402,34 @@ section.tc.status-unchanged {
   scrollbar-gutter: stable;
   padding-inline-end: 0.85rem;
   box-sizing: border-box;
+}
+
+.linked-jira-resize-handle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin: 0;
+  padding: 0.2rem 0 0.15rem;
+  border: none;
+  border-top: 1px solid color-mix(in srgb, var(--card-border) 80%, transparent);
+  border-radius: 0 0 6px 6px;
+  background: color-mix(in srgb, var(--card-bg) 88%, var(--border));
+  color: var(--muted);
+  cursor: ns-resize;
+  touch-action: none;
+  line-height: 0;
+}
+
+.linked-jira-resize-handle:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--card-bg) 75%, var(--border));
+}
+
+.linked-jira-resize-handle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
 }
 
 .linked-jira-tests-list {

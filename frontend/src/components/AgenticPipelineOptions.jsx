@@ -5,7 +5,7 @@ export function AgenticPipelineOptions({ checked, onCheckedChange, maxRounds, on
     <div className="row agentic-gen-row">
       <label className="agentic-gen-check">
         <input type="checkbox" checked={checked} onChange={(e) => onCheckedChange(e.target.checked)} />
-        <span>Agentic Validation and Scoring</span>
+        <span>Agentic Validation and Scoring.</span>
       </label>
       {checked ? (
         <label htmlFor={roundsInputId} className="agentic-rounds-label">

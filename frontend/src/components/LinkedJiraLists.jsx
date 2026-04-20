@@ -1,7 +1,102 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PriorityTag } from "./PriorityTag";
 
 const VISIBLE_ROWS = 2;
+
+const SCROLL_EXTRA_STORAGE = {
+  attachments: "linkedListScrollExtra.attachments",
+  tests: "linkedListScrollExtra.tests",
+  work: "linkedListScrollExtra.work",
+};
+
+function viewportScrollCapPx() {
+  if (typeof window === "undefined") return 512;
+  return Math.min(window.innerHeight * 0.85, 32 * 16);
+}
+
+function readStoredExtraPx(key) {
+  if (!key) return 0;
+  try {
+    const v = sessionStorage.getItem(key);
+    if (v != null) return Math.max(0, Number(v));
+  } catch {}
+  return 0;
+}
+
+function ResizableScrollClip({ scroll, clipPx, className, children, storageKey }) {
+  const [extraPx, setExtraPx] = useState(() => readStoredExtraPx(storageKey));
+  const [viewportCap, setViewportCap] = useState(viewportScrollCapPx);
+
+  useEffect(() => {
+    const onResize = () => setViewportCap(viewportScrollCapPx());
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  useEffect(() => {
+    if (!storageKey) return;
+    try {
+      sessionStorage.setItem(storageKey, String(extraPx));
+    } catch {}
+  }, [storageKey, extraPx]);
+
+  const basePx = clipPx != null && clipPx > 0 ? clipPx : 120;
+
+  useEffect(() => {
+    setExtraPx((ex) => Math.min(ex, Math.max(0, viewportCap - basePx)));
+  }, [basePx, viewportCap]);
+
+  const onPointerDown = (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startY = e.clientY;
+    const startExtra = extraPx;
+    const cap = viewportCap;
+    const onMove = (ev) => {
+      const dy = ev.clientY - startY;
+      let next = startExtra + dy;
+      next = Math.max(0, Math.min(next, cap - basePx));
+      setExtraPx(next);
+    };
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      document.removeEventListener("pointercancel", onUp);
+      document.body.style.removeProperty("cursor");
+      document.body.style.removeProperty("user-select");
+    };
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+  };
+
+  if (!scroll) return children;
+
+  const effectiveMax = Math.min(basePx + extraPx, viewportCap);
+
+  return (
+    <div className="linked-jira-scroll-wrap">
+      <div className={className} style={{ maxHeight: effectiveMax }}>
+        {children}
+      </div>
+      <button
+        type="button"
+        className="linked-jira-resize-handle"
+        aria-label="Drag to resize list height"
+        onPointerDown={onPointerDown}
+      >
+        <svg width="18" height="10" viewBox="0 0 24 14" fill="currentColor" aria-hidden>
+          <circle cx="8" cy="4" r="1.75" />
+          <circle cx="16" cy="4" r="1.75" />
+          <circle cx="8" cy="10" r="1.75" />
+          <circle cx="16" cy="10" r="1.75" />
+        </svg>
+      </button>
+    </div>
+  );
+}
 
 function useScrollClipHeightPx(enabled, listRef, depsKey, visibleCount) {
   const [px, setPx] = useState(null);
@@ -32,15 +127,6 @@ function useScrollClipHeightPx(enabled, listRef, depsKey, visibleCount) {
     return () => ro.disconnect();
   }, [enabled, depsKey, visibleCount]);
   return px;
-}
-
-function ScrollClip({ scroll, clipPx, className, children }) {
-  if (!scroll) return children;
-  return (
-    <div className={className} style={clipPx != null ? { maxHeight: clipPx } : undefined}>
-      {children}
-    </div>
-  );
 }
 
 function LinkedIssueRow({ issueKey, browseUrl, summary, headExtras }) {
@@ -97,9 +183,14 @@ export function LinkedJiraTestsBlock({ rows, heading }) {
         <h3 className="linked-jira-tests-title">{heading}</h3>
         <span className="linked-jira-tests-count">Count: {n}</span>
       </div>
-      <ScrollClip scroll={scroll} clipPx={clipPx} className="linked-jira-tests-scroll">
+      <ResizableScrollClip
+        scroll={scroll}
+        clipPx={clipPx}
+        className="linked-jira-tests-scroll"
+        storageKey={SCROLL_EXTRA_STORAGE.tests}
+      >
         {list}
-      </ScrollClip>
+      </ResizableScrollClip>
     </div>
   );
 }
@@ -141,9 +232,14 @@ export function LinkedJiraWorkBlock({ rows, heading }) {
         <h3 className="linked-jira-tests-title">{heading}</h3>
         <span className="linked-jira-tests-count">Count: {n}</span>
       </div>
-      <ScrollClip scroll={scroll} clipPx={clipPx} className="linked-jira-tests-scroll">
+      <ResizableScrollClip
+        scroll={scroll}
+        clipPx={clipPx}
+        className="linked-jira-tests-scroll"
+        storageKey={SCROLL_EXTRA_STORAGE.work}
+      >
         {list}
-      </ScrollClip>
+      </ResizableScrollClip>
     </div>
   );
 }
@@ -207,9 +303,14 @@ export function RequirementAttachmentsInline({ attachments, onDownload, disabled
         <h3 className="linked-jira-tests-title">Attachments</h3>
         <span className="linked-jira-tests-count">Count: {n}</span>
       </div>
-      <ScrollClip scroll={scroll} clipPx={clipPx} className="req-attachments-scroll">
+      <ResizableScrollClip
+        scroll={scroll}
+        clipPx={clipPx}
+        className="req-attachments-scroll"
+        storageKey={SCROLL_EXTRA_STORAGE.attachments}
+      >
         {list}
-      </ScrollClip>
+      </ResizableScrollClip>
     </div>
   );
 }
