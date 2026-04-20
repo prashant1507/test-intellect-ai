@@ -4,6 +4,7 @@ import {
   lineDiff,
   linesFromText,
   normStepsArr,
+  stepsArraysNormEqual,
 } from "../utils/testCaseDiff";
 
 function lineClass(t) {
@@ -24,7 +25,7 @@ function stepRows(tc) {
   if (!("previous_steps" in tc)) return null;
   const o = normStepsArr(tc.previous_steps);
   const n = normStepsArr(tc.steps);
-  if (o.length === n.length && o.every((x, i) => x === n[i])) return null;
+  if (stepsArraysNormEqual(o, n)) return null;
   return lineDiff(o, n);
 }
 

@@ -593,7 +593,10 @@ def merge_test_cases_with_previous(
                         old = pm.get(fld) if fld != "preconditions" else pm.get("preconditions", "")
                         n[f"previous_{fld}"] = old
             else:
-                n["change_status"] = _merge_change_status(cur, "new")
+                if str(cur).lower() == "updated":
+                    n["change_status"] = "new"
+                else:
+                    n["change_status"] = _merge_change_status(cur, "new")
     out_rows = [by_fp[fp] for fp in order]
     for n in out_rows:
         if str(n.get("change_status") or "") == "updated" and not _has_diff_snap(n):
@@ -604,6 +607,9 @@ def merge_test_cases_with_previous(
                         continue
                     old = pm.get(fld) if fld != "preconditions" else pm.get("preconditions", "")
                     n[f"previous_{fld}"] = old
+    for n in out_rows:
+        if str(n.get("change_status") or "") == "updated" and not _has_diff_snap(n):
+            n["change_status"] = "new"
     out_rows = _dedupe_unchanged_shadowed_by_updated(out_rows)
     return out_rows
 

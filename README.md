@@ -220,7 +220,8 @@ Other routes and request schemas: see **`backend/main.py`**.
 
 Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio on `http://127.0.0.1:1234/v1`) with:
 
-- **`qwen/qwen3-coder-30b`**
+- qwen/qwen3-coder-30b
+- qwen/qwen3-coder-next
 ---
 
 ## Future Improvements & Features

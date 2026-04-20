@@ -182,11 +182,7 @@ def list_saved() -> list[dict]:
 
 def save(jira_key: str, requirements: dict, test_cases: list) -> None:
     k, now = jira_key.upper(), datetime.now(timezone.utc).isoformat()
-    tcs = (
-        [strip_test_case_diff_meta(x) if isinstance(x, dict) else x for x in test_cases]
-        if isinstance(test_cases, list)
-        else test_cases
-    )
+    tcs = list(test_cases) if isinstance(test_cases, list) else []
     rj, tj = json.dumps(requirements, ensure_ascii=False), json.dumps(tcs, ensure_ascii=False)
     with open_memory_db() as c:
         prev = c.execute(

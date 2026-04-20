@@ -39,11 +39,7 @@ import { normalizeLinkedJiraFromApi } from "./utils/linkedJiraPayload";
 import { readStoredJiraLinkType, readStoredJiraTestIssueType, readStoredJiraUrl } from "./utils/storage";
 import { isAnyGenBusy, isJiraGenBusy, isPasteGenBusy } from "./utils/generationBusy";
 import { clampAgenticMaxRounds, parseMinTc, parseMaxTc, testCaseBounds } from "./utils/testCase";
-import {
-  mergeTestCaseChangeStatusFromMemory,
-  settleTestCaseAfterJiraPush,
-  stripTestCaseDiffMeta,
-} from "./utils/testCaseDiff";
+import { settleTestCaseAfterJiraPush, stripTestCaseDiffMeta } from "./utils/testCaseDiff";
 import { withOidcAuthorization } from "./utils/oidcFetchHeaders";
 
 export default function App() {
@@ -1182,9 +1178,15 @@ export default function App() {
           try {
             const mem = await api(`/memory/item/${encodeURIComponent(tidFetch)}`);
             if (Array.isArray(mem.test_cases) && mem.test_cases.length) {
-              setTests((prev) => mergeTestCaseChangeStatusFromMemory(prev ?? [], mem.test_cases));
+              setTests(mem.test_cases);
+            } else {
+              setTests(null);
             }
-          } catch (_) {}
+          } catch (_) {
+            setTests(null);
+          }
+        } else {
+          setTests(null);
         }
         if (d.had_saved_memory && d.requirements_diff) {
           setAnnounce("Requirements loaded. Diff vs saved history is shown below.");

@@ -1,5 +1,3 @@
-import { jiraPushFingerprint } from "./jiraPushFingerprint";
-
 export function stripTestCaseDiffMeta(tc) {
   if (!tc || typeof tc !== "object") return tc;
   const out = { ...tc };
@@ -15,23 +13,6 @@ export function settleUpdatedRowAfterPersist(tc) {
 
 export function settleTestCaseAfterJiraPush(tc) {
   return { ...stripTestCaseDiffMeta(tc), change_status: "unchanged" };
-}
-
-export function mergeTestCaseChangeStatusFromMemory(tests, memoryTestCases) {
-  if (!Array.isArray(memoryTestCases) || memoryTestCases.length === 0) {
-    return tests;
-  }
-  if (!Array.isArray(tests) || tests.length === 0) {
-    return tests;
-  }
-  const map = new Map(memoryTestCases.map((tc) => [jiraPushFingerprint(tc), tc]));
-  return tests.map((t) => {
-    const m = map.get(jiraPushFingerprint(t));
-    if (!m) return t;
-    const cs = m.change_status;
-    if (!cs) return t;
-    return { ...t, change_status: cs };
-  });
 }
 
 export function lineDiff(a, b) {
@@ -71,6 +52,20 @@ export function normStepsArr(steps) {
   return Array.isArray(steps) ? steps.map((x) => String(x)) : [];
 }
 
+function normStepCompare(s) {
+  return String(s ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+export function stepsArraysNormEqual(prevSteps, curSteps) {
+  const o = normStepsArr(prevSteps);
+  const n = normStepsArr(curSteps);
+  if (o.length !== n.length) return false;
+  return o.every((v, i) => normStepCompare(v) === normStepCompare(n[i]));
+}
+
 function textFieldDiffers(tc, pk, ck) {
   if (!(pk in tc)) return false;
   return String(tc[pk] ?? "").trim() !== String(tc[ck] ?? "").trim();
@@ -78,9 +73,7 @@ function textFieldDiffers(tc, pk, ck) {
 
 function stepsSnapshotDiffers(tc) {
   if (!("previous_steps" in tc)) return false;
-  const o = normStepsArr(tc.previous_steps);
-  const n = normStepsArr(tc.steps);
-  return o.length !== n.length || o.some((v, idx) => v !== n[idx]);
+  return !stepsArraysNormEqual(tc.previous_steps, tc.steps);
 }
 
 export function hasRenderableUpdatedDiff(tc) {
