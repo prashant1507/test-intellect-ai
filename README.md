@@ -20,7 +20,7 @@ Optionally:
 ---
 ### Product Sample Images
 
-<img src="resources/product-images/img-1.png" alt="UI" width="400" />
+<img src="resources/product-images/img-1.png" alt="UI" width="200" />
 
 ---
 ### Product Sample Video
