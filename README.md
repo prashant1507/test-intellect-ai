@@ -18,6 +18,11 @@ Optionally:
 - Use Keycloak to associate users with activity
 
 ---
+### Product Sample Images
+
+<img src="resources/product-images/img-1.png" alt="UI" width="400" />
+
+---
 ### Product Sample Video
 
 See: [video.mp4](resources/video.mp4)
