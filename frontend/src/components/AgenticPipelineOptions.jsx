@@ -9,7 +9,7 @@ export function AgenticPipelineOptions({ checked, onCheckedChange, maxRounds, on
       </label>
       {checked ? (
         <label htmlFor={roundsInputId} className="agentic-rounds-label">
-          Max rounds
+          Max Rounds
           <input
             id={roundsInputId}
             type="text"

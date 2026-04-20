@@ -132,7 +132,7 @@ class AgentState(TypedDict, total=False):
 
 
 def _max_rounds_cap(state: AgentState) -> int:
-    return int(state.get("max_rounds") or 5)
+    return int(state.get("max_rounds") or 3)
 
 
 def _passed(vr: ValidatorResult) -> bool:
@@ -394,7 +394,7 @@ def run_pipeline(
     allowed_priorities: list[str] | None = None,
     min_test_cases: int = 1,
     max_test_cases: int = 10,
-    max_rounds: int = 5,
+    max_rounds: int = 3,
     prev: dict | None = None,
     paste_mode: bool = False,
     existing_jira_tests: list[dict] | None = None,

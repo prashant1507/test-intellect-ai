@@ -210,11 +210,11 @@ class PastedGenerateIn(BaseModel):
 
 
 class GenerateAgenticIn(GenerateIn):
-    max_rounds: int = Field(5, ge=1, le=10)
+    max_rounds: int = Field(3, ge=1, le=10)
 
 
 class PastedAgenticIn(PastedGenerateIn):
-    max_rounds: int = Field(5, ge=1, le=10)
+    max_rounds: int = Field(3, ge=1, le=10)
 
 
 class AuthAuditIn(BaseModel):

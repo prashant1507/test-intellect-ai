@@ -30,6 +30,6 @@ export function testCaseBounds(minStr, maxStr) {
 
 export function clampAgenticMaxRounds(s) {
   const n = parseInt(String(s ?? "").trim(), 10);
-  const v = Number.isFinite(n) ? n : 5;
+  const v = Number.isFinite(n) ? n : 3;
   return Math.min(10, Math.max(1, v));
 }

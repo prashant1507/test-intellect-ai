@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import { fmtReqMarkdown, fmtTestsMarkdown, jiraWikiToMarkdown } from "../utils/format";
 import { resolvePushedJiraKey } from "../utils/jiraPushFingerprint";
 import { Copy, Spinner } from "./common";
+import { AutomationSkeletonIconButton } from "./AutomationSkeletonModal";
 import { JiraTestPushButton } from "./JiraTestPushButton";
 import { TestCaseBody } from "./TestCaseBody";
 import { TestCaseSummaryBadges } from "./TestCaseSummaryBadges";
@@ -30,7 +31,14 @@ function MemoryRequirementsView({ requirements }) {
   );
 }
 
-function MemoryTestCasesView({ testCases, memoryTicketId, jiraUrl, jiraPushed }) {
+function MemoryTestCasesView({
+  testCases,
+  memoryTicketId,
+  jiraUrl,
+  jiraPushed,
+  onOpenAutomationSkeleton,
+  automationSkeletonDisabled,
+}) {
   const list = Array.isArray(testCases) ? testCases : [];
   const [tcOpen, setTcOpen] = useState({});
   if (!list.length) return <p className="empty-state">—</p>;
@@ -65,7 +73,13 @@ function MemoryTestCasesView({ testCases, memoryTicketId, jiraUrl, jiraPushed })
                 <TestCaseSummaryBadges tc={tc} statusSlug={safeSt} />
                 <span className="tc-desc">{tc.description || "—"}</span>
               </button>
-              <JiraTestPushButton displayMode="linkOnly" pushedKey={pushedKey} jiraBaseUrl={jiraUrl} />
+              <div className="tc-summary-actions">
+                <AutomationSkeletonIconButton
+                  disabled={automationSkeletonDisabled}
+                  onClick={() => onOpenAutomationSkeleton(idx)}
+                />
+                <JiraTestPushButton displayMode="linkOnly" pushedKey={pushedKey} jiraBaseUrl={jiraUrl} />
+              </div>
             </div>
             {open ? (
               <div className="tc-body">
@@ -79,7 +93,15 @@ function MemoryTestCasesView({ testCases, memoryTicketId, jiraUrl, jiraPushed })
   );
 }
 
-export function MemoryDetailContent({ memoryPanel, onAnnounce, memoryTicketId, jiraUrl, jiraPushed }) {
+export function MemoryDetailContent({
+  memoryPanel,
+  onAnnounce,
+  memoryTicketId,
+  jiraUrl,
+  jiraPushed,
+  onOpenAutomationSkeleton,
+  automationSkeletonDisabled,
+}) {
   if (!memoryPanel) return null;
   return (
     <>
@@ -112,6 +134,8 @@ export function MemoryDetailContent({ memoryPanel, onAnnounce, memoryTicketId, j
               memoryTicketId={memoryTicketId}
               jiraUrl={jiraUrl}
               jiraPushed={jiraPushed}
+              onOpenAutomationSkeleton={onOpenAutomationSkeleton}
+              automationSkeletonDisabled={automationSkeletonDisabled}
             />
           </div>
         </div>

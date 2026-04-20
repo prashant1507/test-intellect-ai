@@ -68,7 +68,7 @@ export default function App() {
   const [minTestCases, setMinTestCases] = useState("1");
   const [maxTestCases, setMaxTestCases] = useState("10");
   const [useAgenticGen, setUseAgenticGen] = useState(true);
-  const [agenticMaxRounds, setAgenticMaxRounds] = useState("5");
+  const [agenticMaxRounds, setAgenticMaxRounds] = useState("3");
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState("");
   const [lastFetchAt, setLastFetchAt] = useState(null);
@@ -85,6 +85,7 @@ export default function App() {
   const [auditModalOpen, setAuditModalOpen] = useState(false);
   const [editTcIdx, setEditTcIdx] = useState(null);
   const [automationSkelIdx, setAutomationSkelIdx] = useState(null);
+  const [memoryAutomationSkelIdx, setMemoryAutomationSkelIdx] = useState(null);
   const [auditFilters, setAuditFilters] = useState({ user: "", ticket: "", action: "" });
   const [showMemoryUi, setShowMemoryUi] = useState(true);
   const [showAuditUi, setShowAuditUi] = useState(true);
@@ -101,6 +102,10 @@ export default function App() {
   const [pasteMemoryKey, setPasteMemoryKey] = useState("");
 
   const [memoryPanel, setMemoryPanel] = useState(null);
+
+  useEffect(() => {
+    if (!memoryPanel) setMemoryAutomationSkelIdx(null);
+  }, [memoryPanel]);
 
   const testsRef = useRef(null);
   const jiraPushedRef = useRef(jiraPushed);
@@ -265,6 +270,7 @@ export default function App() {
       const key = (tid || "").trim();
       if (!key) return;
       setAuditModalOpen(false);
+      setMemoryAutomationSkelIdx(null);
       setMemoryPanel({ phase: "loading", ticket_id: key });
       try {
         const d = await api(`/memory/item/${encodeURIComponent(key)}`);
@@ -869,11 +875,17 @@ export default function App() {
   }, [memoryPanel?.phase, memoryPanel?.ticket_id, memoryPanel?.test_cases]);
 
   useEffect(() => {
-    const anyOpen = auditModalOpen || !!memoryPanel || editTcIdx != null || automationSkelIdx != null;
+    const anyOpen =
+      auditModalOpen ||
+      !!memoryPanel ||
+      editTcIdx != null ||
+      automationSkelIdx != null ||
+      memoryAutomationSkelIdx != null;
     if (!anyOpen) return;
     const onKey = (e) => {
       if (e.key !== "Escape") return;
       if (editTcIdx != null) setEditTcIdx(null);
+      else if (memoryAutomationSkelIdx != null) setMemoryAutomationSkelIdx(null);
       else if (automationSkelIdx != null) setAutomationSkelIdx(null);
       else if (memoryPanel) setMemoryPanel(null);
       else setAuditModalOpen(false);
@@ -887,8 +899,16 @@ export default function App() {
       const memoryDialog = document.getElementById("memory-dialog");
       const tcEditDialog = document.getElementById("tc-edit-dialog");
       const automationSkelDialog = document.getElementById("automation-skel-dialog");
+      const memoryAutomationSkelDialog = document.getElementById("automation-skel-dialog-memory");
       if (editTcIdx != null && tcEditDialog && !tcEditDialog.contains(e.target)) {
         setEditTcIdx(null);
+      }
+      if (
+        memoryAutomationSkelIdx != null &&
+        memoryAutomationSkelDialog &&
+        !memoryAutomationSkelDialog.contains(e.target)
+      ) {
+        setMemoryAutomationSkelIdx(null);
       }
       if (automationSkelIdx != null && automationSkelDialog && !automationSkelDialog.contains(e.target)) {
         setAutomationSkelIdx(null);
@@ -897,6 +917,8 @@ export default function App() {
         setAuditModalOpen(false);
       }
       if (memoryPanel && memoryDialog && !memoryDialog.contains(e.target)) {
+        const memorySkelBackdrop = document.getElementById("memory-automation-skel-backdrop");
+        if (memorySkelBackdrop && memorySkelBackdrop.contains(e.target)) return;
         setMemoryPanel(null);
       }
     };
@@ -910,7 +932,7 @@ export default function App() {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [auditModalOpen, memoryPanel, editTcIdx, automationSkelIdx]);
+  }, [auditModalOpen, memoryPanel, editTcIdx, automationSkelIdx, memoryAutomationSkelIdx]);
 
   useEffect(() => {
     if (!oidcMgr || !useKeycloak) return undefined;
@@ -972,12 +994,19 @@ export default function App() {
   }, [idleTimeoutNotice]);
 
   useEffect(() => {
-    if (!auditModalOpen && !memoryPanel && editTcIdx == null && automationSkelIdx == null) return undefined;
+    if (
+      !auditModalOpen &&
+      !memoryPanel &&
+      editTcIdx == null &&
+      automationSkelIdx == null &&
+      memoryAutomationSkelIdx == null
+    )
+      return undefined;
     const id = requestAnimationFrame(() => {
       document.getElementById("app-theme-toggle")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     return () => cancelAnimationFrame(id);
-  }, [auditModalOpen, memoryPanel, editTcIdx, automationSkelIdx]);
+  }, [auditModalOpen, memoryPanel, editTcIdx, automationSkelIdx, memoryAutomationSkelIdx]);
 
   const runPasteGenerate = async () => {
     const desc = pasteText.trim();
@@ -1571,8 +1600,43 @@ export default function App() {
                     memoryTicketId={memoryPushTicketId}
                     jiraUrl={jiraUrl}
                     jiraPushed={jiraPushed}
+                    onOpenAutomationSkeleton={(idx) => {
+                      setAutomationSkelIdx(null);
+                      setMemoryAutomationSkelIdx(idx);
+                    }}
+                    automationSkeletonDisabled={generatingTestCases || bulkJiraSync?.running}
                   />
                 </div>
+              </div>
+            </div>
+          ) : null}
+
+          {memoryAutomationSkelIdx != null &&
+          memoryPanel?.phase === "ok" &&
+          memoryPanel.test_cases?.[memoryAutomationSkelIdx] ? (
+            <div
+              id="memory-automation-skel-backdrop"
+              className="modal-backdrop modal-backdrop--main-area"
+              role="presentation"
+              onClick={() => setMemoryAutomationSkelIdx(null)}
+            >
+              <div
+                id="automation-skel-dialog-memory"
+                className="modal-dialog modal-dialog-automation-skel"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="automation-skel-title"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <AutomationSkeletonModal
+                  key={`mem-${memoryAutomationSkelIdx}`}
+                  tc={memoryPanel.test_cases[memoryAutomationSkelIdx]}
+                  ticketId={memoryPushTicketId || ""}
+                  jiraBaseUrl={jiraUrl}
+                  api={api}
+                  onClose={() => setMemoryAutomationSkelIdx(null)}
+                  onAnnounce={setAnnounce}
+                />
               </div>
             </div>
           ) : null}
@@ -2169,7 +2233,10 @@ export default function App() {
                             ) : null}
                             <AutomationSkeletonIconButton
                               disabled={generatingTestCases || bulkJiraSync?.running}
-                              onClick={() => setAutomationSkelIdx(idx)}
+                              onClick={() => {
+                                setMemoryAutomationSkelIdx(null);
+                                setAutomationSkelIdx(idx);
+                              }}
                             />
                             {inputMode === "paste" ? (
                               <JiraTestPushButton
