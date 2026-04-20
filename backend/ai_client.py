@@ -380,21 +380,45 @@ def _tc_similarity_for_merge(a: dict, b: dict) -> float:
     return max(_tc_similarity(a, b), _tc_similarity_digit_norm(a, b))
 
 
-def _best_prior_similarity(
+def _best_prior_match(
     n: dict,
     prev_list: list,
     *,
     allowed_priorities: list[str],
-) -> float:
-    best = 0.0
+) -> dict | None:
+    best = None
+    best_sim = 0.0
     for tc in prev_list:
         if not isinstance(tc, dict):
             continue
         p = _norm(tc, default_change_status="unchanged", allowed_priorities=allowed_priorities)
         sim = _tc_similarity_for_merge(n, p)
-        if sim > best:
-            best = sim
-    return best
+        if sim > best_sim:
+            best_sim = sim
+            best = p
+    return best if best_sim >= _SIMILAR_THRESHOLD else None
+
+
+_SNAPSHOT_SIM_MIN = 0.5
+
+
+def _closest_prior_snapshot(
+    n: dict,
+    prev_list: list,
+    *,
+    allowed_priorities: list[str],
+) -> dict | None:
+    best = None
+    best_sim = 0.0
+    for tc in prev_list:
+        if not isinstance(tc, dict):
+            continue
+        p = _norm(tc, default_change_status="unchanged", allowed_priorities=allowed_priorities)
+        sim = _tc_similarity_for_merge(n, p)
+        if sim > best_sim:
+            best_sim = sim
+            best = p
+    return best if best_sim >= _SNAPSHOT_SIM_MIN else None
 
 
 def _dedupe_similar_test_cases(cases: list[dict]) -> list[dict]:
@@ -430,6 +454,35 @@ def _merge_change_status(a: str, b: str) -> str:
     return _CS_ORDER[max(_CS_ORDER.index(x), _CS_ORDER.index(y))]
 
 
+def _dedupe_unchanged_shadowed_by_updated(rows: list[dict]) -> list[dict]:
+    if len(rows) < 2:
+        return rows
+    remove: set[int] = set()
+    for i, u in enumerate(rows):
+        if str(u.get("change_status") or "") != "updated":
+            continue
+        ps = u.get("previous_steps")
+        if not isinstance(ps, list):
+            continue
+        pd = str(u.get("description") or "").strip()
+        ppt = _steps_norm_tuple(ps)
+        for j, st in enumerate(rows):
+            if j == i or j in remove:
+                continue
+            if str(st.get("change_status") or "") != "unchanged":
+                continue
+            if str(st.get("description") or "").strip() != pd:
+                continue
+            ss = st.get("steps")
+            if not isinstance(ss, list):
+                continue
+            if _steps_norm_tuple(ss) == ppt:
+                remove.add(j)
+    if not remove:
+        return rows
+    return [r for k, r in enumerate(rows) if k not in remove]
+
+
 def merge_test_cases_with_previous(
     previous: list | None,
     incoming: list,
@@ -446,6 +499,26 @@ def merge_test_cases_with_previous(
                 _tc_fingerprint(_norm(tc, default_change_status="unchanged", allowed_priorities=allowed_priorities)),
             )
 
+    def _has_diff_snap(row: dict) -> bool:
+        for k in ("description", "preconditions", "steps", "expected_result"):
+            pk = f"previous_{k}"
+            if pk not in row:
+                continue
+            prv = row.get(pk)
+            if k == "steps":
+                cur = row.get("steps")
+                if prv is None or cur is None:
+                    continue
+                if _steps_norm_tuple(prv) != _steps_norm_tuple(cur):
+                    return True
+                continue
+            cur = row.get(k) if k != "preconditions" else row.get("preconditions", "")
+            if prv is None or cur is None:
+                continue
+            if str(prv).strip() != str(cur).strip():
+                return True
+        return False
+
     order: list[tuple] = []
     by_fp: dict[tuple, dict] = {}
     for from_prior, tc in [(True, x) for x in prev_list] + [(False, x) for x in inc_list]:
@@ -461,9 +534,13 @@ def merge_test_cases_with_previous(
                     prev_cs = str(by_fp[fp2].get("change_status") or "unchanged")
                     inc_cs = str(n.get("change_status") or "new")
                     merged_cs = _merge_change_status(prev_cs, inc_cs)
-                    row = by_fp.pop(fp2)
+                    old_row = by_fp.pop(fp2)
+                    row = old_row
                     idx = order.index(fp2)
                     order[idx] = fp
+                    for fld in ("description", "preconditions", "steps", "expected_result"):
+                        old_val = old_row.get(fld) if fld != "preconditions" else old_row.get("preconditions", "")
+                        row[f"previous_{fld}"] = old_val
                     row["description"] = n["description"]
                     row["preconditions"] = n.get("preconditions", "")
                     row["steps"] = n["steps"]
@@ -507,13 +584,28 @@ def merge_test_cases_with_previous(
     for fp in order:
         if fp not in prior_fps:
             n = by_fp[fp]
-            sim = _best_prior_similarity(n, prev_list, allowed_priorities=allowed_priorities)
+            pm = _best_prior_match(n, prev_list, allowed_priorities=allowed_priorities)
             cur = str(n.get("change_status") or "new")
-            if prev_list and sim >= _SIMILAR_THRESHOLD:
+            if pm:
                 n["change_status"] = _merge_change_status(cur, "updated")
+                if not _has_diff_snap(n):
+                    for fld in ("description", "preconditions", "steps", "expected_result"):
+                        old = pm.get(fld) if fld != "preconditions" else pm.get("preconditions", "")
+                        n[f"previous_{fld}"] = old
             else:
                 n["change_status"] = _merge_change_status(cur, "new")
-    return [by_fp[fp] for fp in order]
+    out_rows = [by_fp[fp] for fp in order]
+    for n in out_rows:
+        if str(n.get("change_status") or "") == "updated" and not _has_diff_snap(n):
+            pm = _closest_prior_snapshot(n, prev_list, allowed_priorities=allowed_priorities)
+            if pm:
+                for fld in ("description", "preconditions", "steps", "expected_result"):
+                    if f"previous_{fld}" in n:
+                        continue
+                    old = pm.get(fld) if fld != "preconditions" else pm.get("preconditions", "")
+                    n[f"previous_{fld}"] = old
+    out_rows = _dedupe_unchanged_shadowed_by_updated(out_rows)
+    return out_rows
 
 
 def _llm_bearer() -> str:
@@ -548,6 +640,13 @@ def _chat(
 
 _SCORE_EACH_SYS = """Reply JSON only: {"scores":[number,...]}. Exactly as many numbers as test cases in the user message, same order. Each 0-10 (decimals allowed). Judge traceability to requirements, Gherkin structure, and clarity."""
 
+
+def strip_test_case_diff_meta(tc: dict) -> dict:
+    if not isinstance(tc, dict):
+        return tc
+    return {k: v for k, v in tc.items() if not str(k).startswith("previous_")}
+
+
 def _fit_case_scores_0_10(arr: object, n: int) -> list[float] | None:
     if not isinstance(arr, list) or n <= 0:
         return None
@@ -567,7 +666,8 @@ def score_test_cases_0_10(req: dict, cases: list[dict]) -> None:
     if not base:
         return
     rq = json.dumps(req, ensure_ascii=False, indent=2)
-    body = json.dumps({"test_cases": cases}, ensure_ascii=False, indent=2)
+    clean = [strip_test_case_diff_meta(c) if isinstance(c, dict) else c for c in cases]
+    body = json.dumps({"test_cases": clean}, ensure_ascii=False, indent=2)
     user = f"Requirements:\n{rq}\n\nTest cases:\n{body}"
     msgs = [{"role": "system", "content": _SCORE_EACH_SYS}, {"role": "user", "content": user}]
     model = (settings.llm_model or "").strip() or "local-model"

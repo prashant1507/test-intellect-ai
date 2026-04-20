@@ -5,6 +5,7 @@ import json
 import re
 from datetime import datetime, timezone
 
+from ai_client import strip_test_case_diff_meta
 from sqlite_util import open_sqlite
 
 _WS = re.compile(r"\s+")
@@ -186,7 +187,12 @@ def list_saved() -> list[dict]:
 
 def save(jira_key: str, requirements: dict, test_cases: list) -> None:
     k, now = jira_key.upper(), datetime.now(timezone.utc).isoformat()
-    rj, tj = json.dumps(requirements, ensure_ascii=False), json.dumps(test_cases, ensure_ascii=False)
+    tcs = (
+        [strip_test_case_diff_meta(x) if isinstance(x, dict) else x for x in test_cases]
+        if isinstance(test_cases, list)
+        else test_cases
+    )
+    rj, tj = json.dumps(requirements, ensure_ascii=False), json.dumps(tcs, ensure_ascii=False)
     with _db() as c:
         prev = c.execute(
             "SELECT id FROM ticket_memory WHERE jira_key=? ORDER BY id DESC LIMIT 1",
@@ -243,6 +249,7 @@ def jira_push_fingerprint(tc: dict) -> str:
 
 def merge_test_case_into_memory(jira_key: str, requirements: dict, test_case: dict) -> None:
     k = jira_key.upper()
+    test_case = strip_test_case_diff_meta(test_case) if isinstance(test_case, dict) else test_case
     fp_new = jira_push_fingerprint(test_case)
     latest = get_latest(k)
     if not latest:

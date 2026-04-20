@@ -35,6 +35,7 @@ from ai_client import (
     merge_test_cases_with_previous,
     resolve_priority_allowed_for_generation,
     score_merged_test_cases,
+    strip_test_case_diff_meta,
 )
 from audit_store import append_audit, init_audit_db, list_audit
 from memory_store import (
@@ -728,6 +729,7 @@ async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
         raise HTTPException(status_code=400, detail="Cannot push to JIRA in mock mode.")
     rk = body.requirement_key.strip().upper()
     existing = (body.existing_issue_key or "").strip().upper()
+    tc_jira = strip_test_case_diff_meta(body.test_case) if isinstance(body.test_case, dict) else body.test_case
     if existing:
         try:
             result = await asyncio.to_thread(
@@ -736,7 +738,7 @@ async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
                 body.username,
                 body.password,
                 existing,
-                body.test_case,
+                tc_jira,
             )
         except RequestException as e:
             raise _jira_request_http_exception(e) from e
@@ -758,7 +760,7 @@ async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
             body.password,
             rk,
             tpk,
-            body.test_case,
+            tc_jira,
             body.jira_test_issue_type.strip() or None,
             body.jira_link_type.strip() or None,
         )

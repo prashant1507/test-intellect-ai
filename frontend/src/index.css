@@ -36,6 +36,10 @@
   --link: #1e4faf;
   --warn-text: #78350f;
   --warn-bg: #e8d9b8;
+  --tc-diff-remove: #b91c1c;
+  --tc-diff-remove-bg: color-mix(in srgb, #b91c1c 13%, transparent);
+  --tc-diff-add: #15803d;
+  --tc-diff-add-bg: color-mix(in srgb, #15803d 13%, transparent);
 }
 
 [data-theme="light"] body {
@@ -83,6 +87,10 @@
   --link: #7cb3ff;
   --warn-text: #fcd34d;
   --warn-bg: #2a2310;
+  --tc-diff-remove: #f87171;
+  --tc-diff-remove-bg: color-mix(in srgb, #f87171 15%, transparent);
+  --tc-diff-add: #22c55e;
+  --tc-diff-add-bg: color-mix(in srgb, #22c55e 14%, transparent);
 }
 
 * {
@@ -2026,6 +2034,10 @@ section.tc {
   margin-top: 0;
 }
 
+.tc-summary-actions .copy-icon {
+  margin-top: 0;
+}
+
 .tc-summary-actions .tc-jira-push-column {
   margin-top: 0;
 }
@@ -2282,6 +2294,45 @@ section.tc.status-new {
 section.tc.status-updated {
   border-left: 4px solid var(--tc-upd-border);
   background: var(--tc-upd-bg);
+}
+
+section.tc.status-updated .tc-diff-line--remove {
+  color: var(--tc-diff-remove);
+  background: var(--tc-diff-remove-bg);
+  border-radius: 3px;
+  padding: 0.06rem 0.2rem;
+  margin: 0.1rem 0;
+}
+
+section.tc.status-updated .tc-diff-line--add {
+  color: var(--tc-diff-add);
+  background: var(--tc-diff-add-bg);
+  border-radius: 3px;
+  padding: 0.06rem 0.2rem;
+  margin: 0.1rem 0;
+}
+
+section.tc.status-updated .tc-diff-line--same {
+  padding: 0.06rem 0.1rem 0.06rem 0.2rem;
+  margin: 0.06rem 0;
+}
+
+section.tc.status-updated .tc-diff-block-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 0.35rem 0 0.15rem;
+}
+
+section.tc.status-updated ol.tc-diff-steps li.tc-diff-line--remove,
+section.tc.status-updated ol.tc-diff-steps li.tc-diff-line--add,
+section.tc.status-updated ol.tc-gherkin.tc-diff-steps li.tc-diff-line--remove,
+section.tc.status-updated ol.tc-gherkin.tc-diff-steps li.tc-diff-line--add {
+  list-style: none;
+  margin-left: 0;
+  padding-left: 0.3rem;
 }
 
 section.tc.status-unchanged {

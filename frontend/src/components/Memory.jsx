@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { fmtReqMarkdown, fmtTestsMarkdown, jiraWikiToMarkdown } from "../utils/format";
 import { resolvePushedJiraKey } from "../utils/jiraPushFingerprint";
-import { Copy, Spinner } from "./common";
+import { Copy, FloatingTooltip, Spinner } from "./common";
 import { AutomationSkeletonIconButton } from "./AutomationSkeletonModal";
 import { JiraTestPushButton } from "./JiraTestPushButton";
 import { TestCaseBody } from "./TestCaseBody";
@@ -38,6 +38,7 @@ function MemoryTestCasesView({
   jiraPushed,
   onOpenAutomationSkeleton,
   automationSkeletonDisabled,
+  onAnnounce,
 }) {
   const list = Array.isArray(testCases) ? testCases : [];
   const [tcOpen, setTcOpen] = useState({});
@@ -79,6 +80,14 @@ function MemoryTestCasesView({
                   onClick={() => onOpenAutomationSkeleton(idx)}
                 />
                 <JiraTestPushButton displayMode="linkOnly" pushedKey={pushedKey} jiraBaseUrl={jiraUrl} />
+                <FloatingTooltip text="Copy this test case as Markdown">
+                  <Copy
+                    text={fmtTestsMarkdown([tc])}
+                    label="Copy test case as Markdown"
+                    onAnnounce={onAnnounce}
+                    disabled={automationSkeletonDisabled}
+                  />
+                </FloatingTooltip>
               </div>
             </div>
             {open ? (
@@ -136,6 +145,7 @@ export function MemoryDetailContent({
               jiraPushed={jiraPushed}
               onOpenAutomationSkeleton={onOpenAutomationSkeleton}
               automationSkeletonDisabled={automationSkeletonDisabled}
+              onAnnounce={onAnnounce}
             />
           </div>
         </div>

@@ -40,6 +40,7 @@ import { normalizeLinkedJiraFromApi } from "./utils/linkedJiraPayload";
 import { readStoredJiraLinkType, readStoredJiraTestIssueType, readStoredJiraUrl } from "./utils/storage";
 import { isAnyGenBusy, isJiraGenBusy, isPasteGenBusy } from "./utils/generationBusy";
 import { clampAgenticMaxRounds, parseMinTc, parseMaxTc, testCaseBounds } from "./utils/testCase";
+import { settleUpdatedRowAfterPersist, stripTestCaseDiffMeta } from "./utils/testCaseDiff";
 
 export default function App() {
   const [theme, setTheme] = useState(readTheme);
@@ -517,7 +518,7 @@ export default function App() {
           test_project_key: updateExisting ? "" : jiraTestProject.trim(),
           jira_test_issue_type: jiraTestIssueType.trim() || "Test",
           jira_link_type: jiraLinkType.trim() || "Relates",
-          test_case: tcToSend,
+          test_case: stripTestCaseDiffMeta(tcToSend),
           existing_issue_key: updateExisting ? existingKey : "",
         });
         const createdKey = res.created_key;
@@ -552,7 +553,9 @@ export default function App() {
         const baseList =
           remappedForMemory && remappedForMemory.length ? remappedForMemory : testsRef.current;
         const withKey = (baseList || []).map((t, i) =>
-          i === idx ? { ...t, jira_issue_key: createdKey } : t,
+          i === idx
+            ? settleUpdatedRowAfterPersist({ ...t, jira_issue_key: createdKey })
+            : t,
         );
         setTests(withKey);
         testsRef.current = withKey;
@@ -740,8 +743,8 @@ export default function App() {
     async (idx, updatedTc) => {
       const oldTc = tests?.[idx];
       const tidU = (key || ticketId).trim().toUpperCase();
-      const nextTc = { ...updatedTc, change_status: "updated" };
-      const nextList = (tests || []).map((t, i) => (i === idx ? nextTc : t));
+      const nextTc = { ...stripTestCaseDiffMeta(updatedTc), change_status: "updated" };
+      const nextList = (tests || []).map((t, i) => (i === idx ? nextTc : stripTestCaseDiffMeta(t)));
       setTests(nextList);
       setEditTcIdx(null);
       setAnnounce("Test case updated.");
@@ -2076,7 +2079,12 @@ export default function App() {
                   <h2>Requirements {key ? `(${key})` : ""}</h2>
                   {lastFetchAt ? <p className="last-run">Last loaded {formatTime(lastFetchAt)}</p> : null}
                 </div>
-                <Copy text={fmtReqMarkdown(req)} label="Copy as Markdown" onAnnounce={setAnnounce} />
+                <Copy
+                  text={fmtReqMarkdown(req)}
+                  label="Copy as Markdown"
+                  onAnnounce={setAnnounce}
+                  disabled={loadingRequirements || !req}
+                />
               </div>
               {loadingRequirements ? (
                 <div className="section-loading" role="status" aria-live="polite">
@@ -2143,7 +2151,12 @@ export default function App() {
                 <h2>Test Cases</h2>
                 {lastGenerateAt ? <p className="last-run">Last Generated {formatTime(lastGenerateAt)}</p> : null}
               </div>
-              <Copy text={fmtTestsMarkdown(tests)} label="Copy as Markdown" onAnnounce={setAnnounce} />
+              <Copy
+                text={fmtTestsMarkdown(tests)}
+                label="Copy as Markdown"
+                onAnnounce={setAnnounce}
+                disabled={loadingTestCases || !tests?.length}
+              />
             </div>
             {hadPriorMemory ? (
               <p className="meta">
@@ -2360,6 +2373,14 @@ export default function App() {
                                 }
                               />
                             )}
+                            <FloatingTooltip text="Copy this test case as Markdown">
+                              <Copy
+                                text={fmtTestsMarkdown([tc])}
+                                label="Copy test case as Markdown"
+                                onAnnounce={setAnnounce}
+                                disabled={generatingTestCases || bulkJiraSync?.running}
+                              />
+                            </FloatingTooltip>
                           </div>
                         </div>
                         {open ? (

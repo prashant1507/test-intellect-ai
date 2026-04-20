@@ -28,3 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 2 AI agents verifying the generated tet cases
 - LLM now shows the scoring of test cases out of /10
 
+## [1.0.2]
+
+### Added
+
+- Copy icon for individual test cases
+- Copy icon will be enabled after Requirements or Test Cases data is loaded
+- Now for UPDATED test cases, new changes will be displayed in red and old one in red

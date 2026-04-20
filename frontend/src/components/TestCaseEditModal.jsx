@@ -22,7 +22,17 @@ export function TestCaseEditModal({ tc, onSave, onClose }) {
     .split(/\r?\n/)
     .map((l) => l.trimEnd())
     .filter((l) => l.length > 0);
-  const canSave = description.trim().length > 0 && steps.length > 0;
+  const origDesc = String(tc.description || "").trim();
+  const origPre = String(tc.preconditions || "").trim();
+  const origExp = String(tc.expected_result || "").trim();
+  const origSteps = (tc.steps || []).map((s) => String(s));
+  const sameLen = origSteps.length === steps.length;
+  const stepsMatch = sameLen && origSteps.every((s, i) => s === steps[i]);
+  const hasChanges =
+    description.trim() !== origDesc ||
+    !stepsMatch ||
+    (!gh && (preconditions.trim() !== origPre || expectedResult.trim() !== origExp));
+  const canSave = description.trim().length > 0 && steps.length > 0 && hasChanges;
 
   const handleSave = () => {
     if (!canSave) return;
