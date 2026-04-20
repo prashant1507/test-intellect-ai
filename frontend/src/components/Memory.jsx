@@ -1,12 +1,12 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { changeStatusLabel, fmtReqMarkdown, fmtTestsMarkdown, jiraWikiToMarkdown } from "../utils/format";
+import { fmtReqMarkdown, fmtTestsMarkdown, jiraWikiToMarkdown } from "../utils/format";
 import { resolvePushedJiraKey } from "../utils/jiraPushFingerprint";
-import { Copy, FloatingTooltip, Spinner } from "./common";
+import { Copy, Spinner } from "./common";
 import { JiraTestPushButton } from "./JiraTestPushButton";
 import { TestCaseBody } from "./TestCaseBody";
-import { PriorityTag } from "./PriorityTag";
+import { TestCaseSummaryBadges } from "./TestCaseSummaryBadges";
 
 const mdLinkProps = (props) => <a {...props} target="_blank" rel="noopener noreferrer" />;
 
@@ -62,18 +62,7 @@ function MemoryTestCasesView({ testCases, memoryTicketId, jiraUrl, jiraPushed })
                 <span className="tc-chevron" aria-hidden>
                   {open ? "▼" : "▶"}
                 </span>
-                <span className={`badge badge--tc-${safeSt}`}>{changeStatusLabel(tc.change_status)}</span>
-                {tc.jira_existing ? (
-                  <FloatingTooltip text="Already in JIRA">
-                    <span className="badge badge--jira-existing">EXISTING</span>
-                  </FloatingTooltip>
-                ) : null}
-                {tc.jira_status ? (
-                  <FloatingTooltip text="Workflow Status">
-                    <span className="tc-jira-status">{tc.jira_status}</span>
-                  </FloatingTooltip>
-                ) : null}
-                <PriorityTag priority={tc.priority} iconUrl={tc.priority_icon_url} />
+                <TestCaseSummaryBadges tc={tc} statusSlug={safeSt} />
                 <span className="tc-desc">{tc.description || "—"}</span>
               </button>
               <JiraTestPushButton displayMode="linkOnly" pushedKey={pushedKey} jiraBaseUrl={jiraUrl} />

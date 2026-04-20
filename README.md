@@ -9,18 +9,19 @@
 [![LLM](https://img.shields.io/badge/LLM-OpenAI%20compatible-8B5CF6?style=flat-square&logo=openai&logoColor=white)](https://platform.openai.com/docs/api-reference)
 [![Keycloak](https://img.shields.io/badge/Keycloak-OIDC-5C6BC0?style=flat-square&logo=keycloak&logoColor=white)](https://www.keycloak.org/)
 
-Web app that pulls **JIRA** requirements (or pasted text), calls an **OpenAI-compatible** LLM (**local** or **cloud**) to generate **Gherkin-style test cases**. 
+Web app that pulls JIRA requirements (or pasted text) and uses an OpenAI-compatible LLM (local or cloud) to generate Gherkin-style test cases.
+Set the model via `LLM_URL` (must include /v1) and optionally `LLM_ACCESS_TOKEN` for Bearer auth.
 
-Configure the model with **`LLM_URL`** (base URL including `/v1`) and optional **`LLM_ACCESS_TOKEN`** for providers that require a **Bearer API key**. 
+Optionally:
 
-Optionally **saves** runs per ticket in **SQLite**, and records actions in an **audit log**. 
-
-Optional **Keycloak** sign-in ties users to audit entries.
+- Save runs per ticket in SQLite 
+- Track actions in an audit log 
+- Use Keycloak to associate users with activity
 
 ---
 ### Product Sample Video
 
-[video.mp4](resources/video.mp4)
+See: [video.mp4](resources/video.mp4)
 
 ---
 
@@ -42,43 +43,42 @@ flowchart LR
 
 ### Requirements
 
-- **JIRA mode:** Fetch a ticket’s summary and description. The API normalizes Atlassian Document Format, wiki markup, and rendered HTML into plain text for the model.
-- **Paste mode:** Generate tests from pasted plain text or Markdown without JIRA credentials.
+- **JIRA mode:** Fetch ticket summary + description. Formats (Atlassian Document Format, wiki, HTML) are normalized to plain text.
+- **Paste mode:** Generate tests from plain text or Markdown. No JIRA needed.
 
 ### AI Test Generation
-
-- **Local / Cloud Models:** Any OpenAI-compatible **`POST …/v1/chat/completions`** endpoint.
-  - **Local:** e.g. **LM Studio** on `http://127.0.0.1:1234/v1`.
-  - **Cloud:** e.g. **OpenAI**, **Azure OpenAI**, or other hosts with the same API shape—set **`LLM_URL`** to that base URL and **`LLM_ACCESS_TOKEN`** to your **API token** (sent as `Authorization: Bearer …`).
-  - Leave **`LLM_ACCESS_TOKEN`** empty for typical local servers (a placeholder bearer is used where the server ignores auth).
-- **Structured Output:** Scenarios with steps (Gherkin-style); configurable **minimum** and **maximum** test cases per run (`max_test_cases = 0` means no upper limit).
-- **Priorities in Generated Tests:** In **paste mode**, allowed priority labels come from **`PASTE_MODE_PRIORITIES`** in `.env`. In **JIRA mode**, generation can use your project’s **JIRA priority names** (loaded for the run) so labels stay aligned with what you can map and push.
-- **Automation skeleton:** Button on each generated test case to open a dialog and generate skeleton automation code (language/framework) via the LLM.
+- Works with any OpenAI-compatible /v1/chat/completions endpoint 
+- Supports local (LM Studio) or cloud (OpenAI, Azure, etc.)
+- Outputs structured Gherkin scenarios with steps 
+- Configurable min/max test cases (0 = no limit)
+- Priorities 
+  - Paste mode → from `PASTE_MODE_PRIORITIES` in [.env](.env)
+  - JIRA mode → uses project priorities 
+- Extras
+  - Generate automation code skeletons per test case
+- Agnets
+  - Two-step agentic flow: validate-and-refine generation
+- LLM set score for each test cases out of /10
 
 ### History & Comparison
-
-- **Per-Ticket Storage:** SQLite keeps the latest requirements and generated tests per ticket (when saving is enabled).
-- **Similar Ticket Matching:** If there is no exact saved row for a key, optional **similar title + description** matching via **`MEMORY_SIMILARITY_THRESHOLD`** in `.env` (`0` = off; try ~`0.88`–`0.95`).
-- **History UI:** List saved tickets, filter by ticket id, open a detail view with full requirements and tests.
+- SQLite keeps the latest requirements and generated tests per ticket (when saving is enabled).
+- **Similar Ticket Matching:** If there is no exact-saved row for a key, optional **similar title + description** matching via **`MEMORY_SIMILARITY_THRESHOLD`** in `.env` (`0` = off; try ~`0.88`–`0.95`).
+- View history and ticket details and filter by requirement id.
 - **Requirements Diffs:** When you regenerate with prior saved data for the **same requirement ticket**, the UI can show a **requirements diff** and **change status** tags on test cases (e.g. new / updated / unchanged).
 
 ### JIRA Integration
-
-- **Fetch & generate:** Load requirements from JIRA, then generate test cases in-app (same ticket flow as above).
-- **Push to JIRA:** Create **new** test issues in a configurable **test project** and **issue type**, or **update** an existing test issue when an issue key is already linked.
-  - **Link to Requirement:** The API creates an **issue link** between the new/updated test issue and the requirement ticket (**POST**-style link on the server using inward/outward issue keys). Default link type name is **`Relates`** (must match **Project → Issue linking** in Jira); override with **`JIRA_TEST_LINK_TYPE`**.
-  - **Link Direction:** **`JIRA_LINK_INWARD_IS_REQUIREMENT`** (`true`/`false`) controls which side of the link is the requirement vs the test—swap if your site expects the opposite.
-  - **Defaults From `.env`:** **`JIRA_TEST_PROJECT_KEY`**, **`JIRA_TEST_ISSUE_TYPE`**, **`JIRA_TEST_LINK_TYPE`** (also overridable per request from the UI where supported).
-  - **UI:** Shows a **link** to the Jira issue when a test is pushed, and **create vs update** affordances (e.g. update when the scenario already has a linked issue).
-  - **Linked Issues & Status:** Fetch linked issues from JIRA for the requirement (configured test issue type); show priority and workflow status; rows matched to a linked issue are marked **EXISTING** and include the issue link.
-- **Bulk Push:** Push **filtered** test rows (e.g. by change-status chips: All, Unchanged, Updated, New) using the **same rules** as per-row push; the UI uses a **confirmation-style** control before running the bulk operation.
-- **Priorities:** Optional alignment with Jira—**`POST /api/jira/priorities`** returns priority **names** and **icon URLs**; the **+** flow can map AI priorities to Jira after the test project is set (see **Notes**).
+- Fetch requirements and generate tests 
+- Create or update test issues in JIRA 
+- Link tests to requirements (default: Relates)
+- Control link direction via `JIRA_LINK_INWARD_IS_REQUIREMENT` in [.env](.env)
+- Bulk push supported (filtered by change type)
+- Show linked issues, status, and priority 
+- Map AI priorities to JIRA priorities
 
 ### Audit & export
-
-- **Audit Log:** Records fetch, generate, login/logout, and related actions. With Keycloak enabled, entries include **username**.
-- **Filters:** Filter audit rows by user, ticket, and action.
-- **PDF Export:** Download full or filtered audit records as a PDF.
+- Logs: fetch, generate, login/logout 
+- Filter by user, ticket, action 
+- Export audit logs as PDF
 
 ### Authentication & Modes
 
@@ -89,17 +89,17 @@ flowchart LR
 
 ### User Experience
 
-- **Light / Dark Theme:** Toggle in the header.
-- **Copy as Markdown:** Copy requirements and test cases where supported.
-- **Accessibility:** Skip link to main content; `aria-live` announcements for key actions.
-- **Help Tooltips:** Shared **FloatingTooltip** (React portal + positioned near the anchor) so help text is not clipped inside modals or the sidebar; avoids relying on slow native `title` tooltips for primary actions.
-- **JIRA Actions:** Per-row and bulk controls use the same tooltip pattern for short status text (e.g. “Added to JIRA as …”) without extra empty padding on one-line hints.
-- **Form Layout:** In **JIRA mode**, **minimum / maximum test cases** sit with the main JIRA form (e.g. near password). In **paste mode**, min/max stay **below** the requirements block.
+- Light / dark theme 
+- Copy as Markdown 
+- Accessible UI (aria-live, skip links)
+- Tooltips via portal (no clipping issues)
+- Consistent JIRA action controls 
+- Clean form layout for JIRA vs paste mode
 
 ---
 
 <details>
-<summary><strong>Environment</strong> (<code>.env</code>)</summary>
+<summary><strong>Environment Setup</strong></summary>
 
 1. Copy the example file to the **repository root**:
 
@@ -219,9 +219,8 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 ---
 
 ## Future Improvements & Features
-- Use linked issue to get knowledge of the Requiremenyt ticket
-- Choice to generate test cases based on BDD or somethign else
-- Agentic feature to validate created test cases
+- Use linked issue to get knowledge of the Requirement ticket
+- Choice to generate test cases based on BDD or something else
 - RAG feature
 - Image reading support
 - Link with QA test framework and DEV code

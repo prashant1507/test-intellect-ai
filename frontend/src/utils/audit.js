@@ -2,7 +2,8 @@ import { formatTime } from "./format";
 
 const AUDIT_ACTION = {
   fetch_requirements: "Fetched Requirements",
-  generate_test_cases: "Generated Test Cases",
+  generate_test_cases: "Generated Tests",
+  generate_test_cases_agentic: "Generated Tests",
   memory_update_test_cases: "Update saved history (priorities)",
   logged_in: "Logged In",
   logged_out: "Logged Out",

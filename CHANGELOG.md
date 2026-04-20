@@ -25,4 +25,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fetch linked issues from JIRA for the requirement (configured test issue type); show priority and workflow status; rows matched to a linked issue are marked **EXISTING** and include the issue link.
 - Automation skeleton generation
+- 2 AI agents verifying the generated tet cases
+- LLM now show scoring of test cases out of /10
 

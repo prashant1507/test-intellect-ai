@@ -271,6 +271,9 @@ def _norm(c: dict, *, default_change_status: str = "new", allowed_priorities: li
     jk = _pick_jira_issue_key(c.get("jira_issue_key"))
     if jk:
         out["jira_issue_key"] = jk
+    sc = c.get("score")
+    if isinstance(sc, (int, float)) and not isinstance(sc, bool):
+        out["score"] = round(max(0.0, min(10.0, float(sc))), 1)
     return out
 
 
@@ -424,6 +427,9 @@ def _dedupe_similar_test_cases(cases: list[dict]) -> list[dict]:
                 jk = _pick_jira_issue_key(tc.get("jira_issue_key"), out[i].get("jira_issue_key"))
                 if jk:
                     out[i]["jira_issue_key"] = jk
+                sc = tc.get("score")
+                if isinstance(sc, (int, float)) and not isinstance(sc, bool):
+                    out[i]["score"] = round(max(0.0, min(10.0, float(sc))), 1)
                 merged = True
                 break
         if not merged:
@@ -497,6 +503,8 @@ def merge_test_cases_with_previous(
                         row["change_status"] = _merge_change_status(merged_cs, "updated")
                     else:
                         row["change_status"] = merged_cs
+                    if "score" in n:
+                        row["score"] = n["score"]
                     by_fp[fp] = row
                     merged_sim = True
                     break
@@ -509,6 +517,8 @@ def merge_test_cases_with_previous(
         inc_cs = str(n.get("change_status") or "new")
         by_fp[fp]["change_status"] = _merge_change_status(prev_cs, inc_cs)
         by_fp[fp]["priority"] = n.get("priority") or by_fp[fp].get("priority")
+        if "score" in n:
+            by_fp[fp]["score"] = n["score"]
         _merge_jira_row_meta(by_fp[fp], n)
         jk = _pick_jira_issue_key(n.get("jira_issue_key"), by_fp[fp].get("jira_issue_key"))
         if jk:
@@ -535,16 +545,73 @@ def _llm_bearer() -> str:
     return t if t else "lm-studio"
 
 
-def _chat(base: str, model: str, messages: list[dict], temperature: float) -> str:
+def _chat(
+    base: str,
+    model: str,
+    messages: list[dict],
+    temperature: float,
+    *,
+    max_tokens: int | None = None,
+    response_format: dict | None = None,
+) -> str:
     url = f"{base.rstrip('/')}/chat/completions"
+    payload: dict = {"model": model, "messages": messages, "temperature": temperature}
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
+    if response_format is not None:
+        payload["response_format"] = response_format
     r = requests.post(
         url,
         headers={"Content-Type": "application/json", "Authorization": f"Bearer {_llm_bearer()}"},
-        json={"model": model, "messages": messages, "temperature": temperature},
+        json=payload,
         timeout=600,
     )
     r.raise_for_status()
     return (r.json().get("choices") or [{}])[0].get("message", {}).get("content") or ""
+
+
+_SCORE_EACH_SYS = """Reply JSON only: {"scores":[number,...]}. Exactly as many numbers as test cases in the user message, same order. Each 0-10 (decimals allowed). Judge traceability to requirements, Gherkin structure, and clarity."""
+
+def _fit_case_scores_0_10(arr: object, n: int) -> list[float] | None:
+    if not isinstance(arr, list) or n <= 0:
+        return None
+    try:
+        out = [max(0.0, min(10.0, float(x))) for x in arr[:n]]
+    except (TypeError, ValueError):
+        return None
+    while len(out) < n:
+        out.append(5.0)
+    return out[:n]
+
+
+def score_test_cases_0_10(req: dict, cases: list[dict]) -> None:
+    if not cases or settings.mock:
+        return
+    base = settings.llm_url.rstrip("/")
+    if not base:
+        return
+    rq = json.dumps(req, ensure_ascii=False, indent=2)
+    body = json.dumps({"test_cases": cases}, ensure_ascii=False, indent=2)
+    user = f"Requirements:\n{rq}\n\nTest cases:\n{body}"
+    msgs = [{"role": "system", "content": _SCORE_EACH_SYS}, {"role": "user", "content": user}]
+    model = (settings.llm_model or "").strip() or "local-model"
+    try:
+        raw = _chat(base, model, msgs, 0.05, max_tokens=1024)
+        data = _json(raw)
+        fitted = _fit_case_scores_0_10(data.get("scores"), len(cases))
+        if not fitted:
+            return
+        for i, c in enumerate(cases):
+            c["score"] = round(fitted[i], 1)
+    except Exception:
+        return
+
+
+def score_merged_test_cases(req: dict, cases: list[dict]) -> None:
+    for c in cases:
+        if isinstance(c, dict):
+            c.pop("score", None)
+    score_test_cases_0_10(req, cases)
 
 
 def _priority_guidance(allowed: list[str], paste_mode: bool) -> str:
@@ -567,19 +634,16 @@ def _priority_guidance(allowed: list[str], paste_mode: bool) -> str:
     return f'Each test case MUST include "priority" as exactly one of: {plist}.'
 
 
-async def generate_test_cases(
-    req: dict[str, str],
+def build_generation_user_prompt(
+    req: dict,
     prev: dict | None,
     *,
+    paste_mode: bool,
+    existing_jira_tests: list[dict] | None,
     allowed_priorities: list[str],
-    min_test_cases: int = 1,
-    max_test_cases: int = 10,
-    paste_mode: bool = False,
-    existing_jira_tests: list[dict] | None = None,
-) -> list[dict]:
-    base = settings.llm_url.rstrip("/")
-    if not base:
-        raise ValueError("LLM_URL is not set in .env")
+    min_test_cases: int,
+    max_test_cases: int,
+) -> str:
     prior = (
         "Prior:\n"
         + json.dumps(
@@ -623,7 +687,31 @@ async def generate_test_cases(
         "Use correct English grammar in every description and step line. "
         "Return only the JSON object.",
     ]
-    user = "\n\n".join(parts)
+    return "\n\n".join(parts)
+
+
+async def generate_test_cases(
+    req: dict[str, str],
+    prev: dict | None,
+    *,
+    allowed_priorities: list[str],
+    min_test_cases: int = 1,
+    max_test_cases: int = 10,
+    paste_mode: bool = False,
+    existing_jira_tests: list[dict] | None = None,
+) -> list[dict]:
+    base = settings.llm_url.rstrip("/")
+    if not base:
+        raise ValueError("LLM_URL is not set in .env")
+    user = build_generation_user_prompt(
+        req,
+        prev,
+        paste_mode=paste_mode,
+        existing_jira_tests=existing_jira_tests,
+        allowed_priorities=allowed_priorities,
+        min_test_cases=min_test_cases,
+        max_test_cases=max_test_cases,
+    )
     model = (settings.llm_model or "").strip() or "local-model"
     msgs = [{"role": "system", "content": SYS}, {"role": "user", "content": user}]
     raw = await asyncio.to_thread(_chat, base, model, msgs, 0.15)

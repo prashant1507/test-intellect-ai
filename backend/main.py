@@ -24,12 +24,14 @@ from jira_client import (
     push_test_case_to_jira,
     update_test_case_in_jira,
 )
+from agentic import run_agentic_pipeline_async
 from ai_client import (
     generate_automation_skeleton,
     generate_test_cases,
     merge_ai_cases_with_jira_existing,
     merge_test_cases_with_previous,
     resolve_priority_allowed_for_generation,
+    score_merged_test_cases,
 )
 from audit_store import append_audit, init_audit_db, list_audit
 from memory_store import (
@@ -207,6 +209,14 @@ class PastedGenerateIn(BaseModel):
         return self
 
 
+class GenerateAgenticIn(GenerateIn):
+    max_rounds: int = Field(5, ge=1, le=10)
+
+
+class PastedAgenticIn(PastedGenerateIn):
+    max_rounds: int = Field(5, ge=1, le=10)
+
+
 class AuthAuditIn(BaseModel):
     event: Literal["login", "logout"]
 
@@ -309,6 +319,21 @@ async def _fetch_jira(body: TicketIn) -> tuple[str, dict]:
     return key, raw
 
 
+async def _jira_generate_context(body: GenerateIn) -> tuple[str, dict, dict | None, bool, list, list, str, list[str] | None]:
+    key, req = await _fetch_jira(body)
+    jira_entries, linked_work_raw, work_labels = await _load_ticket_linked_jira(body, key)
+    prev = get_latest(key)
+    similar_used = False
+    thr = settings.memory_similarity_threshold
+    if prev is None and thr > 0:
+        _, sp = find_similar_memory(req, thr)
+        if sp is not None:
+            prev = sp
+            similar_used = True
+    jira_names = await _maybe_fetch_jira_priority_names_for_generate(body)
+    return key, req, prev, similar_used, jira_entries, linked_work_raw, work_labels, jira_names
+
+
 async def _maybe_fetch_jira_priority_names_for_generate(body: GenerateIn) -> list[str] | None:
     if not body.test_project_key.strip() or settings.mock:
         return None
@@ -341,6 +366,30 @@ def _existing_jira_tests_for_llm(jira_entries: list | None) -> list[dict] | None
     return rows or None
 
 
+def _generate_response_base(
+    key: str,
+    req: dict,
+    cases: list,
+    req_diff: str | None,
+    prev: dict | None,
+    similar_used: bool,
+    jira_entries: list | None,
+    linked_jira_work_entries: list | None,
+    linked_jira_work_type_labels: str,
+) -> dict:
+    return {
+        "ticket_id": key,
+        "requirements": req,
+        "test_cases": cases,
+        "requirements_diff": req_diff,
+        "had_previous_memory": prev is not None,
+        "memory_match": ("similar" if similar_used else "exact") if prev else None,
+        "linked_jira_tests": _linked_jira_tests_light(jira_entries or []),
+        "linked_jira_work": _linked_jira_work_light(linked_jira_work_entries or []),
+        "linked_jira_work_type_labels": linked_jira_work_type_labels,
+    }
+
+
 async def _generate_and_persist(
     key: str,
     req: dict,
@@ -370,10 +419,65 @@ async def _generate_and_persist(
             paste_mode=paste_mode,
             existing_jira_tests=ej_llm,
         )
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"LLM error: {e}") from e
+        _raise_llm_route_error(e)
+    if jira_entries:
+        cases = merge_ai_cases_with_jira_existing(cases, jira_entries, allowed_priorities=allowed)
+    prior_union = _prior_cases_union_for_merge(key, prev)
+    if prior_union:
+        cases = merge_test_cases_with_previous(prior_union, cases, allowed_priorities=allowed)
+    await asyncio.to_thread(score_merged_test_cases, req, cases)
+    if not settings.mock:
+        if save_memory:
+            save(key, req, cases)
+        _maybe_audit(kc, key, "generate_test_cases")
+    return _generate_response_base(
+        key,
+        req,
+        cases,
+        req_diff,
+        prev,
+        similar_used,
+        jira_entries,
+        linked_jira_work_entries,
+        linked_jira_work_type_labels,
+    )
+
+
+async def _generate_and_persist_agentic(
+    key: str,
+    req: dict,
+    prev: dict | None,
+    similar_used: bool,
+    min_test_cases: int,
+    max_test_cases: int,
+    max_rounds: int,
+    save_memory: bool,
+    kc: dict | None,
+    *,
+    paste_mode: bool = False,
+    priority_labels: list[str] | None = None,
+    jira_entries: list | None = None,
+    linked_jira_work_entries: list | None = None,
+    linked_jira_work_type_labels: str = "",
+) -> dict:
+    req_diff = _diff(prev["requirements"], req) if prev else None
+    allowed = resolve_priority_allowed_for_generation(paste_mode, priority_labels)
+    ej_llm = _existing_jira_tests_for_llm(jira_entries)
+    try:
+        out = await run_agentic_pipeline_async(
+            requirements=req,
+            allowed_priorities=allowed,
+            min_test_cases=min_test_cases,
+            max_test_cases=max_test_cases,
+            max_rounds=max_rounds,
+            prev=prev,
+            paste_mode=paste_mode,
+            existing_jira_tests=ej_llm,
+        )
+        cases = out.get("test_cases") or []
+    except Exception as e:
+        _raise_llm_route_error(e)
     if jira_entries:
         cases = merge_ai_cases_with_jira_existing(cases, jira_entries, allowed_priorities=allowed)
     prior_union = _prior_cases_union_for_merge(key, prev)
@@ -382,17 +486,26 @@ async def _generate_and_persist(
     if not settings.mock:
         if save_memory:
             save(key, req, cases)
-        _maybe_audit(kc, key, "generate_test_cases")
+        _maybe_audit(kc, key, "generate_test_cases_agentic")
     return {
-        "ticket_id": key,
-        "requirements": req,
-        "test_cases": cases,
-        "requirements_diff": req_diff,
-        "had_previous_memory": prev is not None,
-        "memory_match": ("similar" if similar_used else "exact") if prev else None,
-        "linked_jira_tests": _linked_jira_tests_light(jira_entries or []),
-        "linked_jira_work": _linked_jira_work_light(linked_jira_work_entries or []),
-        "linked_jira_work_type_labels": linked_jira_work_type_labels,
+        **_generate_response_base(
+            key,
+            req,
+            cases,
+            req_diff,
+            prev,
+            similar_used,
+            jira_entries,
+            linked_jira_work_entries,
+            linked_jira_work_type_labels,
+        ),
+        "agentic": {
+            "validator": out.get("validator"),
+            "validation_passed": out.get("validation_passed"),
+            "error": out.get("error"),
+            "generations": out.get("generations"),
+            "suggestion_swap": out.get("suggestion_swap"),
+        },
     }
 
 
@@ -427,6 +540,26 @@ def _maybe_audit(kc: dict | None, key: str, action: str) -> None:
         return
     u = claims_username(kc) if settings.use_keycloak and kc else ""
     append_audit(u, key, action)
+
+
+def _raise_llm_route_error(e: Exception) -> None:
+    if isinstance(e, ValueError):
+        raise HTTPException(status_code=500, detail=str(e)) from e
+    raise HTTPException(status_code=502, detail=f"LLM error: {e}") from e
+
+
+async def _jira_generate_route_kwargs(body: GenerateIn) -> tuple[str, dict, dict | None, bool, dict]:
+    key, req, prev, similar_used, jira_entries, linked_work_raw, work_labels, jira_names = await _jira_generate_context(
+        body
+    )
+    shared = dict(
+        paste_mode=False,
+        priority_labels=jira_names,
+        jira_entries=jira_entries,
+        linked_jira_work_entries=linked_work_raw,
+        linked_jira_work_type_labels=work_labels,
+    )
+    return key, req, prev, similar_used, shared
 
 
 app = FastAPI(title="Test Intellect AI", lifespan=lifespan)
@@ -632,17 +765,7 @@ async def fetch_ticket(body: TicketIn, kc: Kc):
 
 @api.post("/generate-tests")
 async def generate_tests(body: GenerateIn, kc: Kc):
-    key, req = await _fetch_jira(body)
-    jira_entries, linked_work_raw, work_labels = await _load_ticket_linked_jira(body, key)
-    prev = get_latest(key)
-    similar_used = False
-    thr = settings.memory_similarity_threshold
-    if prev is None and thr > 0:
-        _, sp = find_similar_memory(req, thr)
-        if sp is not None:
-            prev = sp
-            similar_used = True
-    jira_names = await _maybe_fetch_jira_priority_names_for_generate(body)
+    key, req, prev, similar_used, shared = await _jira_generate_route_kwargs(body)
     return await _generate_and_persist(
         key,
         req,
@@ -652,11 +775,24 @@ async def generate_tests(body: GenerateIn, kc: Kc):
         body.max_test_cases,
         body.save_memory,
         kc,
-        paste_mode=False,
-        priority_labels=jira_names,
-        jira_entries=jira_entries,
-        linked_jira_work_entries=linked_work_raw,
-        linked_jira_work_type_labels=work_labels,
+        **shared,
+    )
+
+
+@api.post("/generate-tests-agentic")
+async def generate_tests_agentic(body: GenerateAgenticIn, kc: Kc):
+    key, req, prev, similar_used, shared = await _jira_generate_route_kwargs(body)
+    return await _generate_and_persist_agentic(
+        key,
+        req,
+        prev,
+        similar_used,
+        body.min_test_cases,
+        body.max_test_cases,
+        body.max_rounds,
+        body.save_memory,
+        kc,
+        **shared,
     )
 
 
@@ -664,15 +800,12 @@ async def generate_tests(body: GenerateIn, kc: Kc):
 async def generate_automation_skeleton_route(body: AutomationSkeletonIn, kc: Kc):
     try:
         code = await generate_automation_skeleton(body.test_case, body.language, body.framework)
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"LLM error: {e}") from e
+        _raise_llm_route_error(e)
     return {"code": code}
 
 
-@api.post("/generate-from-paste")
-async def generate_from_paste(body: PastedGenerateIn, kc: Kc):
+def _paste_generate_context(body: PastedGenerateIn) -> tuple[str, dict, dict | None, bool]:
     description = body.description.strip()
     if not description:
         raise HTTPException(status_code=400, detail="Description is required")
@@ -695,6 +828,12 @@ async def generate_from_paste(body: PastedGenerateIn, kc: Kc):
                 prev = sp
                 key = sk
                 similar_used = True
+    return key, req, prev, similar_used
+
+
+@api.post("/generate-from-paste")
+async def generate_from_paste(body: PastedGenerateIn, kc: Kc):
+    key, req, prev, similar_used = _paste_generate_context(body)
     return await _generate_and_persist(
         key,
         req,
@@ -702,6 +841,23 @@ async def generate_from_paste(body: PastedGenerateIn, kc: Kc):
         similar_used,
         body.min_test_cases,
         body.max_test_cases,
+        body.save_memory,
+        kc,
+        paste_mode=True,
+    )
+
+
+@api.post("/generate-from-paste-agentic")
+async def generate_from_paste_agentic(body: PastedAgenticIn, kc: Kc):
+    key, req, prev, similar_used = _paste_generate_context(body)
+    return await _generate_and_persist_agentic(
+        key,
+        req,
+        prev,
+        similar_used,
+        body.min_test_cases,
+        body.max_test_cases,
+        body.max_rounds,
         body.save_memory,
         kc,
         paste_mode=True,

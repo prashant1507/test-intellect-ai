@@ -1426,6 +1426,25 @@ input:focus-visible {
   outline-offset: 1px;
 }
 
+/* Native controls must not inherit full-width text-field styling */
+input[type="checkbox"],
+input[type="radio"] {
+  width: auto;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  flex-shrink: 0;
+  vertical-align: middle;
+}
+
+input[type="checkbox"]:focus,
+input[type="radio"]:focus {
+  border-color: transparent;
+}
+
 textarea {
   width: 100%;
   padding: 0.5rem 0.6rem;
@@ -2140,6 +2159,44 @@ button.tc-summary:focus-visible {
   color: var(--muted);
   width: 1rem;
   flex-shrink: 0;
+}
+
+.tc-score {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 12%, var(--card-bg));
+  padding: 0.12rem 0.4rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.agentic-gen-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin-top: 0.35rem;
+}
+
+.agentic-gen-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.agentic-rounds-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
+.agentic-rounds-input {
+  width: 2.75rem;
 }
 
 .tc-desc {

@@ -13,9 +13,11 @@ import {
 import { AuditActionCell } from "./components/AuditActionCell";
 import { JiraTestPushButton } from "./components/JiraTestPushButton";
 import { LinkedJiraTestsBlock, LinkedJiraWorkBlock } from "./components/LinkedJiraLists";
-import { PriorityTag } from "./components/PriorityTag";
 import { MemoryDetailContent } from "./components/Memory";
 import { AutomationSkeletonIconButton, AutomationSkeletonModal } from "./components/AutomationSkeletonModal";
+import { AgenticPipelineOptions } from "./components/AgenticPipelineOptions";
+import { MinMaxTestCaseFields } from "./components/MinMaxTestCaseFields";
+import { TestCaseSummaryBadges } from "./components/TestCaseSummaryBadges";
 import { TestCaseEditModal } from "./components/TestCaseEditModal";
 import { TestCaseBody } from "./components/TestCaseBody";
 import {
@@ -36,7 +38,8 @@ import { loadJiraPushedMap, persistJiraPushedMap } from "./utils/jiraPushedStora
 import { remapTestCasePriority } from "./utils/jiraPriorityRemap";
 import { normalizeLinkedJiraFromApi } from "./utils/linkedJiraPayload";
 import { readStoredJiraLinkType, readStoredJiraTestIssueType, readStoredJiraUrl } from "./utils/storage";
-import { parseMinTc, parseMaxTc, testCaseBounds } from "./utils/testCase";
+import { isAnyGenBusy, isJiraGenBusy, isPasteGenBusy } from "./utils/generationBusy";
+import { clampAgenticMaxRounds, parseMinTc, parseMaxTc, testCaseBounds } from "./utils/testCase";
 
 export default function App() {
   const [theme, setTheme] = useState(readTheme);
@@ -64,6 +67,8 @@ export default function App() {
   const [saveToMemory, setSaveToMemory] = useState(true);
   const [minTestCases, setMinTestCases] = useState("1");
   const [maxTestCases, setMaxTestCases] = useState("10");
+  const [useAgenticGen, setUseAgenticGen] = useState(true);
+  const [agenticMaxRounds, setAgenticMaxRounds] = useState("5");
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState("");
   const [lastFetchAt, setLastFetchAt] = useState(null);
@@ -931,7 +936,7 @@ export default function App() {
 
   useEffect(() => {
     if (!useKeycloak || !oidcUser) return undefined;
-    if (busy === "/generate-tests" || busy === "/generate-from-paste") return undefined;
+    if (isAnyGenBusy(busy)) return undefined;
     const idleMs = idleMinutes * 60 * 1000;
     let last = Date.now();
     const bump = () => {
@@ -979,7 +984,7 @@ export default function App() {
     if (!desc) return;
     setErr("");
     generationInFlightRef.current = true;
-    setBusy("/generate-from-paste");
+    setBusy(useAgenticGen ? "/generate-from-paste-agentic" : "/generate-from-paste");
     setReq(null);
     setTests(null);
     setDiff(null);
@@ -987,12 +992,14 @@ export default function App() {
     setMemoryMatch(null);
     setAnnounce("Generating test cases…");
     try {
-      const d = await api("/generate-from-paste", "POST", {
+      const pastePath = useAgenticGen ? "/generate-from-paste-agentic" : "/generate-from-paste";
+      const d = await api(pastePath, "POST", {
         title: pasteTitle.trim(),
         description: desc,
         memory_key: pasteMemoryKey.trim(),
         save_memory: saveToMemory && !mock,
         ...testCaseBounds(minTestCases, maxTestCases),
+        ...(useAgenticGen ? { max_rounds: clampAgenticMaxRounds(agenticMaxRounds) } : {}),
       });
       applyGeneratePayload(d);
       setPasteMemoryKey(d.ticket_id);
@@ -1019,6 +1026,7 @@ export default function App() {
     }
     try {
       if (path === "/generate-tests") {
+        const genPath = useAgenticGen ? "/generate-tests-agentic" : "/generate-tests";
         const credBody = cred();
         setReq(null);
         setTests(null);
@@ -1037,11 +1045,12 @@ export default function App() {
         setLastFetchAt(new Date().toISOString());
         setAnnounce("Requirements loaded. Generating test cases…");
 
-        const d = await api("/generate-tests", "POST", {
+        const d = await api(genPath, "POST", {
           ...credBody,
           test_project_key: jiraTestProject.trim(),
           save_memory: saveToMemory && !mock,
           ...testCaseBounds(minTestCases, maxTestCases),
+          ...(useAgenticGen ? { max_rounds: clampAgenticMaxRounds(agenticMaxRounds) } : {}),
         });
         applyGeneratePayload(d);
         setLastGenerateAt(new Date().toISOString());
@@ -1102,9 +1111,9 @@ export default function App() {
   const setAllTc = (v) => () => tests?.length && setTcOpen(Object.fromEntries(tests.map((_, i) => [String(i), v])));
 
   const loadingRequirements =
-    busy === "/fetch-ticket" || (busy === "/generate-tests" && !req) || busy === "/generate-from-paste";
-  const loadingTestCases = (busy === "/generate-tests" && !!req) || busy === "/generate-from-paste";
-  const generatingTestCases = busy === "/generate-tests" || busy === "/generate-from-paste";
+    busy === "/fetch-ticket" || (isJiraGenBusy(busy) && !req) || isPasteGenBusy(busy);
+  const loadingTestCases = (isJiraGenBusy(busy) && !!req) || isPasteGenBusy(busy);
+  const generatingTestCases = isAnyGenBusy(busy);
 
   const jiraPushConfigIncomplete =
     !jiraUrl.trim() ||
@@ -1256,7 +1265,7 @@ export default function App() {
               <div className={showAuditUi ? "sidebar-memory-section" : undefined}>
                 <h2 className="sidebar-title">History</h2>
                 {memoryEntries.length === 0 ? (
-                  <p className="sidebar-empty">No saved history yet. Generate with save enabled.</p>
+                  <p className="sidebar-empty">No saved history yet.</p>
                 ) : (
                   <>
                     <div className="memory-filter">
@@ -1657,42 +1666,23 @@ export default function App() {
                   </span>
                   <PasteRequirementsPreview text={pasteText} />
                 </div>
-                <div className="row cols-2">
-                  <div>
-                    <label htmlFor="minTc" className="label-with-info">
-                      <span>Minimum Test Cases</span>
-                      <FieldInfo text="Lower bound on how many scenarios the model returns." />
-                    </label>
-                    <input
-                      id="minTc"
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      value={minTestCases}
-                      onChange={(e) => setMinTestCases(e.target.value)}
-                      onBlur={() => setMinTestCases(String(parseMinTc(minTestCases)))}
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="maxTc" className="label-with-info">
-                      <span>Maximum Test Cases</span>
-                      <FieldInfo text="Upper cap on scenarios; 0 means no limit." />
-                    </label>
-                    <input
-                      id="maxTc"
-                      type="text"
-                      inputMode="numeric"
-                      autoComplete="off"
-                      value={maxTestCases}
-                      onChange={(e) => setMaxTestCases(e.target.value)}
-                      onBlur={() => setMaxTestCases(String(parseMaxTc(maxTestCases)))}
-                      aria-describedby="hint-max-tc"
-                    />
-                    <span id="hint-max-tc" className="sr-only">
-                      Upper cap on scenarios; 0 means no limit.
-                    </span>
-                  </div>
-                </div>
+                <MinMaxTestCaseFields
+                  idPrefix="paste"
+                  layout="sideBySide"
+                  minTestCases={minTestCases}
+                  maxTestCases={maxTestCases}
+                  onMinChange={setMinTestCases}
+                  onMaxChange={setMaxTestCases}
+                  parseMinTc={parseMinTc}
+                  parseMaxTc={parseMaxTc}
+                />
+                <AgenticPipelineOptions
+                  checked={useAgenticGen}
+                  onCheckedChange={setUseAgenticGen}
+                  maxRounds={agenticMaxRounds}
+                  onMaxRoundsChange={setAgenticMaxRounds}
+                  roundsInputId="agenticRoundsPaste"
+                />
               </>
             ) : (
               <>
@@ -1776,40 +1766,23 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-                <div>
-                  <label htmlFor="minTc" className="label-with-info">
-                    <span>Minimum Test Cases</span>
-                    <FieldInfo text="Lower bound on how many scenarios the model returns." />
-                  </label>
-                  <input
-                    id="minTc"
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    value={minTestCases}
-                    onChange={(e) => setMinTestCases(e.target.value)}
-                    onBlur={() => setMinTestCases(String(parseMinTc(minTestCases)))}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="maxTc" className="label-with-info">
-                    <span>Maximum Test Cases</span>
-                    <FieldInfo text="Upper cap on scenarios; 0 means no limit." />
-                  </label>
-                  <input
-                    id="maxTc"
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="off"
-                    value={maxTestCases}
-                    onChange={(e) => setMaxTestCases(e.target.value)}
-                    onBlur={() => setMaxTestCases(String(parseMaxTc(maxTestCases)))}
-                    aria-describedby="hint-max-tc"
-                  />
-                  <span id="hint-max-tc" className="sr-only">
-                    Upper cap on scenarios; 0 means no limit.
-                  </span>
-                </div>
+                <MinMaxTestCaseFields
+                  idPrefix="jira"
+                  layout="stack"
+                  minTestCases={minTestCases}
+                  maxTestCases={maxTestCases}
+                  onMinChange={setMinTestCases}
+                  onMaxChange={setMaxTestCases}
+                  parseMinTc={parseMinTc}
+                  parseMaxTc={parseMaxTc}
+                />
+                <AgenticPipelineOptions
+                  checked={useAgenticGen}
+                  onCheckedChange={setUseAgenticGen}
+                  maxRounds={agenticMaxRounds}
+                  onMaxRoundsChange={setAgenticMaxRounds}
+                  roundsInputId="agenticRoundsJira"
+                />
               </div>
               <div className="jira-form-col-stack">
                 <div>
@@ -1913,24 +1886,24 @@ export default function App() {
                   <button
                     type="button"
                     className="primary has-icon"
-                    disabled={busy === "/generate-tests" || !canSubmit}
+                    disabled={isJiraGenBusy(busy) || !canSubmit}
                     onClick={() => run("/generate-tests")}
                     title={!canSubmit ? "Fill all fields first" : undefined}
                   >
-                    {busy === "/generate-tests" ? <Spinner /> : null}
-                    {busy === "/generate-tests" ? "Generating…" : "Generate Test Cases"}
+                    {isJiraGenBusy(busy) ? <Spinner /> : null}
+                    {isJiraGenBusy(busy) ? "Generating…" : "Generate Test Cases"}
                   </button>
                 </>
               ) : (
                 <button
                   type="button"
                   className="primary has-icon"
-                  disabled={busy === "/generate-from-paste" || !canSubmitPaste}
+                  disabled={isPasteGenBusy(busy) || !canSubmitPaste}
                   onClick={() => runPasteGenerate()}
                   title={!canSubmitPaste ? "Paste requirements first" : undefined}
                 >
-                  {busy === "/generate-from-paste" ? <Spinner /> : null}
-                  {busy === "/generate-from-paste" ? "Generating…" : "Generate Test Cases"}
+                  {isPasteGenBusy(busy) ? <Spinner /> : null}
+                  {isPasteGenBusy(busy) ? "Generating…" : "Generate Test Cases"}
                 </button>
               )}
             </div>
@@ -2161,18 +2134,7 @@ export default function App() {
                             <span className="tc-chevron" aria-hidden>
                               {open ? "▼" : "▶"}
                             </span>
-                            <span className={`badge badge--tc-${st}`}>{changeStatusLabel(tc.change_status)}</span>
-                            {tc.jira_existing ? (
-                              <FloatingTooltip text="Already in JIRA">
-                                <span className="badge badge--jira-existing">EXISTING</span>
-                              </FloatingTooltip>
-                            ) : null}
-                            {tc.jira_status ? (
-                              <FloatingTooltip text="Workflow Status">
-                                <span className="tc-jira-status">{tc.jira_status}</span>
-                              </FloatingTooltip>
-                            ) : null}
-                            <PriorityTag priority={tc.priority} iconUrl={tc.priority_icon_url} />
+                            <TestCaseSummaryBadges tc={tc} statusSlug={st} />
                             <span className="tc-desc">{tc.description}</span>
                           </button>
                           <div className="tc-summary-actions">
