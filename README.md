@@ -20,7 +20,13 @@ Optionally:
 ---
 ### Product Sample Images
 
-<img src="resources/product-images/img-1.png" alt="UI" width="200" />  <img src="resources/product-images/img-2.png" alt="UI" width="200" />  <img src="resources/product-images/img-2a.png" alt="UI" width="200" />  <img src="resources/product-images/img-3.png" alt="UI" width="200" />  <img src="resources/product-images/img-4.png" alt="UI" width="200" />  <img src="resources/product-images/img-5.png" alt="UI" width="200" />  <img src="resources/product-images/img-6.png" alt="UI" width="200" />
+<img src="resources/product-images/img-1.png" alt="UI" width="200" />
+<img src="resources/product-images/img-2.png" alt="UI" width="200" />
+<img src="resources/product-images/img-2a.png" alt="UI" width="200" />
+<img src="resources/product-images/img-3.png" alt="UI" width="200" />
+<img src="resources/product-images/img-4.png" alt="UI" width="200" />
+<img src="resources/product-images/img-5.png" alt="UI" width="200" />
+<img src="resources/product-images/img-6.png" alt="UI" width="200" />
 
 ---
 ### Product Sample Video
