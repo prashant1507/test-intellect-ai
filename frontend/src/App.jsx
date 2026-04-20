@@ -121,6 +121,29 @@ export default function App() {
     jiraHideUpdateAfterCreateRef.current = jiraHideUpdateAfterCreate;
   }, [jiraHideUpdateAfterCreate]);
 
+  useEffect(() => {
+    const t = ticketId.trim().toUpperCase();
+    if (!t) {
+      setReq(null);
+      setReqAttachments([]);
+      setLinkedJiraTests([]);
+      setLinkedJiraWork([]);
+      setDiff(null);
+      setLastFetchAt(null);
+      setKey("");
+      return;
+    }
+    if (key && t !== key.trim().toUpperCase()) {
+      setReq(null);
+      setReqAttachments([]);
+      setLinkedJiraTests([]);
+      setLinkedJiraWork([]);
+      setDiff(null);
+      setLastFetchAt(null);
+      setKey("");
+    }
+  }, [ticketId, key]);
+
   const generationInFlightRef = useRef(false);
   const redirectingToLoginRef = useRef(false);
   const jiraPriorityCacheRef = useRef(null);
@@ -1118,25 +1141,7 @@ export default function App() {
       if (path === "/generate-tests") {
         const genPath = useAgenticGen ? "/generate-tests-agentic" : "/generate-tests";
         const credBody = cred();
-        setReq(null);
-        setReqAttachments([]);
-        setTests(null);
-        setDiff(null);
-        setReqFetchMeta({ hadSavedMemory: false });
-        setHadPriorMemory(false);
-        setMemoryMatch(null);
-        setAnnounce("Fetching requirements…");
-
-        const fd = await api("/fetch-ticket", "POST", credBody);
-        setReq(fd.requirements);
-        setKey(fd.ticket_id);
-        const ljFd = normalizeLinkedJiraFromApi(fd);
-        setLinkedJiraTests(ljFd.tests);
-        setLinkedJiraWork(ljFd.work);
-        if (ljFd.attachments !== undefined) setReqAttachments(ljFd.attachments);
-        setLastFetchAt(new Date().toISOString());
-        setAnnounce("Requirements loaded. Generating test cases…");
-
+        setAnnounce("Generating test cases…");
         const d = await api(genPath, "POST", {
           ...credBody,
           test_project_key: jiraTestProject.trim(),
@@ -1186,6 +1191,9 @@ export default function App() {
   };
 
   const canSubmit = jiraUrl.trim() && ticketId.trim() && username.trim() && password;
+  const canGenerateJira =
+    !!req &&
+    String(ticketId || "").trim().toUpperCase() === String(key || "").trim().toUpperCase();
   const canSubmitPaste = pasteText.trim().length > 0;
   const mf = memoryFilter.trim().toLowerCase();
   const memItems = mf ? memoryEntries.filter((e) => (e.ticket_id || "").toLowerCase().includes(mf)) : memoryEntries;
@@ -2017,9 +2025,15 @@ export default function App() {
                   <button
                     type="button"
                     className="primary has-icon"
-                    disabled={isJiraGenBusy(busy) || !canSubmit}
+                    disabled={isJiraGenBusy(busy) || !canSubmit || !canGenerateJira}
                     onClick={() => run("/generate-tests")}
-                    title={!canSubmit ? "Fill all fields first" : undefined}
+                    title={
+                      !canSubmit
+                        ? "Fill all fields first"
+                        : !canGenerateJira
+                          ? "Fetch requirements for this ticket first"
+                          : undefined
+                    }
                   >
                     {isJiraGenBusy(busy) ? <Spinner /> : null}
                     {isJiraGenBusy(busy) ? "Generating…" : "Generate Test Cases"}
@@ -2040,6 +2054,9 @@ export default function App() {
             </div>
             {inputMode === "jira" && !canSubmit ? (
               <p className="form-hint-warn">Complete every field above to enable actions.</p>
+            ) : null}
+            {inputMode === "jira" && canSubmit && !canGenerateJira ? (
+              <p className="form-hint-warn">Use “Fetch Requirements” to load this ticket before generating test cases.</p>
             ) : null}
             {inputMode === "paste" && !canSubmitPaste ? (
               <p className="form-hint-warn">Paste requirement text to enable generation.</p>

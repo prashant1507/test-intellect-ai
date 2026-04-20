@@ -819,7 +819,7 @@ async def jira_attachment_download(body: AttachmentDownloadIn, _kc: Kc):
 @api.post("/generate-tests")
 async def generate_tests(body: GenerateIn, kc: Kc):
     key, req, prev, similar_used, shared = await _jira_generate_route_kwargs(body)
-    return await _generate_and_persist(
+    out = await _generate_and_persist(
         key,
         req,
         prev,
@@ -830,12 +830,16 @@ async def generate_tests(body: GenerateIn, kc: Kc):
         kc,
         **shared,
     )
+    tk = str(out.get("ticket_id") or "").strip().upper()
+    if tk:
+        out["requirement_attachments"] = await _fetch_issue_attachments(body, tk)
+    return out
 
 
 @api.post("/generate-tests-agentic")
 async def generate_tests_agentic(body: GenerateAgenticIn, kc: Kc):
     key, req, prev, similar_used, shared = await _jira_generate_route_kwargs(body)
-    return await _generate_and_persist_agentic(
+    out = await _generate_and_persist_agentic(
         key,
         req,
         prev,
@@ -847,6 +851,10 @@ async def generate_tests_agentic(body: GenerateAgenticIn, kc: Kc):
         kc,
         **shared,
     )
+    tk = str(out.get("ticket_id") or "").strip().upper()
+    if tk:
+        out["requirement_attachments"] = await _fetch_issue_attachments(body, tk)
+    return out
 
 
 @api.post("/generate-automation-skeleton")
