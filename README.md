@@ -183,20 +183,20 @@ The compose file can override **`LLM_URL`** to **`http://host.docker.internal:12
 <details>
 <summary><strong>API overview</strong></summary>
 
-| Method | Path | Description |
-|--------|------|---------------|
-| `GET` | `/api/config` | Defaults for the UI: `default_jira_url`, `default_username`, `default_jira_test_project_key`, `default_jira_test_issue_type`, `default_jira_link_type`, `mock`, `show_memory_ui`, `show_audit_ui`, `use_keycloak`, Keycloak client fields, `keycloak_idle_timeout_minutes` (no secrets). |
-| `GET` | `/api/memory/list` | List saved entries per ticket. With Keycloak, send `Authorization: Bearer <token>`. |
-| `GET` | `/api/memory/item/{ticket_id}` | Saved `requirements` and `test_cases` for a ticket. |
-| `POST` | `/api/memory/update-test-cases` | Persist updated test cases to history for a ticket. |
-| `POST` | `/api/memory/save-after-edit` | Save requirements + tests after edit; optional audit of edited Jira issue key. |
-| `GET` | `/api/audit/list` | Audit rows (`created_at`, `username`, `ticket_id`, `action`). |
-| `POST` | `/api/audit/auth` | Record login/logout when Keycloak is enabled. |
-| `POST` | `/api/fetch-ticket` | Body: `jira_url`, `username`, `password`, `ticket_id` → `requirements`. |
-| `POST` | `/api/generate-tests` | Fetch + generate; `save_memory`, `min_test_cases`, `max_test_cases`; optional diff and `had_previous_memory`. |
-| `POST` | `/api/generate-from-paste` | Paste flow: `description`, optional `title`, optional `memory_key`. |
-| `POST` | `/api/jira/priorities` | Returns Jira priorities with **name** and **iconUrl** for mapping AI labels to Jira. |
-| `POST` | `/api/jira/push-test-case` | Create or update a test issue and link it to the requirement (see `backend/main.py` / `jira_client.py` for bodies). |
+| Method | Path                            | Description                                                                                                                                                                                                                                                                              |
+|--------|---------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `GET`  | `/api/config`                   | Defaults for the UI: `default_jira_url`, `default_username`, `default_jira_test_project_key`, `default_jira_test_issue_type`, `default_jira_link_type`, `mock`, `show_memory_ui`, `show_audit_ui`, `use_keycloak`, Keycloak client fields, `keycloak_idle_timeout_minutes` (no secrets). |
+| `GET`  | `/api/memory/list`              | List saved entries per ticket. With Keycloak, send `Authorization: Bearer <token>`.                                                                                                                                                                                                      |
+| `GET`  | `/api/memory/item/{ticket_id}`  | Saved `requirements` and `test_cases` for a ticket.                                                                                                                                                                                                                                      |
+| `POST` | `/api/memory/update-test-cases` | Persist updated test cases to history for a ticket.                                                                                                                                                                                                                                      |
+| `POST` | `/api/memory/save-after-edit`   | Save requirements + tests after edit; optional audit of edited Jira issue key.                                                                                                                                                                                                           |
+| `GET`  | `/api/audit/list`               | Audit rows (`created_at`, `username`, `ticket_id`, `action`).                                                                                                                                                                                                                            |
+| `POST` | `/api/audit/auth`               | Record login/logout when Keycloak is enabled.                                                                                                                                                                                                                                            |
+| `POST` | `/api/fetch-ticket`             | Body: `jira_url`, `username`, `password`, `ticket_id` → `requirements`.                                                                                                                                                                                                                  |
+| `POST` | `/api/generate-tests`           | Fetch + generate; `save_memory`, `min_test_cases`, `max_test_cases`; optional diff and `had_previous_memory`.                                                                                                                                                                            |
+| `POST` | `/api/generate-from-paste`      | Paste flow: `description`, optional `title`, optional `memory_key`.                                                                                                                                                                                                                      |
+| `POST` | `/api/jira/priorities`          | Returns Jira priorities with **name** and **iconUrl** for mapping AI labels to Jira.                                                                                                                                                                                                     |
+| `POST` | `/api/jira/push-test-case`      | Create or update a test issue and link it to the requirement (see `backend/main.py` / `jira_client.py` for bodies).                                                                                                                                                                      |
 
 Other routes and request schemas: see **`backend/main.py`**.
 
