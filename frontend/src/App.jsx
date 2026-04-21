@@ -1514,7 +1514,7 @@ export default function App() {
                     <div className="audit-filter-field">
                       <label htmlFor="audit-filter-ticket" className="label-with-info">
                         <span>Ticket ID</span>
-                        <FieldInfo text="Filter by requirement ticket key." />
+                        <FieldInfo text="Filter by requirement ticket id." />
                       </label>
                       <select
                         id="audit-filter-ticket"
@@ -1536,7 +1536,7 @@ export default function App() {
                     <div className="audit-filter-field">
                       <label htmlFor="audit-filter-jira-user" className="label-with-info">
                         <span>JIRA User</span>
-                        <FieldInfo text="Filter by the JIRA account." />
+                        <FieldInfo text="Filter by JIRA user." />
                       </label>
                       <select
                         id="audit-filter-jira-user"
@@ -1558,7 +1558,7 @@ export default function App() {
                     <div className="audit-filter-field">
                       <label htmlFor="audit-filter-action" className="label-with-info">
                         <span>Action</span>
-                        <FieldInfo text="Filter by the type of Audit event." />
+                        <FieldInfo text="Filter by Audit event." />
                       </label>
                       <select
                         id="audit-filter-action"
