@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import re
 from difflib import SequenceMatcher
@@ -78,6 +79,10 @@ Grammar and style (English):
 - Steps: present tense. Prefer "The user <verb>s …" or "The system <verb>s …" for clarity; be consistent within one scenario. After "Given "/"When "/"Then "/"And ", write a complete clause (not a bare noun phrase unless the requirement uses that form).
 - Avoid run-ons; one idea per line. Use commas only where they follow normal English punctuation rules.
 """
+
+SYS_IMAGE_SUPPLEMENT = """
+When the user message includes images or PDFs (after the written text): derive test cases using **both** the structured sections above (Requirements, Prior, linked tests) **and** those attachments. Images may show UI, mockups, or diagrams; PDFs may add specs or wireframes—use visible labels, layout, text, and states where they align with the written requirement. Do not invent behavior that contradicts the written requirement; if text and attachment disagree on scope, follow the text and avoid steps that assume unwritten product rules.
+""".strip()
 
 
 def _cap_first_line(s: str) -> str:
@@ -772,6 +777,30 @@ def build_generation_user_prompt(
     return "\n\n".join(parts)
 
 
+def build_multimodal_user_content(text: str, images: list[tuple[str, str, bytes]]) -> str | list:
+    if not images:
+        return text
+    parts: list[dict] = [{"type": "text", "text": text}]
+    for fn, mime, data in images:
+        b64 = base64.b64encode(data).decode("ascii")
+        if mime == "application/pdf":
+            name = (fn or "document.pdf").strip() or "document.pdf"
+            if "/" in name:
+                name = name.rsplit("/", 1)[-1]
+            parts.append(
+                {
+                    "type": "file",
+                    "file": {
+                        "filename": name,
+                        "file_data": f"data:application/pdf;base64,{b64}",
+                    },
+                }
+            )
+        else:
+            parts.append({"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}})
+    return parts
+
+
 async def generate_test_cases(
     req: dict[str, str],
     prev: dict | None,
@@ -781,6 +810,7 @@ async def generate_test_cases(
     max_test_cases: int = 10,
     paste_mode: bool = False,
     existing_jira_tests: list[dict] | None = None,
+    requirement_images: list[tuple[str, str, bytes]] | None = None,
 ) -> list[dict]:
     base = settings.llm_url.rstrip("/")
     if not base:
@@ -794,8 +824,18 @@ async def generate_test_cases(
         min_test_cases=min_test_cases,
         max_test_cases=max_test_cases,
     )
+    imgs = requirement_images or []
+    if imgs:
+        user += (
+            "\n\n### Images and PDFs (same message, after this text)\n"
+            "One or more images and/or PDFs follow as separate content parts. Generate test cases from the **Requirements/Prior/linked** text **together** with those attachments: "
+            "cover UI flows, labels, and states shown in images or PDFs when they match the requirement scope. "
+            "If there were no attachments, this paragraph would not apply—text-only runs use only the sections above."
+        )
     model = (settings.llm_model or "").strip() or "local-model"
-    msgs = [{"role": "system", "content": SYS}, {"role": "user", "content": user}]
+    user_content = build_multimodal_user_content(user, imgs)
+    system_content = SYS if not imgs else f"{SYS}\n\n{SYS_IMAGE_SUPPLEMENT}"
+    msgs = [{"role": "system", "content": system_content}, {"role": "user", "content": user_content}]
     raw = await asyncio.to_thread(_chat, base, model, msgs, 0.15)
     data = _json(raw)
     cases = data.get("test_cases")

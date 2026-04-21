@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { formatSizeMb } from "../utils/format";
 import { PriorityTag } from "./PriorityTag";
 
 const VISIBLE_ROWS = 2;
@@ -244,13 +245,21 @@ export function LinkedJiraWorkBlock({ rows, heading }) {
   );
 }
 
-export function RequirementAttachmentsInline({ attachments, onDownload, disabled }) {
+export function RequirementAttachmentsInline({
+  attachments,
+  onDownload,
+  disabled,
+  selectable,
+  selectedIds,
+  onToggleSelect,
+}) {
   const rows = useMemo(
     () =>
       (Array.isArray(attachments) ? attachments : [])
         .map((a) => ({
           id: String(a.id ?? "").trim(),
           name: String(a.filename || "file").trim() || "file",
+          size: typeof a.size === "number" && a.size >= 0 ? a.size : null,
         }))
         .filter((r) => r.id),
     [attachments],
@@ -263,38 +272,53 @@ export function RequirementAttachmentsInline({ attachments, onDownload, disabled
   if (!n) return null;
   const list = (
     <ul ref={listRef} className="linked-jira-tests-list">
-      {rows.map((r) => (
-        <li key={r.id} className="linked-jira-tests-line">
-          <div className="req-attach-row">
-            <span className="req-attach-name" title={r.name}>
-              {r.name}
-            </span>
-            <button
-              type="button"
-              className="req-attach-dl"
-              disabled={disabled}
-              onClick={() => onDownload(r.id, r.name)}
-              aria-label={`Download ${r.name}`}
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden
+      {rows.map((r) => {
+        const sizeLabel = r.size != null ? formatSizeMb(r.size) : "";
+        return (
+          <li key={r.id} className="linked-jira-tests-line">
+            <div className="req-attach-row">
+              {selectable && selectedIds && onToggleSelect ? (
+                <label className="req-attach-select">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(r.id)}
+                    onChange={() => onToggleSelect(r.id)}
+                    disabled={disabled}
+                    aria-label={`Include ${r.name} when generating tests`}
+                  />
+                </label>
+              ) : null}
+              <span className="req-attach-name" title={r.name}>
+                {r.name}
+                {sizeLabel ? <span className="req-attach-size"> · {sizeLabel}</span> : null}
+              </span>
+              <button
+                type="button"
+                className="req-attach-dl"
+                disabled={disabled}
+                onClick={() => onDownload(r.id, r.name)}
+                aria-label={`Download ${r.name}`}
               >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-            </button>
-          </div>
-        </li>
-      ))}
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7 10 12 15 17 10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+              </button>
+            </div>
+          </li>
+        );
+      })}
     </ul>
   );
   return (

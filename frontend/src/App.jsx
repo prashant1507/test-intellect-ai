@@ -17,6 +17,7 @@ import { MainTestCasesPanel } from "./components/MainTestCasesPanel";
 import { AutomationSkeletonModal } from "./components/AutomationSkeletonModal";
 import { AgenticPipelineOptions } from "./components/AgenticPipelineOptions";
 import { MinMaxTestCaseFields } from "./components/MinMaxTestCaseFields";
+import { RequirementMockupsBlock } from "./components/RequirementMockupsBlock";
 import { TestCaseEditModal } from "./components/TestCaseEditModal";
 import {
   AUDIT_JIRA_USER_EMPTY,
@@ -40,6 +41,7 @@ import { readStoredJiraLinkType, readStoredJiraTestIssueType, readStoredJiraUrl 
 import { isAnyGenBusy, isJiraGenBusy, isPasteGenBusy } from "./utils/generationBusy";
 import { clampAgenticMaxRounds, parseMinTc, parseMaxTc, testCaseBounds } from "./utils/testCase";
 import { settleTestCaseAfterJiraPush, stripTestCaseDiffMeta } from "./utils/testCaseDiff";
+import { ARCHIVE_NOT_ALLOWED_MSG, isBlockedArchiveFilename } from "./utils/requirementImageUpload";
 import { withOidcAuthorization } from "./utils/oidcFetchHeaders";
 
 export default function App() {
@@ -76,6 +78,13 @@ export default function App() {
   const [linkedJiraTests, setLinkedJiraTests] = useState([]);
   const [linkedJiraWork, setLinkedJiraWork] = useState([]);
   const [reqAttachments, setReqAttachments] = useState([]);
+  const [reqImgConfig, setReqImgConfig] = useState({
+    enabled: false,
+    maxCount: 5,
+    maxTotalMb: 200,
+  });
+  const [reqImageFiles, setReqImageFiles] = useState([]);
+  const [selectedReqAttachmentIds, setSelectedReqAttachmentIds] = useState(() => new Set());
   const [lastGenerateAt, setLastGenerateAt] = useState(null);
   const [mock, setMock] = useState(false);
   const [announce, setAnnounce] = useState("");
@@ -235,6 +244,47 @@ export default function App() {
     jira_test_issue_type: jiraTestIssueType.trim(),
   });
 
+  const apiForm = useCallback(
+    async (path, formData, afterRefresh = false) => {
+      const headers = await withOidcAuthorization(
+        {},
+        { useKeycloak, oidcMgr, oidcUser, setOidcUser },
+      );
+      const r = await fetch(`/api${path}`, {
+        method: "POST",
+        headers,
+        body: formData,
+      });
+      let d = {};
+      try {
+        d = await r.json();
+      } catch {
+        throw new Error(r.statusText || "Network error");
+      }
+      if (!r.ok) {
+        if (r.status === 401 && useKeycloak && oidcMgr && !afterRefresh) {
+          try {
+            await oidcMgr.signinSilent();
+            const u2 = await oidcMgr.getUser();
+            if (u2?.access_token) {
+              setOidcUser(u2);
+              return apiForm(path, formData, true);
+            }
+          } catch (_) {}
+          if (generationInFlightRef.current) {
+            throw new Error(
+              `${parseApiError(d)} — generation was not interrupted; sign in again in another tab if needed.`,
+            );
+          }
+          await redirectToKeycloakLogin();
+        }
+        throw new Error(parseApiError(d));
+      }
+      return d;
+    },
+    [oidcUser, useKeycloak, oidcMgr, redirectToKeycloakLogin],
+  );
+
   const api = useCallback(
     async (path, method = "GET", body, afterRefresh = false) => {
       const headers = await withOidcAuthorization(
@@ -275,6 +325,91 @@ export default function App() {
       return d;
     },
     [oidcUser, useKeycloak, oidcMgr, redirectToKeycloakLogin],
+  );
+
+  const validateReqImages = useCallback(() => {
+    const { maxCount, maxTotalMb, enabled } = reqImgConfig;
+    if (!enabled) return "";
+    const n = reqImageFiles.length + selectedReqAttachmentIds.size;
+    if (n > maxCount) {
+      return `At most ${maxCount} file(s) total (uploads + selected ticket attachments).`;
+    }
+    for (let i = 0; i < reqImageFiles.length; i++) {
+      if (isBlockedArchiveFilename(reqImageFiles[i].name)) return ARCHIVE_NOT_ALLOWED_MSG;
+    }
+    for (const id of selectedReqAttachmentIds) {
+      const a = reqAttachments.find((x) => String(x.id) === id);
+      if (a && isBlockedArchiveFilename(a.filename)) return ARCHIVE_NOT_ALLOWED_MSG;
+    }
+    let total = 0;
+    for (let i = 0; i < reqImageFiles.length; i++) total += reqImageFiles[i].size || 0;
+    for (const id of selectedReqAttachmentIds) {
+      const a = reqAttachments.find((x) => String(x.id) === id);
+      if (a && typeof a.size === "number") total += a.size;
+    }
+    const maxTotalBytes = maxTotalMb * 1024 * 1024;
+    if (total > maxTotalBytes) {
+      return `Combined image size must not exceed ${maxTotalMb} MB.`;
+    }
+    return "";
+  }, [reqImgConfig, reqImageFiles, selectedReqAttachmentIds, reqAttachments]);
+
+  const toggleReqAttachment = useCallback(
+    (id) => {
+      if (!reqImgConfig.enabled || mock) return;
+      setSelectedReqAttachmentIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+          setErr("");
+          return next;
+        }
+        if (next.size + reqImageFiles.length >= reqImgConfig.maxCount) {
+          setErr(`At most ${reqImgConfig.maxCount} file(s).`);
+          return prev;
+        }
+        const att = reqAttachments.find((x) => String(x.id) === id);
+        if (att && isBlockedArchiveFilename(att.filename)) {
+          setErr(ARCHIVE_NOT_ALLOWED_MSG);
+          return prev;
+        }
+        next.add(id);
+        setErr("");
+        return next;
+      });
+    },
+    [reqImgConfig.enabled, reqImgConfig.maxCount, mock, reqImageFiles.length, reqAttachments],
+  );
+
+  const removeReqImageAt = useCallback((idx) => {
+    setReqImageFiles((prev) => prev.filter((_, i) => i !== idx));
+  }, []);
+
+  const onReqImageFilesInput = useCallback(
+    (e) => {
+      const picked = Array.from(e.target.files || []);
+      e.target.value = "";
+      if (!picked.length || !reqImgConfig.enabled || mock) return;
+      const blocked = picked.filter((f) => isBlockedArchiveFilename(f.name));
+      const ok = picked.filter((f) => !isBlockedArchiveFilename(f.name));
+      if (blocked.length) {
+        setErr(
+          blocked.length === 1
+            ? ARCHIVE_NOT_ALLOWED_MSG
+            : `${ARCHIVE_NOT_ALLOWED_MSG} (${blocked.map((f) => f.name).join(", ")})`,
+        );
+      }
+      if (!ok.length) return;
+      setReqImageFiles((prev) => {
+        const next = [...prev];
+        for (const f of ok) {
+          if (next.length + selectedReqAttachmentIds.size >= reqImgConfig.maxCount) break;
+          next.push(f);
+        }
+        return next;
+      });
+    },
+    [reqImgConfig.enabled, reqImgConfig.maxCount, mock, selectedReqAttachmentIds.size],
   );
 
   const downloadReqAttachment = useCallback(
@@ -855,6 +990,19 @@ export default function App() {
             setJiraLinkType(c.default_jira_link_type);
           }
         } catch {}
+        if (typeof c.llm_requirement_images_enabled === "boolean") {
+          setReqImgConfig({
+            enabled: c.llm_requirement_images_enabled,
+            maxCount:
+              typeof c.llm_requirement_images_max_count === "number"
+                ? c.llm_requirement_images_max_count
+                : 5,
+            maxTotalMb:
+              typeof c.llm_requirement_images_max_total_mb === "number"
+                ? c.llm_requirement_images_max_total_mb
+                : 200,
+          });
+        }
         setMock(!!c.mock);
         if (typeof c.show_memory_ui === "boolean") setShowMemoryUi(c.show_memory_ui);
         if (typeof c.show_audit_ui === "boolean") setShowAuditUi(c.show_audit_ui);
@@ -885,6 +1033,22 @@ export default function App() {
     if (bootPhase !== "ready" || (useKeycloak && !oidcUser)) return;
     syncLists();
   }, [bootPhase, useKeycloak, oidcUser, syncLists]);
+
+  useEffect(() => {
+    setReqImageFiles([]);
+    setSelectedReqAttachmentIds(new Set());
+  }, [inputMode]);
+
+  useEffect(() => {
+    const ids = new Set(
+      (reqAttachments || []).map((a) => String(a.id ?? "").trim()).filter(Boolean),
+    );
+    setSelectedReqAttachmentIds((prev) => {
+      const next = new Set();
+      for (const id of prev) if (ids.has(id)) next.add(id);
+      return next;
+    });
+  }, [reqAttachments]);
 
   useEffect(() => {
     if (!showMemoryUi) setMemoryPanel(null);
@@ -1109,17 +1273,35 @@ export default function App() {
     setMemoryMatch(null);
     setAnnounce("Generating test cases…");
     try {
+      const ve = validateReqImages();
+      if (ve) {
+        setErr(ve);
+        setAnnounce("");
+        generationInFlightRef.current = false;
+        setBusy(null);
+        return;
+      }
       const pastePath = useAgenticGen ? "/generate-from-paste-agentic" : "/generate-from-paste";
-      const d = await api(pastePath, "POST", {
+      const pastePayload = {
         title: pasteTitle.trim(),
         description: desc,
         memory_key: pasteMemoryKey.trim(),
         save_memory: saveToMemory && !mock,
         ...testCaseBounds(minTestCases, maxTestCases),
         ...(useAgenticGen ? { max_rounds: clampAgenticMaxRounds(agenticMaxRounds) } : {}),
-      });
+      };
+      let d;
+      if (reqImgConfig.enabled && reqImageFiles.length > 0) {
+        const fd = new FormData();
+        fd.append("payload", JSON.stringify(pastePayload));
+        for (const f of reqImageFiles) fd.append("files", f);
+        d = await apiForm(pastePath, fd);
+      } else {
+        d = await api(pastePath, "POST", pastePayload);
+      }
       applyGeneratePayload(d);
       setPasteMemoryKey(d.ticket_id);
+      setReqImageFiles([]);
       const now = new Date().toISOString();
       setLastGenerateAt(now);
       setLastFetchAt(now);
@@ -1143,17 +1325,38 @@ export default function App() {
     }
     try {
       if (path === "/generate-tests") {
+        const ve = validateReqImages();
+        if (ve) {
+          setErr(ve);
+          setAnnounce("");
+          generationInFlightRef.current = false;
+          setBusy(null);
+          return;
+        }
         const genPath = useAgenticGen ? "/generate-tests-agentic" : "/generate-tests";
         const credBody = cred();
         setAnnounce("Generating test cases…");
-        const d = await api(genPath, "POST", {
+        const genPayload = {
           ...credBody,
           test_project_key: jiraTestProject.trim(),
           save_memory: saveToMemory && !mock,
           ...testCaseBounds(minTestCases, maxTestCases),
           ...(useAgenticGen ? { max_rounds: clampAgenticMaxRounds(agenticMaxRounds) } : {}),
-        });
+        };
+        if (reqImgConfig.enabled) {
+          genPayload.attachment_ids = [...selectedReqAttachmentIds];
+        }
+        let d;
+        if (reqImgConfig.enabled && reqImageFiles.length > 0) {
+          const fd = new FormData();
+          fd.append("payload", JSON.stringify(genPayload));
+          for (const f of reqImageFiles) fd.append("files", f);
+          d = await apiForm(genPath, fd);
+        } else {
+          d = await api(genPath, "POST", genPayload);
+        }
         applyGeneratePayload(d);
+        setReqImageFiles([]);
         setLastGenerateAt(new Date().toISOString());
         setAnnounce("Test cases generated.");
         await syncLists();
@@ -1316,23 +1519,24 @@ export default function App() {
               <span className="auth-user-label">
                 {oidcUser.profile?.preferred_username || oidcUser.profile?.name || oidcUser.profile?.email || "Signed in"}
               </span>
-              <button
-                type="button"
-                className="logout-icon-btn"
-                onClick={() => {
-                  postAuthAuditEvent(oidcUser?.access_token, "logout").finally(() => {
-                    oidcMgr?.signoutRedirect();
-                  });
-                }}
-                title="Log out"
-                aria-label="Log out"
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-                  <polyline points="16 17 21 12 16 7" />
-                  <line x1="21" y1="12" x2="9" y2="12" />
-                </svg>
-              </button>
+              <FloatingTooltip text="Log Out">
+                <button
+                  type="button"
+                  className="logout-icon-btn"
+                  onClick={() => {
+                    postAuthAuditEvent(oidcUser?.access_token, "logout").finally(() => {
+                      oidcMgr?.signoutRedirect();
+                    });
+                  }}
+                  aria-label="Log Out"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                    <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                    <polyline points="16 17 21 12 16 7" />
+                    <line x1="21" y1="12" x2="9" y2="12" />
+                  </svg>
+                </button>
+              </FloatingTooltip>
             </>
           ) : null}
           <ThemeToggle id="app-theme-toggle" theme={theme} setTheme={setTheme} />
@@ -1858,6 +2062,28 @@ export default function App() {
                   parseMinTc={parseMinTc}
                   parseMaxTc={parseMaxTc}
                 />
+                {reqImgConfig.enabled && !mock && pasteText.trim() ? (
+                  <RequirementMockupsBlock
+                    title="Upload Mockups and Attachments"
+                    fieldInfoText="Mockups or documents sent to the LLM with your pasted text: PNG, JPEG, GIF, WebP, or PDF. ZIP and other archive files are not allowed."
+                    pickerId="req-image-upload-paste"
+                    disabled={generatingTestCases}
+                    onChange={onReqImageFilesInput}
+                    describedBy="hint-req-images-paste"
+                    selectedCount={reqImageFiles.length}
+                    maxCount={reqImgConfig.maxCount}
+                    combinedCount={reqImageFiles.length}
+                    variant="paste"
+                    hintId="hint-req-images-paste"
+                    hintChildren={
+                      <>
+                        Up to {reqImgConfig.maxCount} file(s), {reqImgConfig.maxTotalMb} MB combined.
+                      </>
+                    }
+                    files={reqImageFiles}
+                    onRemoveAt={removeReqImageAt}
+                  />
+                ) : null}
                 <AgenticPipelineOptions
                   checked={useAgenticGen}
                   onCheckedChange={setUseAgenticGen}
@@ -2137,11 +2363,40 @@ export default function App() {
               ) : req ? (
                 <>
                   <PasteRequirementsPreview text={fmtReqMarkdown(req)} />
+                  {inputMode === "jira" && reqImgConfig.enabled && !mock ? (
+                    <RequirementMockupsBlock
+                      className="req-images-block--in-requirements"
+                      title="Upload Mockups and Attachments"
+                      fieldInfoText="Attachments sent to the LLM with your requirements. Combined with selected ticket attachments below (if any). PNG, JPEG, GIF, WebP, or PDF; ZIP and other archives are not allowed."
+                      pickerId="req-image-upload-jira"
+                      disabled={generatingTestCases}
+                      onChange={onReqImageFilesInput}
+                      describedBy="hint-req-images-jira"
+                      selectedCount={reqImageFiles.length}
+                      maxCount={reqImgConfig.maxCount}
+                      combinedCount={reqImageFiles.length + selectedReqAttachmentIds.size}
+                      variant="jira"
+                      hintId="hint-req-images-jira"
+                      hintChildren={
+                        <>
+                          Maximum {reqImgConfig.maxCount} attachments with {reqImgConfig.maxTotalMb} MB combined.
+                          {reqAttachments?.length
+                            ? " Select attachments below to include them when generating."
+                            : ""}
+                        </>
+                      }
+                      files={reqImageFiles}
+                      onRemoveAt={removeReqImageAt}
+                    />
+                  ) : null}
                   {inputMode === "jira" && reqAttachments?.length ? (
                     <RequirementAttachmentsInline
                       attachments={reqAttachments}
                       onDownload={downloadReqAttachment}
                       disabled={mock}
+                      selectable={reqImgConfig.enabled && !mock}
+                      selectedIds={selectedReqAttachmentIds}
+                      onToggleSelect={toggleReqAttachment}
                     />
                   ) : null}
                   {inputMode === "jira" && linkedJiraTests?.length ? (

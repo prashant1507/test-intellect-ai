@@ -8,7 +8,7 @@
 [![LLM](https://img.shields.io/badge/LLM-OpenAI%20compatible-8B5CF6?style=flat-square&logo=openai&logoColor=white)](https://platform.openai.com/docs/api-reference)
 [![Keycloak](https://img.shields.io/badge/Keycloak-OIDC-5C6BC0?style=flat-square&logo=keycloak&logoColor=white)](https://www.keycloak.org/)
 
-Web app that pulls JIRA requirements (or pasted text) and uses an OpenAI-compatible LLM (local or cloud) to generate Gherkin-style test cases.
+Web app that pulls JIRA requirements (or pasted text) and uses an OpenAI-compatible LLM or VLM (local or cloud) to generate Gherkin-style test cases.
 Set the model via `LLM_URL` (must include /v1) and optionally `LLM_ACCESS_TOKEN` for Bearer auth.
 
 Optionally:
@@ -53,6 +53,7 @@ flowchart LR
 ### AI Test Generation
 - Works with any OpenAI-compatible /v1/chat/completions endpoint 
 - Supports local (LM Studio) or cloud (OpenAI, Azure, etc.)
+- Supports passing Mockups to AI Model
 - Outputs structured Gherkin scenarios with steps 
 - Configurable min/max test cases (0 = no limit)
 - Priorities 
@@ -213,6 +214,7 @@ Other routes and request schemas: see **`backend/main.py`**.
 
 - **Mock Mode:** No audit writes from generate; no history saves from generate. Audit user column is empty without Keycloak.
 - **JIRA Test Project:** After generating tests, configuring the test project and using **+** can pull priorities from JIRA depending on setup.
+- Make sure to use model that supports vision in order to use feature to pass mockups to LLM
 
 ---
 
@@ -224,14 +226,13 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 - qwen/qwen3-coder-next
 - openai/gpt-oss-20b
 - openai/gpt-oss-120b
-- qwen/qwen3-vl-30b
+- qwen/qwen3-vl-30b (model with vision support)
 ---
 
 ## Future Improvements & Features
 - Use linked issue to get knowledge of the Requirement ticket
 - Choice to generate test cases based on BDD or something else
 - RAG feature
-- Image reading support
 - Link with QA test framework and DEV code
 
 

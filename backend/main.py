@@ -8,7 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
@@ -49,6 +49,7 @@ from memory_store import (
     save,
 )
 from keycloak_auth import claims_username, verify_keycloak_token
+from requirement_images import merge_and_validate
 from settings import settings
 
 
@@ -203,6 +204,7 @@ class GenerateIn(TicketIn):
     save_memory: bool = True
     min_test_cases: int = Field(1, ge=1)
     max_test_cases: int = Field(10, ge=0)
+    attachment_ids: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _test_case_bounds(self) -> "GenerateIn":
@@ -302,6 +304,9 @@ class ConfigResponse(BaseModel):
     keycloak_realm: str = ""
     keycloak_client_id: str = ""
     keycloak_idle_timeout_minutes: int = 5
+    llm_requirement_images_enabled: bool = False
+    llm_requirement_images_max_count: int = 5
+    llm_requirement_images_max_total_mb: int = 200
 
 
 def _req_snapshot(d: dict) -> str:
@@ -464,20 +469,39 @@ async def _generate_and_persist(
     linked_jira_work_entries: list | None = None,
     linked_jira_work_type_labels: str = "",
     jira_username: str | None = None,
+    requirement_images: list[tuple[str, str, bytes]] | None = None,
+    agentic: bool = False,
+    max_rounds: int = 3,
 ) -> dict:
     req_diff = _diff(prev["requirements"], req) if prev else None
     allowed = resolve_priority_allowed_for_generation(paste_mode, priority_labels)
     ej_llm = _existing_jira_tests_for_llm(jira_entries)
+    agentic_out: dict | None = None
     try:
-        cases = await generate_test_cases(
-            req,
-            prev,
-            allowed_priorities=allowed,
-            min_test_cases=min_test_cases,
-            max_test_cases=max_test_cases,
-            paste_mode=paste_mode,
-            existing_jira_tests=ej_llm,
-        )
+        if agentic:
+            agentic_out = await run_agentic_pipeline_async(
+                requirements=req,
+                allowed_priorities=allowed,
+                min_test_cases=min_test_cases,
+                max_test_cases=max_test_cases,
+                max_rounds=max_rounds,
+                prev=prev,
+                paste_mode=paste_mode,
+                existing_jira_tests=ej_llm,
+                requirement_images=requirement_images,
+            )
+            cases = agentic_out.get("test_cases") or []
+        else:
+            cases = await generate_test_cases(
+                req,
+                prev,
+                allowed_priorities=allowed,
+                min_test_cases=min_test_cases,
+                max_test_cases=max_test_cases,
+                paste_mode=paste_mode,
+                existing_jira_tests=ej_llm,
+                requirement_images=requirement_images,
+            )
     except Exception as e:
         _raise_llm_route_error(e)
     cases = await _finalize_cases_after_llm(
@@ -490,9 +514,9 @@ async def _generate_and_persist(
         save_memory=save_memory,
         kc=kc,
         jira_username=jira_username,
-        audit_action="generate_test_cases",
+        audit_action="generate_test_cases_agentic" if agentic else "generate_test_cases",
     )
-    return _generate_response_base(
+    base = _generate_response_base(
         key,
         req,
         cases,
@@ -503,75 +527,15 @@ async def _generate_and_persist(
         linked_jira_work_entries,
         linked_jira_work_type_labels,
     )
-
-
-async def _generate_and_persist_agentic(
-    key: str,
-    req: dict,
-    prev: dict | None,
-    similar_used: bool,
-    min_test_cases: int,
-    max_test_cases: int,
-    max_rounds: int,
-    save_memory: bool,
-    kc: dict | None,
-    *,
-    paste_mode: bool = False,
-    priority_labels: list[str] | None = None,
-    jira_entries: list | None = None,
-    linked_jira_work_entries: list | None = None,
-    linked_jira_work_type_labels: str = "",
-    jira_username: str | None = None,
-) -> dict:
-    req_diff = _diff(prev["requirements"], req) if prev else None
-    allowed = resolve_priority_allowed_for_generation(paste_mode, priority_labels)
-    ej_llm = _existing_jira_tests_for_llm(jira_entries)
-    try:
-        out = await run_agentic_pipeline_async(
-            requirements=req,
-            allowed_priorities=allowed,
-            min_test_cases=min_test_cases,
-            max_test_cases=max_test_cases,
-            max_rounds=max_rounds,
-            prev=prev,
-            paste_mode=paste_mode,
-            existing_jira_tests=ej_llm,
-        )
-        cases = out.get("test_cases") or []
-    except Exception as e:
-        _raise_llm_route_error(e)
-    cases = await _finalize_cases_after_llm(
-        key,
-        req,
-        cases,
-        prev,
-        jira_entries=jira_entries,
-        allowed=allowed,
-        save_memory=save_memory,
-        kc=kc,
-        jira_username=jira_username,
-        audit_action="generate_test_cases_agentic",
-    )
-    return {
-        **_generate_response_base(
-            key,
-            req,
-            cases,
-            req_diff,
-            prev,
-            similar_used,
-            jira_entries,
-            linked_jira_work_entries,
-            linked_jira_work_type_labels,
-        ),
-        "agentic": {
-            "validator": out.get("validator"),
-            "validation_passed": out.get("validation_passed"),
-            "error": out.get("error"),
-            "generations": out.get("generations"),
-            "suggestion_swap": out.get("suggestion_swap"),
-        },
-    }
+    if agentic and agentic_out is not None:
+        base["agentic"] = {
+            "validator": agentic_out.get("validator"),
+            "validation_passed": agentic_out.get("validation_passed"),
+            "error": agentic_out.get("error"),
+            "generations": agentic_out.get("generations"),
+            "suggestion_swap": agentic_out.get("suggestion_swap"),
+        }
+    return base
 
 
 @asynccontextmanager
@@ -611,6 +575,98 @@ def _raise_llm_route_error(e: Exception) -> None:
     if isinstance(e, ValueError):
         raise HTTPException(status_code=500, detail=str(e)) from e
     raise HTTPException(status_code=502, detail=f"LLM error: {e}") from e
+
+
+async def _read_generate_body(request: Request, model_cls: type[BaseModel]) -> tuple[BaseModel, list[UploadFile]]:
+    ct = (request.headers.get("content-type") or "").lower()
+    if "multipart/form-data" in ct:
+        form = await request.form()
+        raw = form.get("payload")
+        if not isinstance(raw, str):
+            raise HTTPException(
+                status_code=400,
+                detail="multipart requests must include a string form field 'payload' with JSON.",
+            )
+        body = model_cls.model_validate_json(raw)
+        files: list[UploadFile] = []
+        for key, v in form.multi_items():
+            if key == "files" and hasattr(v, "read"):
+                fn = getattr(v, "filename", None)
+                if fn:
+                    files.append(v)
+        return body, files
+    try:
+        data = await request.json()
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Body must be JSON or multipart/form-data with form field 'payload'.",
+        ) from None
+    return model_cls.model_validate(data), []
+
+
+async def _upload_tuples(files: list[UploadFile]) -> list[tuple[str, bytes, str]]:
+    out: list[tuple[str, bytes, str]] = []
+    for uf in files:
+        if not uf.filename:
+            continue
+        raw = await uf.read()
+        ct = (uf.content_type or "").strip()
+        out.append((uf.filename, raw, ct))
+    return out
+
+
+async def _jira_attachment_parts_for_generate(body: TicketIn, ids: list[str]) -> list[tuple[str, str, bytes]]:
+    if settings.mock or not ids:
+        return []
+    ju = body.jira_url.strip()
+    user = body.username
+    pw = body.password
+    key = body.ticket_id.strip().upper()
+    meta = await asyncio.to_thread(fetch_issue_attachment_meta, ju, user, pw, key)
+    allowed = {str(x.get("id")) for x in meta if isinstance(x, dict)}
+    out: list[tuple[str, str, bytes]] = []
+    for aid in ids:
+        s = str(aid).strip()
+        if not s or s not in allowed:
+            raise HTTPException(status_code=400, detail=f"Attachment is not on this ticket: {s!r}")
+        content, fn, ct = await asyncio.to_thread(download_attachment_for_ticket, ju, user, pw, s, key)
+        out.append((fn, ct, content))
+    return out
+
+
+def _merge_req_validated(
+    uploads: list[tuple[str, bytes, str]],
+    jira_parts: list[tuple[str, str, bytes]],
+) -> list[tuple[str, str, bytes]]:
+    return merge_and_validate(
+        enabled=True,
+        max_count=settings.llm_requirement_images_max_count,
+        max_total_bytes=settings.llm_requirement_images_max_total_mb * 1024 * 1024,
+        uploads=uploads,
+        jira_parts=jira_parts,
+    )
+
+
+async def _merge_req_images_jira(body: GenerateIn, files: list[UploadFile]) -> list[tuple[str, str, bytes]]:
+    if not settings.llm_requirement_images_enabled:
+        if files:
+            raise HTTPException(status_code=400, detail="Requirement images are disabled.")
+        if body.attachment_ids:
+            raise HTTPException(status_code=400, detail="Requirement images are disabled.")
+        return []
+    uploads = await _upload_tuples(files)
+    jira_parts = await _jira_attachment_parts_for_generate(body, list(body.attachment_ids or []))
+    return _merge_req_validated(uploads, jira_parts)
+
+
+async def _merge_req_images_paste(files: list[UploadFile]) -> list[tuple[str, str, bytes]]:
+    if not settings.llm_requirement_images_enabled:
+        if files:
+            raise HTTPException(status_code=400, detail="Requirement images are disabled.")
+        return []
+    uploads = await _upload_tuples(files)
+    return _merge_req_validated(uploads, [])
 
 
 async def _jira_generate_route_kwargs(body: GenerateIn) -> tuple[str, dict, dict | None, bool, dict]:
@@ -733,6 +789,9 @@ def get_config():
         keycloak_realm=_strip(s.keycloak_realm),
         keycloak_client_id=_strip(s.keycloak_client_id),
         keycloak_idle_timeout_minutes=s.keycloak_idle_timeout_minutes,
+        llm_requirement_images_enabled=s.llm_requirement_images_enabled,
+        llm_requirement_images_max_count=s.llm_requirement_images_max_count,
+        llm_requirement_images_max_total_mb=s.llm_requirement_images_max_total_mb,
     )
 
 
@@ -852,9 +911,12 @@ async def jira_attachment_download(body: AttachmentDownloadIn, _kc: Kc):
     return Response(content=content, media_type=ctype, headers={"Content-Disposition": disp})
 
 
-@api.post("/generate-tests")
-async def generate_tests(body: GenerateIn, kc: Kc):
+async def _run_jira_generate(request: Request, kc: Kc, *, agentic: bool) -> dict:
+    cls = GenerateAgenticIn if agentic else GenerateIn
+    body, files = await _read_generate_body(request, cls)
+    imgs = await _merge_req_images_jira(body, files)
     key, req, prev, similar_used, shared = await _jira_generate_route_kwargs(body)
+    max_rounds = body.max_rounds if agentic else 3
     out = await _generate_and_persist(
         key,
         req,
@@ -864,29 +926,23 @@ async def generate_tests(body: GenerateIn, kc: Kc):
         body.max_test_cases,
         body.save_memory,
         kc,
+        requirement_images=imgs,
+        agentic=agentic,
+        max_rounds=max_rounds,
         **shared,
     )
     await _enrich_out_with_attachments(body, out)
     return out
+
+
+@api.post("/generate-tests")
+async def generate_tests(request: Request, kc: Kc):
+    return await _run_jira_generate(request, kc, agentic=False)
 
 
 @api.post("/generate-tests-agentic")
-async def generate_tests_agentic(body: GenerateAgenticIn, kc: Kc):
-    key, req, prev, similar_used, shared = await _jira_generate_route_kwargs(body)
-    out = await _generate_and_persist_agentic(
-        key,
-        req,
-        prev,
-        similar_used,
-        body.min_test_cases,
-        body.max_test_cases,
-        body.max_rounds,
-        body.save_memory,
-        kc,
-        **shared,
-    )
-    await _enrich_out_with_attachments(body, out)
-    return out
+async def generate_tests_agentic(request: Request, kc: Kc):
+    return await _run_jira_generate(request, kc, agentic=True)
 
 
 @api.post("/generate-automation-skeleton")
@@ -924,9 +980,12 @@ def _paste_generate_context(body: PastedGenerateIn) -> tuple[str, dict, dict | N
     return key, req, prev, similar_used
 
 
-@api.post("/generate-from-paste")
-async def generate_from_paste(body: PastedGenerateIn, kc: Kc):
+async def _run_paste_generate(request: Request, kc: Kc, *, agentic: bool) -> dict:
+    cls = PastedAgenticIn if agentic else PastedGenerateIn
+    body, files = await _read_generate_body(request, cls)
+    imgs = await _merge_req_images_paste(files)
     key, req, prev, similar_used = _paste_generate_context(body)
+    max_rounds = body.max_rounds if agentic else 3
     return await _generate_and_persist(
         key,
         req,
@@ -937,24 +996,20 @@ async def generate_from_paste(body: PastedGenerateIn, kc: Kc):
         body.save_memory,
         kc,
         paste_mode=True,
+        requirement_images=imgs,
+        agentic=agentic,
+        max_rounds=max_rounds,
     )
+
+
+@api.post("/generate-from-paste")
+async def generate_from_paste(request: Request, kc: Kc):
+    return await _run_paste_generate(request, kc, agentic=False)
 
 
 @api.post("/generate-from-paste-agentic")
-async def generate_from_paste_agentic(body: PastedAgenticIn, kc: Kc):
-    key, req, prev, similar_used = _paste_generate_context(body)
-    return await _generate_and_persist_agentic(
-        key,
-        req,
-        prev,
-        similar_used,
-        body.min_test_cases,
-        body.max_test_cases,
-        body.max_rounds,
-        body.save_memory,
-        kc,
-        paste_mode=True,
-    )
+async def generate_from_paste_agentic(request: Request, kc: Kc):
+    return await _run_paste_generate(request, kc, agentic=True)
 
 
 app.include_router(api)

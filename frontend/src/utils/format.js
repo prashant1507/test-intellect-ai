@@ -107,6 +107,11 @@ export function fmtTestsMarkdown(t) {
     .join("\n\n---\n\n");
 }
 
+export function formatSizeMb(n) {
+  if (n == null || typeof n !== "number" || n < 0) return "";
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 export function formatTime(iso) {
   try {
     return new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });

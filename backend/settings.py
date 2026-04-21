@@ -34,6 +34,7 @@ class Settings(BaseSettings):
         "show_memory_ui",
         "show_audit_ui",
         "use_keycloak",
+        "llm_requirement_images_enabled",
         mode="before",
     )
     @classmethod
@@ -62,6 +63,9 @@ class Settings(BaseSettings):
     llm_url: str = ""
     llm_model: str = ""
     llm_access_token: str = ""
+    llm_requirement_images_enabled: bool = False
+    llm_requirement_images_max_count: int = 5
+    llm_requirement_images_max_total_mb: int = 200
     paste_mode_priorities: str = ""
     memory_similarity_threshold: float = 0.92
 

@@ -8,12 +8,15 @@ from typing import TypedDict
 from langgraph.graph import END, StateGraph
 
 from ai_client import (
+    SYS_IMAGE_SUPPLEMENT,
     _chat,
     _json as parse_llm_json,
     _norm,
     build_generation_user_prompt,
+    build_multimodal_user_content,
     score_test_cases_0_10,
 )
+from requirement_images import images_to_state_payload, state_payload_to_images
 from settings import settings
 
 from .models import GenerationEnvelope, TestCaseItem, ValidatorResult
@@ -52,13 +55,26 @@ def _llm_chat(
     temperature: float,
     max_tokens: int,
     json_response_format: bool = False,
+    skip_json_for_vision: bool = False,
 ) -> str:
     base = settings.llm_url.rstrip("/")
     if not base:
         raise ValueError("LLM_URL is not set in .env")
     model = (settings.llm_model or "").strip() or "local-model"
-    fmt = _json_mode_response() if json_response_format else None
+    use_json = json_response_format and not skip_json_for_vision
+    fmt = _json_mode_response() if use_json else None
     return _chat(base, model, messages, temperature, max_tokens=max_tokens, response_format=fmt)
+
+
+def _msgs_with_images(
+    system: str,
+    user_text: str,
+    imgs: list[tuple[str, str, bytes]],
+) -> tuple[list[dict], bool]:
+    uc = build_multimodal_user_content(user_text, imgs)
+    has = bool(imgs)
+    ss = system if not has else f"{system}\n\n{SYS_IMAGE_SUPPLEMENT}"
+    return [{"role": "system", "content": ss}, {"role": "user", "content": uc}], has
 
 
 def _coerce_steps_value(steps: object) -> list[str]:
@@ -127,6 +143,7 @@ class AgentState(TypedDict, total=False):
     validation_passed: bool | None
     suggestion_swap: dict | None
     final_cases: list[dict]
+    requirement_images: list[dict]
 
 
 def _max_rounds_cap(state: AgentState) -> int:
@@ -172,8 +189,15 @@ def generate_node(state: AgentState) -> dict:
         user = gp
     if fb:
         user += f"\n\nRevise using this feedback (do not repeat the same mistakes):\n{fb}\n"
-    msgs = [{"role": "system", "content": GEN_SYS}, {"role": "user", "content": user}]
-    raw = _llm_chat(msgs, temperature=0.12, max_tokens=4096)
+    imgs = state_payload_to_images(state.get("requirement_images"))
+    if imgs:
+        user += (
+            "\n\n### Images and PDFs (same message, after this text)\n"
+            "Additional image or PDF parts follow. Combine them with the Requirements text and Prior/linked context; "
+            "ground scenarios in written and visual (or document) requirement evidence where they agree."
+        )
+    msgs, has_imgs = _msgs_with_images(GEN_SYS, user, imgs)
+    raw = _llm_chat(msgs, temperature=0.12, max_tokens=4096, skip_json_for_vision=has_imgs)
     g = (state.get("generation") or 0) + 1
     return {"raw": raw, "generation": g}
 
@@ -209,8 +233,15 @@ def score_node(state: AgentState) -> dict:
     req = json.dumps(state["requirements"], ensure_ascii=False, indent=2)
     body = json.dumps({"test_cases": [c.model_dump() for c in env.test_cases]}, ensure_ascii=False, indent=2)
     user = f"Requirements:\n{req}\n\nGenerated:\n{body}\n\nReturn only the scoring JSON."
-    msgs = [{"role": "system", "content": VAL_SYS}, {"role": "user", "content": user}]
-    raw = _llm_chat(msgs, temperature=0.08, max_tokens=1024, json_response_format=True)
+    imgs = state_payload_to_images(state.get("requirement_images"))
+    msgs, has_imgs = _msgs_with_images(VAL_SYS, user, imgs)
+    raw = _llm_chat(
+        msgs,
+        temperature=0.08,
+        max_tokens=1024,
+        json_response_format=True,
+        skip_json_for_vision=has_imgs,
+    )
     data = parse_llm_json(raw)
     vr = ValidatorResult.model_validate(data)
     mx = _max_rounds_cap(state)
@@ -250,9 +281,10 @@ def merge_suggestions_node(state: AgentState) -> dict:
         f"Create exactly {len(sugs)} test case(s), one per suggestion:\n{sug_block}\n"
         f"Priorities exactly one of: {pri}.\nReturn only JSON with key test_cases."
     )
-    msgs = [{"role": "system", "content": SUG_GEN_SYS}, {"role": "user", "content": user}]
+    imgs = state_payload_to_images(state.get("requirement_images"))
+    msgs, has_imgs = _msgs_with_images(SUG_GEN_SYS, user, imgs)
     try:
-        raw = _llm_chat(msgs, temperature=0.12, max_tokens=4096)
+        raw = _llm_chat(msgs, temperature=0.12, max_tokens=4096, skip_json_for_vision=has_imgs)
         data = parse_llm_json(raw)
         tc = data.get("test_cases")
         if not isinstance(tc, list) or not tc:
@@ -275,9 +307,15 @@ def merge_suggestions_node(state: AgentState) -> dict:
         f"CANDIDATE_SCENARIOS ({nc} items, indices 0..{nc - 1}):\n{json.dumps(candidates_norm, ensure_ascii=False, indent=2)}\n\n"
         f"Return only JSON with base_scores: array of exactly {nb} numbers, candidate_scores: array of exactly {nc} numbers."
     )
-    msgs2 = [{"role": "system", "content": RANK_SYS}, {"role": "user", "content": user2}]
+    msgs2, _ = _msgs_with_images(RANK_SYS, user2, imgs)
     try:
-        raw2 = _llm_chat(msgs2, temperature=0.05, max_tokens=1024, json_response_format=True)
+        raw2 = _llm_chat(
+            msgs2,
+            temperature=0.05,
+            max_tokens=1024,
+            json_response_format=True,
+            skip_json_for_vision=has_imgs,
+        )
         rank = parse_llm_json(raw2)
         bs = rank.get("base_scores")
         cs = rank.get("candidate_scores")
@@ -397,6 +435,7 @@ def run_pipeline(
     prev: dict | None = None,
     paste_mode: bool = False,
     existing_jira_tests: list[dict] | None = None,
+    requirement_images: list[tuple[str, str, bytes]] | None = None,
 ) -> dict:
     pri = allowed_priorities or ["Highest", "High", "Medium", "Low", "Lowest"]
     gp = build_generation_user_prompt(
@@ -409,6 +448,7 @@ def run_pipeline(
         max_test_cases=max_test_cases,
     )
     app = build_graph()
+    ri = images_to_state_payload(requirement_images or [])
     init: AgentState = {
         "requirements": requirements,
         "generation_prompt": gp,
@@ -417,6 +457,7 @@ def run_pipeline(
         "max_test_cases": max_test_cases,
         "max_rounds": max_rounds,
         "feedback": "",
+        "requirement_images": ri,
     }
     out = app.invoke(init)
     cases = out.get("final_cases") or []

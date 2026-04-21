@@ -1,6 +1,3 @@
-# Container env only — no ${VAR} substitution, so the project .env file is not used by Compose.
-# Edit values below for Docker. For local uvicorn/vite without Docker, use a root `.env` file (see backend/settings.py).
-
 services:
   test-intellect-ai:
     image: test-intellect-ai:1.0
@@ -16,6 +13,7 @@ services:
       JIRA_TEST_ISSUE_TYPE: Test
       JIRA_TEST_LINK_TYPE: Relates
       JIRA_LINK_INWARD_IS_REQUIREMENT: "true"
+      JIRA_LINKED_WORK_ISSUE_TYPES: "Story,Improvement,Feature"
 
       MOCK: "false"
       SHOW_MEMORY_UI: "true"
@@ -30,8 +28,12 @@ services:
       KEYCLOAK_INTERNAL_URL: http://host.docker.internal:8080
 
       LLM_URL: http://host.docker.internal:1234/v1
-      LLM_MODEL: qwen/qwen3-coder-30b
+      LLM_MODEL: qwen/qwen3-vl-30b
       LLM_ACCESS_TOKEN: ""
+
+      LLM_REQUIREMENT_IMAGES_ENABLED: "true"
+      LLM_REQUIREMENT_IMAGES_MAX_COUNT: "5"
+      LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB: "200"
 
       MEMORY_SIMILARITY_THRESHOLD: "0.92"
       PASTE_MODE_PRIORITIES: "Highest, High, Medium, Low, Lowest"

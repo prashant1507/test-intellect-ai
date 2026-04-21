@@ -22,31 +22,33 @@ export function Spinner() {
 export function ThemeToggle({ theme, setTheme, layout = "inline", id }) {
   const inner = (
     <div id={id} className="theme-toggle" role="group" aria-label="Color theme">
-      <button
-        type="button"
-        className={theme === "light" ? "active" : ""}
-        onClick={() => setTheme("light")}
-        aria-pressed={theme === "light"}
-        title="Light theme"
-        aria-label="Light theme"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-        </svg>
-      </button>
-      <button
-        type="button"
-        className={theme === "dark" ? "active" : ""}
-        onClick={() => setTheme("dark")}
-        aria-pressed={theme === "dark"}
-        title="Dark theme"
-        aria-label="Dark theme"
-      >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-        </svg>
-      </button>
+      <FloatingTooltip text="Light Theme">
+        <button
+          type="button"
+          className={theme === "light" ? "active" : ""}
+          onClick={() => setTheme("light")}
+          aria-pressed={theme === "light"}
+          aria-label="Light Theme"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+          </svg>
+        </button>
+      </FloatingTooltip>
+      <FloatingTooltip text="Dark Theme">
+        <button
+          type="button"
+          className={theme === "dark" ? "active" : ""}
+          onClick={() => setTheme("dark")}
+          aria-pressed={theme === "dark"}
+          aria-label="Dark Theme"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+          </svg>
+        </button>
+      </FloatingTooltip>
     </div>
   );
   return layout === "auth" ? <div className="auth-page-toolbar">{inner}</div> : inner;
