@@ -44,7 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.3]
 
 ### Added
-- Supports passing Mockups to AI Model (can be enable or disable in .env file)
+- Supports passing Mockups to AI Model (can be enabled or disable in .env file)
 
 ### Changed
 - Minor bug fixes
