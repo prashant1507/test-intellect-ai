@@ -222,6 +222,9 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 
 - qwen/qwen3-coder-30b
 - qwen/qwen3-coder-next
+- openai/gpt-oss-20b
+- openai/gpt-oss-120b
+- qwen/qwen3-vl-30b
 ---
 
 ## Future Improvements & Features
