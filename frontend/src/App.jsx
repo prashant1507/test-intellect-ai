@@ -67,9 +67,9 @@ export default function App() {
   const [memoryMatch, setMemoryMatch] = useState(null);
   const [saveToMemory, setSaveToMemory] = useState(true);
   const [minTestCases, setMinTestCases] = useState("1");
-  const [maxTestCases, setMaxTestCases] = useState("10");
+  const [maxTestCases, setMaxTestCases] = useState("5");
   const [useAgenticGen, setUseAgenticGen] = useState(true);
-  const [agenticMaxRounds, setAgenticMaxRounds] = useState("3");
+  const [agenticMaxRounds, setAgenticMaxRounds] = useState("2");
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState("");
   const [lastFetchAt, setLastFetchAt] = useState(null);
@@ -2116,7 +2116,7 @@ export default function App() {
             <div className="card section-card section-requirements">
               <div className="head">
                 <div>
-                  <h2>Requirements {key ? `(${key})` : ""}</h2>
+                  <h2>Requirements for {key ? `${key}` : ""}</h2>
                   {lastFetchAt ? <p className="last-run">Last loaded {formatTime(lastFetchAt)}</p> : null}
                 </div>
                 <FloatingTooltip text="Copy requirements as Markdown">
