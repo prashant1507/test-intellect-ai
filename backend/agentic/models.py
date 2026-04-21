@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 
@@ -34,6 +36,24 @@ class DimensionScores(BaseModel):
         return int(max(0, min(5, round(x))))
 
 
+def _coerce_validator_line(x: object) -> str:
+    if isinstance(x, str):
+        return x
+    if isinstance(x, dict):
+        dim = x.get("dimension")
+        body = next(
+            (x.get(k) for k in ("text", "message", "detail", "description", "finding") if x.get(k)),
+            None,
+        )
+        if body is not None:
+            s = str(body).strip()
+            if dim is not None and str(dim).strip():
+                return f"{dim}: {s}"
+            return s
+        return json.dumps(x, ensure_ascii=False)
+    return str(x)
+
+
 class ValidatorResult(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -41,6 +61,15 @@ class ValidatorResult(BaseModel):
     issues: list[str] = Field(default_factory=list)
     must_fix: list[str] = Field(default_factory=list)
     suggestions: list[str] = Field(default_factory=list)
+
+    @field_validator("issues", "must_fix", "suggestions", mode="before")
+    @classmethod
+    def _issues_as_strings(cls, v: object) -> list[str]:
+        if v is None:
+            return []
+        if not isinstance(v, list):
+            return []
+        return [_coerce_validator_line(x) for x in v]
 
     @computed_field
     @property
