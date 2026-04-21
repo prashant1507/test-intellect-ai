@@ -1674,7 +1674,6 @@ export default function App() {
                 <AutomationSkeletonModal
                   key={String(automationSkelIdx)}
                   tc={tests[automationSkelIdx]}
-                  ticketId={mainRequirementKey}
                   jiraBaseUrl={jiraUrl}
                   api={api}
                   onClose={() => setAutomationSkelIdx(null)}
@@ -1750,7 +1749,6 @@ export default function App() {
                 <AutomationSkeletonModal
                   key={`mem-${memoryAutomationSkelIdx}`}
                   tc={memoryPanel.test_cases[memoryAutomationSkelIdx]}
-                  ticketId={memoryPushTicketId || ""}
                   jiraBaseUrl={jiraUrl}
                   api={api}
                   onClose={() => setMemoryAutomationSkelIdx(null)}

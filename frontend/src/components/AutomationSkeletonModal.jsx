@@ -57,7 +57,7 @@ export function AutomationSkeletonIconButton({ onClick, disabled }) {
   );
 }
 
-export function AutomationSkeletonModal({ tc, ticketId, jiraBaseUrl, api, onClose, onAnnounce }) {
+export function AutomationSkeletonModal({ tc, jiraBaseUrl, api, onClose, onAnnounce }) {
   const [language, setLanguage] = useState("python");
   const [framework, setFramework] = useState("playwright");
   const [code, setCode] = useState("");
@@ -78,7 +78,7 @@ export function AutomationSkeletonModal({ tc, ticketId, jiraBaseUrl, api, onClos
         test_case: tc,
         language,
         framework,
-        ticket_id: ticketId || "",
+        ticket_id: String(tc?.jira_issue_key || "").trim(),
       });
       const c = typeof d?.code === "string" ? d.code : "";
       setCode(c);
@@ -88,13 +88,13 @@ export function AutomationSkeletonModal({ tc, ticketId, jiraBaseUrl, api, onClos
     } finally {
       setLoading(false);
     }
-  }, [api, tc, language, framework, ticketId, onAnnounce]);
+  }, [api, tc, language, framework, onAnnounce]);
 
   if (!tc) return null;
 
   const title = String(tc.description || "").trim() || "Test case";
-  const jiraKey = String(ticketId || "").trim().toUpperCase();
-  const issueHref = jiraKey ? jiraBrowseHref(jiraBaseUrl, jiraKey) : null;
+  const testCaseIssueKey = String(tc.jira_issue_key || "").trim().toUpperCase();
+  const issueHref = testCaseIssueKey ? jiraBrowseHref(jiraBaseUrl, testCaseIssueKey) : null;
 
   return (
     <>
@@ -108,7 +108,7 @@ export function AutomationSkeletonModal({ tc, ticketId, jiraBaseUrl, api, onClos
       </div>
       <div className="modal-dialog-automation-skel-body">
         <p className="automation-skel-scenario">
-          {jiraKey ? (
+          {testCaseIssueKey ? (
             <>
               {issueHref ? (
                 <a
@@ -117,15 +117,15 @@ export function AutomationSkeletonModal({ tc, ticketId, jiraBaseUrl, api, onClos
                   rel="noopener noreferrer"
                   className="audit-issue-link"
                 >
-                  {jiraKey}
+                  {testCaseIssueKey}
                 </a>
               ) : (
-                <strong className="automation-skel-scenario-key">{jiraKey}</strong>
+                <strong className="automation-skel-scenario-key">{testCaseIssueKey}</strong>
               )}{" "}
               <span className="automation-skel-scenario-title">{title}</span>
             </>
           ) : (
-            <strong>{title}</strong>
+            <span className="automation-skel-scenario-title">{title}</span>
           )}
         </p>
         <div className="automation-skel-form" role="group" aria-label="Language and framework">
