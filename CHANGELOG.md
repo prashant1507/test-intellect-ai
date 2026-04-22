@@ -79,3 +79,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Now copy to clip board for Test Cases will copy Status, Priority, Gherkin Steps, Score 
+- Improved BDD LLM prompt
