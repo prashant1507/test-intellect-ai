@@ -104,6 +104,46 @@ def _is_test_hash_key(k: str) -> bool:
     return bool(_TEST_HASH_KEY.match(norm_issue_key(str(k or ""))))
 
 
+_JIRA_STYLE_MEMORY_KEY = re.compile(r"^[A-Z][A-Z0-9_]*-\d+$")
+
+
+def _is_jira_style_memory_key(k: str) -> bool:
+    s = norm_issue_key(str(k or ""))
+    if not s or _is_test_hash_key(s):
+        return False
+    return bool(_JIRA_STYLE_MEMORY_KEY.match(s))
+
+
+def find_jira_history_key_for_same_requirements(req: dict, *, exclude_key: str | None = None) -> str | None:
+    """Another saved row (JIRA-shaped key) with identical normalized requirements text."""
+    if not isinstance(req, dict):
+        return None
+    target = _norm_req_text(req)
+    if len(target) < 12:
+        return None
+    ex = norm_issue_key(exclude_key or "")
+    with open_memory_db() as c:
+        rows = c.execute(
+            "SELECT jira_key, requirements_json FROM ticket_memory ORDER BY updated_at DESC"
+        ).fetchall()
+    for row in rows:
+        mk = str(row["jira_key"] or "").strip()
+        if not mk:
+            continue
+        ku = norm_issue_key(mk)
+        if ex and ku == ex:
+            continue
+        if not _is_jira_style_memory_key(ku):
+            continue
+        stored = _loads_req(row["requirements_json"])
+        if stored is None:
+            continue
+        if _norm_req_text(stored) != target:
+            continue
+        return ku
+    return None
+
+
 def find_latest_memory_by_title(req: dict) -> tuple[str | None, dict | None]:
     if not isinstance(req, dict):
         return None, None

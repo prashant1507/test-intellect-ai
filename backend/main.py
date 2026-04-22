@@ -39,6 +39,7 @@ from ai_client import (
 )
 from audit_store import append_audit, init_audit_db, list_audit
 from memory_store import (
+    find_jira_history_key_for_same_requirements,
     find_latest_memory_by_title,
     find_similar_memory,
     get_latest,
@@ -407,8 +408,10 @@ def _generate_response_base(
     jira_entries: list | None,
     linked_jira_work_entries: list | None,
     linked_jira_work_type_labels: str,
+    *,
+    history_jira_ticket_id: str | None = None,
 ) -> dict:
-    return {
+    out: dict = {
         "ticket_id": key,
         "requirements": req,
         "test_cases": cases,
@@ -419,6 +422,9 @@ def _generate_response_base(
         "linked_jira_work": _linked_jira_work_light(linked_jira_work_entries or []),
         "linked_jira_work_type_labels": linked_jira_work_type_labels,
     }
+    if history_jira_ticket_id:
+        out["history_jira_ticket_id"] = norm_issue_key(history_jira_ticket_id)
+    return out
 
 
 async def _finalize_cases_after_llm(
@@ -510,6 +516,11 @@ async def _generate_and_persist(
         jira_username=jira_username,
         audit_action="generate_test_cases_agentic" if agentic else "generate_test_cases",
     )
+    history_jira: str | None = None
+    if paste_mode and save_memory and prev is not None and not settings.mock:
+        hj = find_jira_history_key_for_same_requirements(req, exclude_key=key)
+        if hj and norm_issue_key(hj) != norm_issue_key(key):
+            history_jira = hj
     base = _generate_response_base(
         key,
         req,
@@ -520,6 +531,7 @@ async def _generate_and_persist(
         jira_entries,
         linked_jira_work_entries,
         linked_jira_work_type_labels,
+        history_jira_ticket_id=history_jira,
     )
     if agentic and agentic_out is not None:
         base["agentic"] = {

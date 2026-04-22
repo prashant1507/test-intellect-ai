@@ -129,3 +129,16 @@ export function readTheme() {
   if (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
   return "light";
 }
+
+const PASTE_AUTO_MEMORY_KEY = /^TEST-[0-9A-F]{10}$/i;
+
+export function isPasteAutoMemoryKey(k) {
+  return PASTE_AUTO_MEMORY_KEY.test(String(k || "").trim());
+}
+
+/** Typical JIRA issue key (e.g. PROJ-123); excludes auto paste `TEST-…` keys. */
+export function isLikelyJiraIssueKey(k) {
+  const s = String(k || "").trim().toUpperCase();
+  if (!s || isPasteAutoMemoryKey(s)) return false;
+  return /^[A-Z][A-Z0-9_]*-\d+$/.test(s);
+}

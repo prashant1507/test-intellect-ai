@@ -26,7 +26,7 @@ import {
   auditActionLabel,
   downloadAuditPdf,
 } from "./utils/audit";
-import { fmtReqMarkdown, fmtTestsMarkdown, formatTime, readTheme } from "./utils/format";
+import { fmtReqMarkdown, fmtTestsMarkdown, formatTime, isLikelyJiraIssueKey, readTheme } from "./utils/format";
 import { parseApiError } from "./utils/parseApiError";
 import {
   jiraPushFingerprint,
@@ -112,6 +112,7 @@ export default function App() {
   const [pasteTitle, setPasteTitle] = useState("");
   const [pasteText, setPasteText] = useState("");
   const [pasteMemoryKey, setPasteMemoryKey] = useState("");
+  const [historyJiraTicketId, setHistoryJiraTicketId] = useState("");
 
   const [memoryPanel, setMemoryPanel] = useState(null);
 
@@ -182,6 +183,10 @@ export default function App() {
   const applyGeneratePayload = (d) => {
     setReq(d.requirements);
     setKey(d.ticket_id);
+    const hj = d.history_jira_ticket_id;
+    setHistoryJiraTicketId(
+      hj != null && String(hj).trim() ? String(hj).trim().toUpperCase() : "",
+    );
     setTests(d.test_cases || []);
     const lj = normalizeLinkedJiraFromApi(d);
     setLinkedJiraTests(lj.tests);
@@ -1342,6 +1347,7 @@ export default function App() {
     const desc = pasteText.trim();
     if (!desc) return;
     setErr("");
+    setHistoryJiraTicketId("");
     generationInFlightRef.current = true;
     setBusy(useAgenticGen ? "/generate-from-paste-agentic" : "/generate-from-paste");
     setReq(null);
@@ -1515,6 +1521,20 @@ export default function App() {
   const loadingTestCases = (isJiraGenBusy(busy) && !!req) || isPasteGenBusy(busy);
   const generatingTestCases = isAnyGenBusy(busy);
   const genOrBulkBusy = generatingTestCases || bulkJiraSync?.running;
+
+  const pasteRequirementsHeadingKey = useMemo(() => {
+    const h = historyJiraTicketId.trim().toUpperCase();
+    const k = String(key || "").trim().toUpperCase();
+    if (h && isLikelyJiraIssueKey(h)) return h;
+    if (k && isLikelyJiraIssueKey(k)) return k;
+    return "";
+  }, [historyJiraTicketId, key]);
+
+  const showPasteRequirementsJiraCard = useMemo(() => {
+    if (inputMode !== "paste") return false;
+    if (!isLikelyJiraIssueKey(pasteRequirementsHeadingKey)) return false;
+    return !!req || loadingRequirements;
+  }, [inputMode, pasteRequirementsHeadingKey, req, loadingRequirements]);
 
   const jiraPushConfigIncomplete =
     !jiraUrl.trim() ||
@@ -2098,6 +2118,7 @@ export default function App() {
                 onClick={() => {
                   setInputMode("jira");
                   setErr("");
+                  setHistoryJiraTicketId("");
                 }}
               >
                 JIRA
@@ -2467,12 +2488,24 @@ export default function App() {
             </fieldset>
           </div>
 
-          {inputMode !== "paste" ? (
+          {inputMode !== "paste" || showPasteRequirementsJiraCard ? (
             <div className="card section-card section-requirements">
               <div className="head">
                 <div>
-                  <h2>Requirements for {key ? `${key}` : ""}</h2>
-                  {lastFetchAt ? <p className="last-run">Last loaded {formatTime(lastFetchAt)}</p> : null}
+                  <h2>
+                    Requirements for{" "}
+                    {inputMode === "paste"
+                      ? pasteRequirementsHeadingKey || ""
+                      : key
+                        ? `${key}`
+                        : ""}
+                  </h2>
+                  {lastFetchAt ? (
+                    <p className="last-run">
+                      {inputMode === "paste" ? "Last updated " : "Last loaded "}
+                      {formatTime(lastFetchAt)}
+                    </p>
+                  ) : null}
                 </div>
                 <FloatingTooltip text="Copy requirements as Markdown">
                   <Copy
