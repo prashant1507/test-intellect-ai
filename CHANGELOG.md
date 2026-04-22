@@ -65,6 +65,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 ## [1.0.5]
 
+### Added
+- Added 'Count' for Generated test Cases
+- Reset the fetched Requirements and Generated Test Cases on switching modes
+
 ### Changed
 - Updated README.md
 - Minor bug fixes
+- Removed 'Add all to JIRA' button from 'Paste Requirements' mode

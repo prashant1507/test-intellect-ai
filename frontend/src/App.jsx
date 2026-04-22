@@ -120,8 +120,12 @@ export default function App() {
   const [pasteText, setPasteText] = useState("");
   const [pasteMemoryKey, setPasteMemoryKey] = useState("");
   const [historyJiraTicketId, setHistoryJiraTicketId] = useState("");
-
+  const inputModeRef = useRef(inputMode);
   const [memoryPanel, setMemoryPanel] = useState(null);
+
+  useEffect(() => {
+    inputModeRef.current = inputMode;
+  }, [inputMode]);
 
   useEffect(() => {
     if (!memoryPanel) setMemoryAutomationSkelIdx(null);
@@ -140,6 +144,8 @@ export default function App() {
     jiraHideUpdateAfterCreateRef.current = jiraHideUpdateAfterCreate;
   }, [jiraHideUpdateAfterCreate]);
 
+  const generationInFlightRef = useRef(false);
+
   const clearFetchedTicketState = useCallback(() => {
     setReq(null);
     setReqAttachments([]);
@@ -149,6 +155,37 @@ export default function App() {
     setLastFetchAt(null);
     setKey("");
   }, []);
+
+  const resetWorkspaceOnInputModeChange = useCallback(() => {
+    clearFetchedTicketState();
+    setTests(null);
+    setHistoryJiraTicketId("");
+    setPasteText("");
+    setPasteTitle("");
+    setPasteMemoryKey("");
+    setTicketId("");
+    setLastGenerateAt(null);
+    setReqFetchMeta({ hadSavedMemory: false });
+    setHadPriorMemory(false);
+    setMemoryMatch(null);
+    setDiffExpanded(false);
+    setErr("");
+    setAnnounce("");
+    setTcFilter("all");
+    setTcOpen({});
+    setEditTcIdx(null);
+    setDeleteTcIdx(null);
+    setAutomationSkelIdx(null);
+    setMemoryAutomationSkelIdx(null);
+    setBulkJiraSync(null);
+    setJiraUpdateSucceededKeys({});
+    setJiraHideUpdateAfterCreate({});
+    setReqImageFiles([]);
+    setSelectedReqAttachmentIds(new Set());
+    setPushingKey(null);
+    setBusy(null);
+    generationInFlightRef.current = false;
+  }, [clearFetchedTicketState]);
 
   useEffect(() => {
     const t = normTicketId(ticketId);
@@ -161,7 +198,6 @@ export default function App() {
     }
   }, [ticketId, key, clearFetchedTicketState]);
 
-  const generationInFlightRef = useRef(false);
   const redirectingToLoginRef = useRef(false);
   const jiraPriorityCacheRef = useRef(null);
   const jiraPriorityCacheKeyRef = useRef("");
@@ -1381,6 +1417,10 @@ export default function App() {
       } else {
         d = await api(pastePath, "POST", pastePayload);
       }
+      if (inputModeRef.current !== "paste") {
+        setAnnounce("");
+        return;
+      }
       applyGeneratePayload(d);
       setPasteMemoryKey(d.ticket_id);
       setReqImageFiles([]);
@@ -1437,6 +1477,9 @@ export default function App() {
         } else {
           d = await api(genPath, "POST", genPayload);
         }
+        if (inputModeRef.current !== "jira") {
+          return;
+        }
         applyGeneratePayload(d);
         setReqImageFiles([]);
         setLastGenerateAt(new Date().toISOString());
@@ -1448,6 +1491,9 @@ export default function App() {
 
       if (path === "/fetch-ticket") {
         const d = await api("/fetch-ticket", "POST", cred());
+        if (inputModeRef.current !== "jira") {
+          return;
+        }
         setReq(d.requirements);
         setKey(d.ticket_id);
         const lj = normalizeLinkedJiraFromApi(d);
@@ -2114,9 +2160,10 @@ export default function App() {
                 aria-selected={inputMode === "jira"}
                 className={`mode-tab${inputMode === "jira" ? " active" : ""}`}
                 onClick={() => {
+                  if (inputMode === "jira") return;
+                  inputModeRef.current = "jira";
                   setInputMode("jira");
-                  setErr("");
-                  setHistoryJiraTicketId("");
+                  resetWorkspaceOnInputModeChange();
                 }}
               >
                 JIRA
@@ -2127,12 +2174,10 @@ export default function App() {
                 aria-selected={inputMode === "paste"}
                 className={`mode-tab${inputMode === "paste" ? " active" : ""}`}
                 onClick={() => {
+                  if (inputMode === "paste") return;
+                  inputModeRef.current = "paste";
                   setInputMode("paste");
-                  setErr("");
-                  setEditTcIdx(null);
-                  setLinkedJiraTests([]);
-                  setLinkedJiraWork([]);
-                  setReqAttachments([]);
+                  resetWorkspaceOnInputModeChange();
                 }}
               >
                 Paste Requirements

@@ -94,41 +94,43 @@ export function MainTestCasesPanel({
                 </button>
               ))}
             </div>
-            <div className="filter-bar-sync-slot">
-              {!bulkJiraSync?.running ? (
-                <FloatingTooltip text="Add all to JIRA">
-                  <button
-                    type="button"
-                    className="bulk-sync-icon-btn"
-                    disabled={
-                      mock ||
-                      inputMode !== "jira" ||
-                      pushingKey !== null ||
-                      jiraPushConfigIncomplete ||
-                      !testsShown.length
-                    }
-                    onClick={() => onStartBulkSync()}
-                    aria-label="Add all to JIRA"
-                  >
-                    <svg
-                      width="20"
-                      height="20"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden
+            {inputMode !== "paste" ? (
+              <div className="filter-bar-sync-slot">
+                {!bulkJiraSync?.running ? (
+                  <FloatingTooltip text="Add all to JIRA">
+                    <button
+                      type="button"
+                      className="bulk-sync-icon-btn"
+                      disabled={
+                        mock ||
+                        inputMode !== "jira" ||
+                        pushingKey !== null ||
+                        jiraPushConfigIncomplete ||
+                        !testsShown.length
+                      }
+                      onClick={() => onStartBulkSync()}
+                      aria-label="Add all to JIRA"
                     >
-                      <path d="M12 15V3" />
-                      <path d="m7 8 5-5 5 5" />
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    </svg>
-                  </button>
-                </FloatingTooltip>
-              ) : null}
-            </div>
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden
+                      >
+                        <path d="M12 15V3" />
+                        <path d="m7 8 5-5 5 5" />
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      </svg>
+                    </button>
+                  </FloatingTooltip>
+                ) : null}
+              </div>
+            ) : null}
           </div>
           {bulkJiraSync?.running ? (
             <div className="bulk-sync-progress-row" aria-live="polite">
@@ -159,6 +161,7 @@ export function MainTestCasesPanel({
             <button type="button" className="linkish" onClick={setAllTc(false)}>
               Collapse All
             </button>
+            <span className="expand-bar-count linked-jira-tests-count">Count: {tests.length}</span>
           </div>
           {testsShown.length ? (
             testsShown.map((tc) => {

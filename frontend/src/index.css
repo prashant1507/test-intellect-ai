@@ -2049,9 +2049,14 @@ pre.block.mono {
 
 .expand-bar {
   display: flex;
+  align-items: center;
   gap: 1rem;
   margin-bottom: 0.75rem;
   flex-wrap: wrap;
+}
+
+.expand-bar-count {
+  margin-left: auto;
 }
 
 .expand-bar-links {
