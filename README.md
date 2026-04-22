@@ -249,3 +249,4 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 ## Last
 - Use TSX instead of JSX for frontend 
 - Provide dropdown to select models or type model id
+- Use multi model approach for Test Generation, coding and vision
