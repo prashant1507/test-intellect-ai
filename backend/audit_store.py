@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from key_norm import norm_issue_key
 from sqlite_util import open_audit_db
 
 
@@ -26,7 +27,7 @@ def init_audit_db() -> None:
 def append_audit(username: str, ticket_id: str, action: str, jira_username: str | None = None) -> None:
     now = datetime.now(timezone.utc).isoformat()
     u = (username or "").strip()
-    k = (ticket_id or "").strip().upper()
+    k = norm_issue_key(ticket_id)
     a = (action or "").strip()
     ju = (jira_username or "").strip()
     if not k or not a:

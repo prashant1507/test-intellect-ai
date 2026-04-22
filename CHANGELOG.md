@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Mock mode:** Local development without real JIRA (`MOCK=true`); sample data, no generate-time history or audit writes from generation.
 - **UI:** Light/dark theme, requirements diffs and test change status on regenerate, accessibility helpers (skip link, live regions), tooltips.
 
+---
 ## [1.0.1]
 
 ### Added
@@ -28,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 2 AI agents verifying the generated tet cases
 - LLM now shows the scoring of test cases out of /10
 
+---
 ## [1.0.2]
 
 ### Added
@@ -41,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Minor bug fixes
 
+---
 ## [1.0.3]
 
 ### Added
@@ -48,3 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Minor bug fixes
+
+---
+## [1.0.4]
+
+### Added
+- Added delete option per test case for 'Generate Test Cases'
+
+### Changed
+- Increase the tiles spacing

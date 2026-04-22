@@ -6,6 +6,7 @@ import re
 from datetime import datetime, timezone
 
 from ai_client import strip_test_case_diff_meta
+from key_norm import norm_issue_key
 from sqlite_util import open_memory_db
 
 _WS = re.compile(r"\s+")
@@ -100,7 +101,7 @@ _DEFAULT_PASTE_TITLE_CF = _WS.sub(" ", "Pasted requirements").strip().casefold()
 
 
 def _is_test_hash_key(k: str) -> bool:
-    return bool(_TEST_HASH_KEY.match(str(k or "").strip().upper()))
+    return bool(_TEST_HASH_KEY.match(norm_issue_key(str(k or ""))))
 
 
 def find_latest_memory_by_title(req: dict) -> tuple[str | None, dict | None]:

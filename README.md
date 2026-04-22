@@ -64,6 +64,8 @@ flowchart LR
 - Agnets
   - Two-step agentic flow: validate-and-refine generation
 - LLM set score for each test cases out of /10
+- Button to delete test case from 'Generate Test Cases' result
+  - Delete button will be available for test cases without any JIRA ID
 
 ### History & Comparison
 - SQLite keeps the latest requirements and generated tests per ticket (when saving is enabled).

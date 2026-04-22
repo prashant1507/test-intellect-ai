@@ -1,5 +1,5 @@
 import { AutomationSkeletonIconButton } from "./AutomationSkeletonModal";
-import { Copy, FloatingTooltip, Spinner } from "./common";
+import { Copy, FieldInfo, FloatingTooltip, Spinner } from "./common";
 import { JiraTestPushButton } from "./JiraTestPushButton";
 import { TestCaseBody } from "./TestCaseBody";
 import { TestCaseSummaryBadges } from "./TestCaseSummaryBadges";
@@ -59,6 +59,7 @@ export function MainTestCasesPanel({
   onOpenMainAutomationSkeleton,
   setAnnounce,
   genOrBulkBusy,
+  onRequestDeleteTestCase,
 }) {
   const setAllTc = (v) => () => tests?.length && setTcOpen(Object.fromEntries(tests.map((_, i) => [String(i), v])));
 
@@ -69,6 +70,15 @@ export function MainTestCasesPanel({
           {memoryMatch === "similar"
             ? "Prior history was matched by similar requirements (not only the exact saved key). Tags reflect changes vs that saved snapshot."
             : "Prior history was used for this run"}
+        </p>
+      ) : null}
+
+      {inputMode === "jira" && !mock ? (
+        <p className="meta meta--tc-delete-hint">
+          <span className="label-with-info label-with-info--inline">
+            <span>Deleting test cases</span>
+            <FieldInfo text="You can remove a scenario from the list only when it is not linked to JIRA (not pushed from here, not marked EXISTING from JIRA, and no issue key on the case). If Save to history is on, saved history for this ticket is updated when you confirm removal." />
+          </span>
         </p>
       ) : null}
 
@@ -196,6 +206,13 @@ export function MainTestCasesPanel({
                   pushTestToJira(tc, idx);
                 },
               };
+              const hasJiraLink =
+                !!pushedKey || !!String(tc.jira_issue_key || "").trim() || !!tc.jira_existing;
+              const canDelete =
+                (inputMode === "jira" || inputMode === "paste") &&
+                !mock &&
+                !genOrBulkBusy &&
+                !hasJiraLink;
               return (
                 <section key={tcKey} className={`tc status-${st}`}>
                   <div className="tc-summary-row">
@@ -274,6 +291,37 @@ export function MainTestCasesPanel({
                           }
                         />
                       )}
+                      {canDelete ? (
+                        <FloatingTooltip text="Remove this test case from the list">
+                          <button
+                            type="button"
+                            className="tc-delete-icon-btn"
+                            disabled={genOrBulkBusy}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onRequestDeleteTestCase(idx);
+                            }}
+                            aria-label="Delete test case"
+                          >
+                            <svg
+                              width="18"
+                              height="18"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden
+                            >
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              <line x1="10" y1="11" x2="10" y2="17" />
+                              <line x1="14" y1="11" x2="14" y2="17" />
+                            </svg>
+                          </button>
+                        </FloatingTooltip>
+                      ) : null}
                       <FloatingTooltip text="Copy this test case as Markdown">
                         <Copy
                           text={fmtTestsMarkdown([tc])}

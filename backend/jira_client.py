@@ -7,6 +7,7 @@ import re
 import requests
 import urllib3
 
+from key_norm import norm_issue_key
 from settings import settings
 
 
@@ -180,7 +181,7 @@ def _desc(fields: dict) -> str:
 
 
 def _mock_issue(issue_key: str) -> dict[str, str]:
-    k = issue_key.strip().upper()
+    k = norm_issue_key(issue_key)
     title = f"Login Page Implementation | {k}"
     desc = f"""
 Develop a secure and user-friendly login page that allows registered users to access the application using their credentials. The page should follow UI/UX guidelines and ensure proper validation, authentication, and error handling.
@@ -344,7 +345,7 @@ def download_attachment_for_ticket(
 ) -> tuple[bytes, str, str]:
     if settings.mock:
         return b"", "attachment", "application/octet-stream"
-    exp = expected_issue_key.strip().upper()
+    exp = norm_issue_key(expected_issue_key)
     meta_list = fetch_issue_attachment_meta(base_url, user, password, exp)
     aid = str(attachment_id or "").strip()
     if not aid or not any(str(x.get("id")) == aid for x in meta_list if isinstance(x, dict)):
@@ -369,7 +370,7 @@ def download_attachment_for_ticket(
 
 
 def jira_browse_url(base_url: str, issue_key: str) -> str:
-    return f"{base_url.rstrip('/')}/browse/{issue_key.strip().upper()}"
+    return f"{base_url.rstrip('/')}/browse/{norm_issue_key(issue_key)}"
 
 
 def _get_issue_json(
@@ -386,7 +387,7 @@ def _get_issue_json(
     if expand:
         params["expand"] = expand
     r = requests.get(
-        f"{base_url.rstrip('/')}/rest/api/2/issue/{issue_key.strip().upper()}",
+        f"{base_url.rstrip('/')}/rest/api/2/issue/{norm_issue_key(issue_key)}",
         auth=(user, password),
         headers={"Accept": "application/json"},
         params=params,
@@ -458,7 +459,7 @@ def fetch_linked_work_issues(
         desc_plain = _desc(fields)
         st = fields.get("status") or {}
         status_name = str(st.get("name") or "").strip() or "—"
-        key = str(data.get("key") or ik).strip().upper()
+        key = norm_issue_key(str(data.get("key") or ik))
         browse = jira_browse_url(base_url, key)
         out.append(
             {
@@ -480,13 +481,13 @@ def list_linked_issue_keys(
     requirement_key: str,
 ) -> list[str]:
     data = _get_issue_json(base_url, user, password, requirement_key, fields="issuelinks")
-    req_u = requirement_key.strip().upper()
+    req_u = norm_issue_key(requirement_key)
     keys: list[str] = []
     for link in (data.get("fields") or {}).get("issuelinks") or []:
         for side in ("inwardIssue", "outwardIssue"):
             iss = link.get(side)
             if isinstance(iss, dict):
-                k = (iss.get("key") or "").strip().upper()
+                k = norm_issue_key(str(iss.get("key") or ""))
                 if k and k != req_u:
                     keys.append(k)
     return list(dict.fromkeys(keys))
@@ -541,7 +542,7 @@ def fetch_linked_test_issues(
         steps = _description_lines_to_steps(desc_plain)
         st = fields.get("status") or {}
         status_name = str(st.get("name") or "").strip() or "—"
-        key = str(data.get("key") or ik).strip().upper()
+        key = norm_issue_key(str(data.get("key") or ik))
         browse = jira_browse_url(base_url, key)
         pri = fields.get("priority") if isinstance(fields.get("priority"), dict) else {}
         jira_priority_name = str(pri.get("name") or "").strip()
@@ -619,7 +620,7 @@ def push_test_case_to_jira(
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
     raw_type = (issue_type_override or "").strip() or None
     issue_type = (raw_type or settings.jira_test_issue_type or "Test").strip() or "Test"
-    proj = test_project_key.strip().upper()
+    proj = norm_issue_key(test_project_key)
     fld = _issue_fields_summary_desc_priority(base_url, user, password, test_case)
     payload = {
         "fields": {
@@ -643,7 +644,7 @@ def push_test_case_to_jira(
         raise ValueError("JIRA did not return an issue key")
     raw_link = (link_type_override or "").strip() or None
     link_type = (raw_link or settings.jira_test_link_type or "Relates").strip() or "Relates"
-    req_k = requirement_key.strip().upper()
+    req_k = norm_issue_key(requirement_key)
     if settings.jira_link_inward_is_requirement:
         inward_key, outward_key = req_k, new_key
     else:
@@ -677,7 +678,7 @@ def update_test_case_in_jira(
     base = base_url.rstrip("/")
     auth = (user, password)
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
-    ik = issue_key.strip().upper()
+    ik = norm_issue_key(issue_key)
     payload: dict = {"fields": _issue_fields_summary_desc_priority(base_url, user, password, test_case)}
     r = requests.put(
         f"{base}/rest/api/2/issue/{ik}",

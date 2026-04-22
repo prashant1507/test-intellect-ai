@@ -8,6 +8,7 @@ from difflib import SequenceMatcher
 
 import requests
 
+from key_norm import norm_issue_key
 from settings import settings
 
 
@@ -210,7 +211,7 @@ def _json(s: str) -> dict:
 
 def _pick_jira_issue_key(*vals: object) -> str | None:
     for v in vals:
-        s = str(v or "").strip().upper()
+        s = norm_issue_key(str(v or ""))
         if s:
             return s
     return None

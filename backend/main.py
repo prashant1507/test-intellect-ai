@@ -48,6 +48,7 @@ from memory_store import (
     normalized_paste_key_material,
     save,
 )
+from key_norm import norm_issue_key
 from keycloak_auth import claims_username, verify_keycloak_token
 from requirement_images import merge_and_validate
 from settings import settings
@@ -79,39 +80,32 @@ def _jira_test_issue_type_from_body(body: TicketIn) -> str:
 
 
 def _linked_jira_tests_light(entries: list) -> list[dict]:
-    out: list[dict] = []
-    for e in entries:
-        if not isinstance(e, dict):
-            continue
-        pri = str(e.get("jira_priority_name") or e.get("priority") or "").strip()
-        icon = str(e.get("jira_priority_icon_url") or e.get("priority_icon_url") or "").strip()
-        out.append(
-            {
-                "issue_key": e.get("issue_key"),
-                "summary": e.get("summary"),
-                "status_name": e.get("status_name"),
-                "browse_url": e.get("browse_url"),
-                "priority": pri,
-                "priority_icon_url": icon or None,
-            }
-        )
-    return out
+    return _linked_jira_issue_rows(entries, work=False)
 
 
 def _linked_jira_work_light(entries: list) -> list[dict]:
+    return _linked_jira_issue_rows(entries, work=True)
+
+
+def _linked_jira_issue_rows(entries: list, *, work: bool) -> list[dict]:
     out: list[dict] = []
     for e in entries:
         if not isinstance(e, dict):
             continue
-        out.append(
-            {
-                "issue_key": e.get("issue_key"),
-                "summary": e.get("summary"),
-                "status_name": e.get("status_name"),
-                "browse_url": e.get("browse_url"),
-                "issue_type_name": e.get("issue_type_name") or "",
-            }
-        )
+        row = {
+            "issue_key": e.get("issue_key"),
+            "summary": e.get("summary"),
+            "status_name": e.get("status_name"),
+            "browse_url": e.get("browse_url"),
+        }
+        if work:
+            row["issue_type_name"] = e.get("issue_type_name") or ""
+        else:
+            pri = str(e.get("jira_priority_name") or e.get("priority") or "").strip()
+            icon = str(e.get("jira_priority_icon_url") or e.get("priority_icon_url") or "").strip()
+            row["priority"] = pri
+            row["priority_icon_url"] = icon or None
+        out.append(row)
     return out
 
 
@@ -194,7 +188,7 @@ async def _fetch_issue_attachments(body: TicketIn, key: str) -> list:
 
 
 async def _enrich_out_with_attachments(body: TicketIn, out: dict) -> None:
-    tk = str(out.get("ticket_id") or "").strip().upper()
+    tk = norm_issue_key(str(out.get("ticket_id") or ""))
     if tk:
         out["requirement_attachments"] = await _fetch_issue_attachments(body, tk)
 
@@ -314,7 +308,7 @@ def _req_snapshot(d: dict) -> str:
 
 
 def _ticket_key_from_paste(memory_key: str, title: str, description: str) -> str:
-    raw = (memory_key or "").strip().upper()
+    raw = norm_issue_key(memory_key)
     if raw:
         cleaned = re.sub(r"[^A-Z0-9_.-]", "", raw)
         if cleaned:
@@ -342,7 +336,7 @@ def _diff(a: dict, b: dict) -> str | None:
 
 
 async def _fetch_jira(body: TicketIn) -> tuple[str, dict]:
-    key = body.ticket_id.strip().upper()
+    key = norm_issue_key(body.ticket_id)
     try:
         raw = await asyncio.to_thread(
             fetch_issue,
@@ -622,7 +616,7 @@ async def _jira_attachment_parts_for_generate(body: TicketIn, ids: list[str]) ->
     ju = body.jira_url.strip()
     user = body.username
     pw = body.password
-    key = body.ticket_id.strip().upper()
+    key = norm_issue_key(body.ticket_id)
     meta = await asyncio.to_thread(fetch_issue_attachment_meta, ju, user, pw, key)
     allowed = {str(x.get("id")) for x in meta if isinstance(x, dict)}
     out: list[tuple[str, str, bytes]] = []
@@ -648,12 +642,16 @@ def _merge_req_validated(
     )
 
 
+def _require_req_images_enabled(files: list, attachment_ids: list | None) -> None:
+    if settings.llm_requirement_images_enabled:
+        return
+    if files or attachment_ids:
+        raise HTTPException(status_code=400, detail="Requirement images are disabled.")
+
+
 async def _merge_req_images_jira(body: GenerateIn, files: list[UploadFile]) -> list[tuple[str, str, bytes]]:
+    _require_req_images_enabled(files, list(body.attachment_ids or []))
     if not settings.llm_requirement_images_enabled:
-        if files:
-            raise HTTPException(status_code=400, detail="Requirement images are disabled.")
-        if body.attachment_ids:
-            raise HTTPException(status_code=400, detail="Requirement images are disabled.")
         return []
     uploads = await _upload_tuples(files)
     jira_parts = await _jira_attachment_parts_for_generate(body, list(body.attachment_ids or []))
@@ -661,9 +659,8 @@ async def _merge_req_images_jira(body: GenerateIn, files: list[UploadFile]) -> l
 
 
 async def _merge_req_images_paste(files: list[UploadFile]) -> list[tuple[str, str, bytes]]:
+    _require_req_images_enabled(files, None)
     if not settings.llm_requirement_images_enabled:
-        if files:
-            raise HTTPException(status_code=400, detail="Requirement images are disabled.")
         return []
     uploads = await _upload_tuples(files)
     return _merge_req_validated(uploads, [])
@@ -712,7 +709,7 @@ def memory_item(ticket_id: str, _: Kc):
     if not data:
         raise HTTPException(status_code=404, detail="Not found")
     return {
-        "ticket_id": ticket_id.strip().upper(),
+        "ticket_id": norm_issue_key(ticket_id),
         "requirements": data["requirements"],
         "test_cases": data["test_cases"],
     }
@@ -721,7 +718,7 @@ def memory_item(ticket_id: str, _: Kc):
 @api.post("/memory/update-test-cases")
 def memory_update_test_cases(body: MemoryUpdateTestCasesIn, kc: Kc):
     _require_memory_not_mock()
-    key = body.ticket_id.strip().upper()
+    key = norm_issue_key(body.ticket_id)
     tc = body.test_cases if isinstance(body.test_cases, list) else []
     req_in = body.requirements if isinstance(body.requirements, dict) else {}
     latest = get_latest(key)
@@ -735,7 +732,7 @@ def memory_update_test_cases(body: MemoryUpdateTestCasesIn, kc: Kc):
 @api.post("/memory/merge-test-case")
 def memory_merge_test_case(body: MemoryMergeTestCaseIn, kc: Kc):
     _require_memory_not_mock()
-    key = body.ticket_id.strip().upper()
+    key = norm_issue_key(body.ticket_id)
     tc = body.test_case if isinstance(body.test_case, dict) else {}
     req = body.requirements if isinstance(body.requirements, dict) else {}
     merge_test_case_into_memory(key, req, tc)
@@ -745,7 +742,7 @@ def memory_merge_test_case(body: MemoryMergeTestCaseIn, kc: Kc):
 @api.post("/memory/save-after-edit")
 def memory_save_after_edit(body: MemorySaveAfterEditIn, kc: Kc):
     _require_memory_not_mock()
-    key = body.ticket_id.strip().upper()
+    key = norm_issue_key(body.ticket_id)
     req = body.requirements if isinstance(body.requirements, dict) else {}
     tc = body.test_cases if isinstance(body.test_cases, list) else []
     save(key, req, tc)
@@ -820,8 +817,8 @@ async def jira_priorities(body: JiraPrioritiesIn, kc: Kc):
 async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
     if settings.mock:
         raise HTTPException(status_code=400, detail="Cannot push to JIRA in mock mode.")
-    rk = body.requirement_key.strip().upper()
-    existing = (body.existing_issue_key or "").strip().upper()
+    rk = norm_issue_key(body.requirement_key)
+    existing = norm_issue_key(body.existing_issue_key)
     tc_jira = strip_test_case_diff_meta(body.test_case) if isinstance(body.test_case, dict) else body.test_case
     if existing:
         try:
@@ -844,7 +841,7 @@ async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
             status_code=400,
             detail="JIRA Test Project is required to add a test case in JIRA.",
         )
-    tpk = body.test_project_key.strip().upper()
+    tpk = norm_issue_key(body.test_project_key)
     try:
         result = await asyncio.to_thread(
             push_test_case_to_jira,
@@ -893,7 +890,7 @@ async def fetch_ticket(body: TicketIn, kc: Kc):
 async def jira_attachment_download(body: AttachmentDownloadIn, _kc: Kc):
     if settings.mock:
         raise HTTPException(status_code=400, detail="Attachments are not available in mock mode.")
-    key = body.ticket_id.strip().upper()
+    key = norm_issue_key(body.ticket_id)
     try:
         content, filename, ctype = await asyncio.to_thread(
             download_attachment_for_ticket,

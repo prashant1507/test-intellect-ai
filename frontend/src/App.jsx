@@ -95,6 +95,7 @@ export default function App() {
   const [auditEntries, setAuditEntries] = useState([]);
   const [auditModalOpen, setAuditModalOpen] = useState(false);
   const [editTcIdx, setEditTcIdx] = useState(null);
+  const [deleteTcIdx, setDeleteTcIdx] = useState(null);
   const [automationSkelIdx, setAutomationSkelIdx] = useState(null);
   const [memoryAutomationSkelIdx, setMemoryAutomationSkelIdx] = useState(null);
   const [auditFilters, setAuditFilters] = useState({ user: "", ticket: "", action: "", jiraUser: "" });
@@ -875,6 +876,76 @@ export default function App() {
     filterTestsByChip,
   ]);
 
+  const requestDeleteTestCase = useCallback((idx) => {
+    setDeleteTcIdx(idx);
+  }, []);
+
+  const confirmDeleteTestCase = useCallback(async () => {
+    const idx = deleteTcIdx;
+    if (idx == null) return;
+    const cur = testsRef.current;
+    if (!cur?.length || idx < 0 || idx >= cur.length) {
+      setDeleteTcIdx(null);
+      return;
+    }
+    const tc = cur[idx];
+    const tidU = (key || ticketId).trim().toUpperCase();
+    const pushedKey = resolvePushedJiraKey(tc, tidU, jiraPushed, "main");
+    if (pushedKey || String(tc.jira_issue_key || "").trim() || tc.jira_existing) {
+      setErr("Cannot delete a test case that is linked to JIRA.");
+      setDeleteTcIdx(null);
+      return;
+    }
+    const next = cur.filter((_, i) => i !== idx);
+    setTests(next);
+    setTcOpen(Object.fromEntries(next.map((_, i) => [String(i), true])));
+    setEditTcIdx((e) => {
+      if (e == null) return null;
+      if (e === idx) return null;
+      if (e > idx) return e - 1;
+      return e;
+    });
+    setAutomationSkelIdx((e) => {
+      if (e == null) return null;
+      if (e === idx) return null;
+      if (e > idx) return e - 1;
+      return e;
+    });
+    setMemoryAutomationSkelIdx((e) => {
+      if (e == null) return null;
+      if (e === idx) return null;
+      if (e > idx) return e - 1;
+      return e;
+    });
+    setDeleteTcIdx(null);
+    setErr("");
+    setAnnounce("Test case removed.");
+    if (saveToMemory && !mock && tidU) {
+      try {
+        await api("/memory/update-test-cases", "POST", {
+          ticket_id: tidU,
+          test_cases: next,
+          requirements: req ?? {},
+        });
+        await syncLists();
+        await refreshMemoryPanelIfOpen(tidU);
+      } catch (e) {
+        setErr(e?.message || "Failed to update saved history.");
+      }
+    }
+  }, [
+    deleteTcIdx,
+    key,
+    ticketId,
+    jiraPushed,
+    mock,
+    saveToMemory,
+    req,
+    api,
+    syncLists,
+    refreshMemoryPanelIfOpen,
+  ]);
+
   const persistEditedTestCase = useCallback(
     async (idx, updatedTc) => {
       const oldTc = tests?.[idx];
@@ -1131,12 +1202,14 @@ export default function App() {
       auditModalOpen ||
       !!memoryPanel ||
       editTcIdx != null ||
+      deleteTcIdx != null ||
       automationSkelIdx != null ||
       memoryAutomationSkelIdx != null;
     if (!anyOpen) return;
     const onKey = (e) => {
       if (e.key !== "Escape") return;
-      if (editTcIdx != null) setEditTcIdx(null);
+      if (deleteTcIdx != null) setDeleteTcIdx(null);
+      else if (editTcIdx != null) setEditTcIdx(null);
       else if (memoryAutomationSkelIdx != null) setMemoryAutomationSkelIdx(null);
       else if (automationSkelIdx != null) setAutomationSkelIdx(null);
       else if (memoryPanel) setMemoryPanel(null);
@@ -1150,8 +1223,12 @@ export default function App() {
       const auditDialog = document.getElementById("audit-dialog");
       const memoryDialog = document.getElementById("memory-dialog");
       const tcEditDialog = document.getElementById("tc-edit-dialog");
+      const deleteTcDialog = document.getElementById("delete-tc-dialog");
       const automationSkelDialog = document.getElementById("automation-skel-dialog");
       const memoryAutomationSkelDialog = document.getElementById("automation-skel-dialog-memory");
+      if (deleteTcIdx != null && deleteTcDialog && !deleteTcDialog.contains(e.target)) {
+        setDeleteTcIdx(null);
+      }
       if (editTcIdx != null && tcEditDialog && !tcEditDialog.contains(e.target)) {
         setEditTcIdx(null);
       }
@@ -1184,7 +1261,7 @@ export default function App() {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [auditModalOpen, memoryPanel, editTcIdx, automationSkelIdx, memoryAutomationSkelIdx]);
+  }, [auditModalOpen, memoryPanel, editTcIdx, deleteTcIdx, automationSkelIdx, memoryAutomationSkelIdx]);
 
   useEffect(() => {
     if (!oidcMgr || !useKeycloak) return undefined;
@@ -1250,6 +1327,7 @@ export default function App() {
       !auditModalOpen &&
       !memoryPanel &&
       editTcIdx == null &&
+      deleteTcIdx == null &&
       automationSkelIdx == null &&
       memoryAutomationSkelIdx == null
     )
@@ -1258,7 +1336,7 @@ export default function App() {
       document.getElementById("app-theme-toggle")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     return () => cancelAnimationFrame(id);
-  }, [auditModalOpen, memoryPanel, editTcIdx, automationSkelIdx, memoryAutomationSkelIdx]);
+  }, [auditModalOpen, memoryPanel, editTcIdx, deleteTcIdx, automationSkelIdx, memoryAutomationSkelIdx]);
 
   const runPasteGenerate = async () => {
     const desc = pasteText.trim();
@@ -1861,6 +1939,54 @@ export default function App() {
             </div>
           ) : null}
 
+          {deleteTcIdx != null && tests?.[deleteTcIdx] ? (
+            <div
+              className="modal-backdrop modal-backdrop--main-area"
+              role="presentation"
+              onClick={() => setDeleteTcIdx(null)}
+            >
+              <div
+                id="delete-tc-dialog"
+                className="modal-dialog modal-dialog-tc-edit"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="delete-tc-title"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="modal-dialog-head">
+                  <h2 id="delete-tc-title" className="modal-dialog-title">
+                    Remove test case?
+                  </h2>
+                  <button
+                    type="button"
+                    className="modal-dialog-close"
+                    onClick={() => setDeleteTcIdx(null)}
+                    aria-label="Close"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="modal-dialog-tc-edit-body">
+                  <p className="modal-dialog-sub">
+                    This removes “{String(tests[deleteTcIdx].description || "").slice(0, 120)}
+                    {String(tests[deleteTcIdx].description || "").length > 120 ? "…" : ""}” from the list.
+                    {saveToMemory && !mock
+                      ? " Saved history for this ticket will be updated."
+                      : ""}
+                  </p>
+                  <div className="modal-dialog-tc-edit-actions">
+                    <button type="button" className="primary danger-btn" onClick={() => void confirmDeleteTestCase()}>
+                      Remove
+                    </button>
+                    <button type="button" onClick={() => setDeleteTcIdx(null)}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           {automationSkelIdx != null && tests?.[automationSkelIdx] ? (
             <div
               className="modal-backdrop modal-backdrop--main-area"
@@ -2274,7 +2400,10 @@ export default function App() {
                 onChange={(e) => setSaveToMemory(e.target.checked)}
               />
               <span className="check-save-memory-text" role="note">
-                Save generated tests to history. 'Test Intellect AI' is an AI tool and can make mistakes.
+                Save generated tests to history.{" "}
+                <span className="ai-tool-disclaimer">
+                  &apos;Test Intellect AI&apos; is an AI tool and can make mistakes.
+                </span>
               </span>
               {mock ? <span className="check-hint"> (disabled in mock mode)</span> : null}
             </label>
@@ -2328,7 +2457,7 @@ export default function App() {
               <p className="form-hint-warn">Use “Fetch Requirements” to load this ticket before generating test cases.</p>
             ) : null}
             {inputMode === "paste" && !canSubmitPaste ? (
-              <p className="form-hint-warn">Paste requirement text to enable generation.</p>
+              <p className="form-hint-warn">Paste requirement text to enable 'Generate Test Cases'.</p>
             ) : null}
             {err ? (
               <div className="err" role="alert">
@@ -2488,6 +2617,7 @@ export default function App() {
               }}
               setAnnounce={setAnnounce}
               genOrBulkBusy={genOrBulkBusy}
+              onRequestDeleteTestCase={requestDeleteTestCase}
             />
           </div>
           </main>
