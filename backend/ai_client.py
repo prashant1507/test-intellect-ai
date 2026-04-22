@@ -93,15 +93,23 @@ def _cap_first_line(s: str) -> str:
     return s[0].upper() + s[1:]
 
 
+def _gh_kw_and_rest_raw(s: str) -> tuple[str, str] | None:
+    m = _GH_PREFIX.match(s.strip())
+    if not m:
+        return None
+    kw_raw, rest = m.group(1), m.group(2)
+    kw = _GH_KEYWORD.get(kw_raw.lower(), kw_raw[0].upper() + kw_raw[1:].lower())
+    return kw, rest
+
+
 def _cap_gherkin_line(s: str) -> str:
     s = s.strip()
     if not s:
         return s
-    m = _GH_PREFIX.match(s)
-    if not m:
+    gr = _gh_kw_and_rest_raw(s)
+    if not gr:
         return _cap_first_line(s)
-    kw_raw, rest = m.group(1), m.group(2)
-    kw = _GH_KEYWORD.get(kw_raw.lower(), kw_raw[0].upper() + kw_raw[1:].lower())
+    kw, rest = gr
     rest = rest.lstrip()
     if not rest:
         return kw
@@ -152,11 +160,10 @@ def _split_natural_and_in_line(line: str) -> list[str]:
     s = line.strip()
     if not s:
         return []
-    m = _GH_PREFIX.match(s)
-    if not m:
+    gr = _gh_kw_and_rest_raw(s)
+    if not gr:
         return [line]
-    kw_raw, rest = m.group(1), m.group(2)
-    kw = _GH_KEYWORD.get(kw_raw.lower(), kw_raw[0].upper() + kw_raw[1:].lower())
+    kw, rest = gr
     rest = rest.strip()
     if not rest:
         return [line]
@@ -196,17 +203,30 @@ def _merge_orphan_and_words(lines: list[str]) -> list[str]:
 
 
 def _json(s: str) -> dict:
-    s = s.strip()
+    s = (s or "").strip()
     m = re.match(r"^```(?:json)?\s*([\s\S]*?)```\s*$", s, re.I)
     if m:
         s = m.group(1).strip()
+    if not s:
+        raise ValueError(
+            "The model returned an empty response. Try again, or check LLM_URL and server logs."
+        )
     try:
         return json.loads(s)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
         a, b = s.find("{"), s.rfind("}")
         if 0 <= a < b:
-            return json.loads(s[a : b + 1])
-        raise
+            try:
+                return json.loads(s[a : b + 1])
+            except json.JSONDecodeError:
+                pass
+        head = s[:200].replace("\n", " ")
+        if len(s) > 200:
+            head += "…"
+        raise ValueError(
+            "The model did not return valid JSON. Try again or use a model that follows JSON-only instructions. "
+            f"Start of response: {head!r}"
+        ) from e
 
 
 def _pick_jira_issue_key(*vals: object) -> str | None:
@@ -226,6 +246,16 @@ def _merge_jira_row_meta(row: dict, n: dict) -> None:
             row[k] = v.strip()
 
 
+def _collapse_multiline(s: str) -> str:
+    return "\n".join(_WS_NORM.sub(" ", ln).strip() for ln in s.split("\n"))
+
+
+def _clamp_score_0_10(sc: object) -> float | None:
+    if not isinstance(sc, (int, float)) or isinstance(sc, bool):
+        return None
+    return round(max(0.0, min(10.0, float(sc))), 1)
+
+
 def _norm(c: dict, *, default_change_status: str = "new", allowed_priorities: list[str]) -> dict:
     st = _steps_list(c.get("steps"))
     pre = str(c.get("preconditions") or "").strip()
@@ -243,19 +273,16 @@ def _norm(c: dict, *, default_change_status: str = "new", allowed_priorities: li
         cs = low if low in ("new", "updated", "unchanged") else default_change_status
     st = [_WS_NORM.sub(" ", _cap_gherkin_line(x)).strip() for x in st]
 
-    def _collapse_lines(s: str) -> str:
-        return "\n".join(_WS_NORM.sub(" ", ln).strip() for ln in s.split("\n"))
-
     if c.get("jira_existing"):
         pr = str(c.get("priority") or "").strip()
         prio = pr if pr else _norm_priority(None, allowed_priorities)
     else:
         prio = _norm_priority(c.get("priority"), allowed_priorities)
     out = {
-        "description": _collapse_lines(_cap_lines(str(c.get("description") or ""))),
-        "preconditions": _collapse_lines(_cap_lines(pre)),
+        "description": _collapse_multiline(_cap_lines(str(c.get("description") or ""))),
+        "preconditions": _collapse_multiline(_cap_lines(pre)),
         "steps": st,
-        "expected_result": _collapse_lines(_cap_lines(exp)),
+        "expected_result": _collapse_multiline(_cap_lines(exp)),
         "change_status": cs,
         "priority": prio,
     }
@@ -273,9 +300,9 @@ def _norm(c: dict, *, default_change_status: str = "new", allowed_priorities: li
     jk = _pick_jira_issue_key(c.get("jira_issue_key"))
     if jk:
         out["jira_issue_key"] = jk
-    sc = c.get("score")
-    if isinstance(sc, (int, float)) and not isinstance(sc, bool):
-        out["score"] = round(max(0.0, min(10.0, float(sc))), 1)
+    sc = _clamp_score_0_10(c.get("score"))
+    if sc is not None:
+        out["score"] = sc
     return out
 
 
@@ -284,15 +311,17 @@ def _steps_norm_tuple(raw_steps: object) -> tuple[str, ...]:
     return tuple(_WS_NORM.sub(" ", str(x).strip()).casefold() for x in steps)
 
 
+def _desc_fold(tc: dict) -> str:
+    return _WS_NORM.sub(" ", str(tc.get("description") or "").strip()).casefold()
+
+
 def _tc_fingerprint(n: dict) -> tuple:
-    d = _WS_NORM.sub(" ", str(n.get("description") or "").strip()).casefold()
-    return (d, _steps_norm_tuple(n.get("steps")))
+    return (_desc_fold(n), _steps_norm_tuple(n.get("steps")))
 
 
 def _tc_signature_norm(tc: dict) -> str:
-    d = _WS_NORM.sub(" ", str(tc.get("description") or "").strip()).casefold()
     lines = list(_steps_norm_tuple(tc.get("steps")))
-    return d + "\n" + "\n".join(lines)
+    return _desc_fold(tc) + "\n" + "\n".join(lines)
 
 
 _SIMILAR_THRESHOLD = 0.92
@@ -372,10 +401,7 @@ def _tc_similarity(a: dict, b: dict) -> float:
 
 
 def _signature_digits_collapsed(tc: dict) -> str:
-    d = _WS_NORM.sub(" ", str(tc.get("description") or "").strip()).casefold()
-    lines = list(_steps_norm_tuple(tc.get("steps")))
-    raw = d + "\n" + "\n".join(lines)
-    return re.sub(r"\d+", "#", raw)
+    return re.sub(r"\d+", "#", _tc_signature_norm(tc))
 
 
 def _tc_similarity_digit_norm(a: dict, b: dict) -> float:
@@ -386,33 +412,15 @@ def _tc_similarity_for_merge(a: dict, b: dict) -> float:
     return max(_tc_similarity(a, b), _tc_similarity_digit_norm(a, b))
 
 
-def _best_prior_match(
-    n: dict,
-    prev_list: list,
-    *,
-    allowed_priorities: list[str],
-) -> dict | None:
-    best = None
-    best_sim = 0.0
-    for tc in prev_list:
-        if not isinstance(tc, dict):
-            continue
-        p = _norm(tc, default_change_status="unchanged", allowed_priorities=allowed_priorities)
-        sim = _tc_similarity_for_merge(n, p)
-        if sim > best_sim:
-            best_sim = sim
-            best = p
-    return best if best_sim >= _SIMILAR_THRESHOLD else None
-
-
 _SNAPSHOT_SIM_MIN = 0.5
 
 
-def _closest_prior_snapshot(
+def _best_prior_by_similarity(
     n: dict,
     prev_list: list,
     *,
     allowed_priorities: list[str],
+    min_sim: float,
 ) -> dict | None:
     best = None
     best_sim = 0.0
@@ -424,7 +432,7 @@ def _closest_prior_snapshot(
         if sim > best_sim:
             best_sim = sim
             best = p
-    return best if best_sim >= _SNAPSHOT_SIM_MIN else None
+    return best if best_sim >= min_sim else None
 
 
 def _dedupe_similar_test_cases(cases: list[dict]) -> list[dict]:
@@ -441,9 +449,9 @@ def _dedupe_similar_test_cases(cases: list[dict]) -> list[dict]:
                 jk = _pick_jira_issue_key(tc.get("jira_issue_key"), out[i].get("jira_issue_key"))
                 if jk:
                     out[i]["jira_issue_key"] = jk
-                sc = tc.get("score")
-                if isinstance(sc, (int, float)) and not isinstance(sc, bool):
-                    out[i]["score"] = round(max(0.0, min(10.0, float(sc))), 1)
+                sc = _clamp_score_0_10(tc.get("score"))
+                if sc is not None:
+                    out[i]["score"] = sc
                 merged = True
                 break
         if not merged:
@@ -487,6 +495,10 @@ def _dedupe_unchanged_shadowed_by_updated(rows: list[dict]) -> list[dict]:
     if not remove:
         return rows
     return [r for k, r in enumerate(rows) if k not in remove]
+
+
+def _prior_field(pm: dict, fld: str) -> object:
+    return pm.get("preconditions", "") if fld == "preconditions" else pm.get(fld)
 
 
 def merge_test_cases_with_previous(
@@ -590,14 +602,15 @@ def merge_test_cases_with_previous(
     for fp in order:
         if fp not in prior_fps:
             n = by_fp[fp]
-            pm = _best_prior_match(n, prev_list, allowed_priorities=allowed_priorities)
+            pm = _best_prior_by_similarity(
+                n, prev_list, allowed_priorities=allowed_priorities, min_sim=_SIMILAR_THRESHOLD
+            )
             cur = str(n.get("change_status") or "new")
             if pm:
                 n["change_status"] = _merge_change_status(cur, "updated")
                 if not _has_diff_snap(n):
                     for fld in ("description", "preconditions", "steps", "expected_result"):
-                        old = pm.get(fld) if fld != "preconditions" else pm.get("preconditions", "")
-                        n[f"previous_{fld}"] = old
+                        n[f"previous_{fld}"] = _prior_field(pm, fld)
             else:
                 if str(cur).lower() == "updated":
                     n["change_status"] = "new"
@@ -606,13 +619,14 @@ def merge_test_cases_with_previous(
     out_rows = [by_fp[fp] for fp in order]
     for n in out_rows:
         if str(n.get("change_status") or "") == "updated" and not _has_diff_snap(n):
-            pm = _closest_prior_snapshot(n, prev_list, allowed_priorities=allowed_priorities)
+            pm = _best_prior_by_similarity(
+                n, prev_list, allowed_priorities=allowed_priorities, min_sim=_SNAPSHOT_SIM_MIN
+            )
             if pm:
                 for fld in ("description", "preconditions", "steps", "expected_result"):
                     if f"previous_{fld}" in n:
                         continue
-                    old = pm.get(fld) if fld != "preconditions" else pm.get("preconditions", "")
-                    n[f"previous_{fld}"] = old
+                    n[f"previous_{fld}"] = _prior_field(pm, fld)
     for n in out_rows:
         if str(n.get("change_status") or "") == "updated" and not _has_diff_snap(n):
             n["change_status"] = "new"
@@ -623,6 +637,14 @@ def merge_test_cases_with_previous(
 def _llm_bearer() -> str:
     t = (settings.llm_access_token or "").strip()
     return t if t else "lm-studio"
+
+
+def _llm_base() -> str:
+    return settings.llm_url.rstrip("/")
+
+
+def _llm_model() -> str:
+    return (settings.llm_model or "").strip() or "local-model"
 
 
 def _chat(
@@ -674,7 +696,7 @@ def _fit_case_scores_0_10(arr: object, n: int) -> list[float] | None:
 def score_test_cases_0_10(req: dict, cases: list[dict]) -> None:
     if not cases or settings.mock:
         return
-    base = settings.llm_url.rstrip("/")
+    base = _llm_base()
     if not base:
         return
     rq = json.dumps(req, ensure_ascii=False, indent=2)
@@ -682,7 +704,7 @@ def score_test_cases_0_10(req: dict, cases: list[dict]) -> None:
     body = json.dumps({"test_cases": clean}, ensure_ascii=False, indent=2)
     user = f"Requirements:\n{rq}\n\nTest cases:\n{body}"
     msgs = [{"role": "system", "content": _SCORE_EACH_SYS}, {"role": "user", "content": user}]
-    model = (settings.llm_model or "").strip() or "local-model"
+    model = _llm_model()
     try:
         raw = _chat(base, model, msgs, 0.05, max_tokens=1024)
         data = _json(raw)
@@ -813,7 +835,7 @@ async def generate_test_cases(
     existing_jira_tests: list[dict] | None = None,
     requirement_images: list[tuple[str, str, bytes]] | None = None,
 ) -> list[dict]:
-    base = settings.llm_url.rstrip("/")
+    base = _llm_base()
     if not base:
         raise ValueError("LLM_URL is not set in .env")
     user = build_generation_user_prompt(
@@ -833,7 +855,7 @@ async def generate_test_cases(
             "cover UI flows, labels, and states shown in images or PDFs when they match the requirement scope. "
             "If there were no attachments, this paragraph would not apply—text-only runs use only the sections above."
         )
-    model = (settings.llm_model or "").strip() or "local-model"
+    model = _llm_model()
     user_content = build_multimodal_user_content(user, imgs)
     system_content = SYS if not imgs else f"{SYS}\n\n{SYS_IMAGE_SUPPLEMENT}"
     msgs = [{"role": "system", "content": system_content}, {"role": "user", "content": user_content}]
@@ -872,7 +894,7 @@ async def generate_automation_skeleton(test_case: dict, language: str, framework
             f"# Scenario: {desc[:200]}\n"
             f"def test_placeholder():\n    raise NotImplementedError('TODO')\n"
         )
-    base = settings.llm_url.rstrip("/")
+    base = _llm_base()
     if not base:
         raise ValueError("LLM_URL is not set in .env")
     tc_in = test_case if isinstance(test_case, dict) else {}
@@ -882,7 +904,7 @@ async def generate_automation_skeleton(test_case: dict, language: str, framework
         f"Test framework (lowercase id): {framework}\n\n"
         f"Test case JSON:\n{payload}"
     )
-    model = (settings.llm_model or "").strip() or "local-model"
+    model = _llm_model()
     msgs = [{"role": "system", "content": _AUTOMATION_SKELETON_SYS}, {"role": "user", "content": user}]
     raw = await asyncio.to_thread(_chat, base, model, msgs, 0.2)
     return _strip_code_fence(raw.strip())
