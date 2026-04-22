@@ -967,18 +967,18 @@ button.logout-icon-btn:focus-visible {
   margin: 0 1rem 0.5rem;
 }
 
-.automation-skel-code-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
+.head.automation-skel-code-head {
+  align-items: flex-start;
   padding: 0.5rem 1rem 0.35rem;
+  margin-bottom: 0.35rem;
 }
 
-.automation-skel-code-label {
-  font-size: 0.78rem;
+.automation-skel-code-heading {
+  margin: 0;
+  font-size: 0.92rem;
   font-weight: 600;
-  color: var(--muted);
+  color: var(--text);
+  line-height: 1.3;
 }
 
 .automation-skel-pre-wrap {
@@ -2077,10 +2077,6 @@ section.tc {
 
 .label-with-info--inline {
   align-items: baseline;
-}
-
-.meta--tc-delete-hint {
-  margin-bottom: 0.65rem;
 }
 
 /* Instant custom tooltip (avoids multi-second native `title` delay). */

@@ -1,5 +1,5 @@
 import { AutomationSkeletonIconButton } from "./AutomationSkeletonModal";
-import { Copy, FieldInfo, FloatingTooltip, Spinner } from "./common";
+import { Copy, FloatingTooltip, Spinner } from "./common";
 import { JiraTestPushButton } from "./JiraTestPushButton";
 import { TestCaseBody } from "./TestCaseBody";
 import { TestCaseSummaryBadges } from "./TestCaseSummaryBadges";
@@ -70,15 +70,6 @@ export function MainTestCasesPanel({
           {memoryMatch === "similar"
             ? "Prior history was matched by similar requirements (not only the exact saved key). Tags reflect changes vs that saved snapshot."
             : "Prior history was used for this run"}
-        </p>
-      ) : null}
-
-      {inputMode === "jira" && !mock ? (
-        <p className="meta meta--tc-delete-hint">
-          <span className="label-with-info label-with-info--inline">
-            <span>Deleting test cases</span>
-            <FieldInfo text="You can remove a scenario from the list only when it is not linked to JIRA (not pushed from here, not marked EXISTING from JIRA, and no issue key on the case). If Save to history is on, saved history for this ticket is updated when you confirm removal." />
-          </span>
         </p>
       ) : null}
 

@@ -59,5 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added delete option per test case for 'Generate Test Cases'
 
 ### Changed
-- Increase the tiles spacing
+- Increase the tile spacing
+- Minor bug fixes
+
+---
+## [1.0.5]
+
+### Changed
+- Updated README.md
 - Minor bug fixes
