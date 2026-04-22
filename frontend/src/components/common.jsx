@@ -153,7 +153,7 @@ export function FloatingTooltip({ text, children, wrapClassName = "" }) {
     beginOpen();
   };
   const handleMouseLeave = () => {
-    if (!wrapRef.current?.matches(":focus-within")) setOpen(false);
+    setOpen(false);
   };
 
   let child;

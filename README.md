@@ -18,14 +18,19 @@ Optionally:
 - Use Keycloak to associate users with activity
 
 ---
+### Product Sample Video
+
+[Check out the video on YouTube:](https://www.youtube.com/watch?v=u5MYzPwuOGI)
+<p align="center">
+  <a href="https://youtu.be/u5MYzPwuOGI">
+    <img src="https://img.youtube.com/vi/u5MYzPwuOGI/hqdefault.jpg" width="600" alt="Watch product sample video on YouTube" />
+  </a>
+</p>
+
+---
 ### Product Sample Images
 
 <img src="resources/product-images/img-1.png" alt="UI" width="200" /> <img src="resources/product-images/img-2.png" alt="UI" width="200" /> <img src="resources/product-images/img-2a.png" alt="UI" width="200" /> <img src="resources/product-images/img-3.png" alt="UI" width="200" /> <img src="resources/product-images/img-4.png" alt="UI" width="200" /> <img src="resources/product-images/img-5.png" alt="UI" width="200" /> <img src="resources/product-images/img-6.png" alt="UI" width="200" />
-
----
-### Product Sample Video
-
-See: [video.mp4](resources/video.mp4)
 
 ---
 
