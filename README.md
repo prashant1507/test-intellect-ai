@@ -20,7 +20,7 @@ Optionally:
 ---
 ### Product Sample Video
 
-[Check out the video on YouTube:](https://www.youtube.com/watch?v=u5MYzPwuOGI)
+[Check out the video on YouTube](https://www.youtube.com/watch?v=u5MYzPwuOGI)
 <p align="center">
   <a href="https://youtu.be/u5MYzPwuOGI">
     <img src="https://img.youtube.com/vi/u5MYzPwuOGI/hqdefault.jpg" width="600" alt="Watch product sample video on YouTube" />
