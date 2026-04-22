@@ -2193,7 +2193,7 @@ export default function App() {
                 <div className="row cols-2">
                   <div>
                     <label htmlFor="pasteTitle" className="label-with-info">
-                      <span>Title (optional)</span>
+                      <span>Title (Optional)</span>
                       <FieldInfo text="Optional short label for this pasted requirement in history." />
                     </label>
                     <input
