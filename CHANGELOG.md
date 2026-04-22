@@ -73,3 +73,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated README.md
 - Minor bug fixes
 - Removed 'Add all to JIRA' button from 'Paste Requirements' mode
+
+---
+## [1.0.6]
+
+### Changed
+- Now copy to clip board for Test Cases will copy Status, Priority, Gherkin Steps, Score 

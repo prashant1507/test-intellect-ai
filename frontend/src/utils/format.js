@@ -85,6 +85,12 @@ export function fmtTestsMarkdown(t) {
       if (c.jira_status) status = `${status} · ${c.jira_status}`;
       if (c.jira_issue_key) status = `${status} (${String(c.jira_issue_key).trim()})`;
       const title = String(c.description || "Test case").trim().replace(/\r?\n/g, " ");
+      const pri = String(c.priority || "").trim();
+      const sc =
+        typeof c.score === "number" && !Number.isNaN(c.score) ? Math.round(c.score * 10) / 10 : null;
+      const meta = [`**Status:** ${status}`];
+      if (pri) meta.push(`**Priority:** ${pri}`);
+      if (sc != null) meta.push(`**Score:** ${sc}/10`);
       let body = "";
       if (isUnifiedGherkin(c)) {
         const g = fmtScenarioLines(c).trim();
@@ -101,7 +107,7 @@ export function fmtTestsMarkdown(t) {
         if (exp) bits.push(`**Expected:** ${exp}`);
         body = bits.join("\n\n");
       }
-      return `### ${title}\n\n**Status:** ${status}\n\n${body}`;
+      return `### ${title}\n\n${meta.join("\n\n")}\n\n${body}`;
     })
     .filter(Boolean)
     .join("\n\n---\n\n");
