@@ -80,14 +80,6 @@ def _jira_test_issue_type_from_body(body: TicketIn) -> str:
     return (body.jira_test_issue_type or "").strip() or settings.jira_test_issue_type or "Test"
 
 
-def _linked_jira_tests_light(entries: list) -> list[dict]:
-    return _linked_jira_issue_rows(entries, work=False)
-
-
-def _linked_jira_work_light(entries: list) -> list[dict]:
-    return _linked_jira_issue_rows(entries, work=True)
-
-
 def _linked_jira_issue_rows(entries: list, *, work: bool) -> list[dict]:
     out: list[dict] = []
     for e in entries:
@@ -194,17 +186,20 @@ async def _enrich_out_with_attachments(body: TicketIn, out: dict) -> None:
         out["requirement_attachments"] = await _fetch_issue_attachments(body, tk)
 
 
-class GenerateIn(TicketIn):
-    test_project_key: str = ""
-    save_memory: bool = True
+class _TestCaseBounds(BaseModel):
     min_test_cases: int = Field(1, ge=1)
     max_test_cases: int = Field(10, ge=0)
-    attachment_ids: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _test_case_bounds(self) -> "GenerateIn":
+    def _bounds(self) -> "_TestCaseBounds":
         _validate_tc_bounds(self.min_test_cases, self.max_test_cases)
         return self
+
+
+class GenerateIn(TicketIn, _TestCaseBounds):
+    test_project_key: str = ""
+    save_memory: bool = True
+    attachment_ids: list[str] = Field(default_factory=list)
 
 
 class MemoryUpdateTestCasesIn(BaseModel):
@@ -227,18 +222,11 @@ class MemorySaveAfterEditIn(BaseModel):
     jira_username: str = ""
 
 
-class PastedGenerateIn(BaseModel):
+class PastedGenerateIn(_TestCaseBounds):
     title: str = Field(default="", max_length=10000)
     description: str = Field(..., min_length=1)
     memory_key: str = Field(default="", max_length=64)
     save_memory: bool = True
-    min_test_cases: int = Field(1, ge=1)
-    max_test_cases: int = Field(10, ge=0)
-
-    @model_validator(mode="after")
-    def _paste_bounds(self) -> "PastedGenerateIn":
-        _validate_tc_bounds(self.min_test_cases, self.max_test_cases)
-        return self
 
 
 class GenerateAgenticIn(GenerateIn):
@@ -418,8 +406,8 @@ def _generate_response_base(
         "requirements_diff": req_diff,
         "had_previous_memory": prev is not None,
         "memory_match": ("similar" if similar_used else "exact") if prev else None,
-        "linked_jira_tests": _linked_jira_tests_light(jira_entries or []),
-        "linked_jira_work": _linked_jira_work_light(linked_jira_work_entries or []),
+        "linked_jira_tests": _linked_jira_issue_rows(jira_entries or [], work=False),
+        "linked_jira_work": _linked_jira_issue_rows(linked_jira_work_entries or [], work=True),
         "linked_jira_work_type_labels": linked_jira_work_type_labels,
     }
     if history_jira_ticket_id:
@@ -717,7 +705,7 @@ def memory_list(_: Kc):
 
 @api.get("/memory/item/{ticket_id}")
 def memory_item(ticket_id: str, _: Kc):
-    data = get_latest(ticket_id.strip())
+    data = get_latest(norm_issue_key(ticket_id))
     if not data:
         raise HTTPException(status_code=404, detail="Not found")
     return {
@@ -884,8 +872,8 @@ async def fetch_ticket(body: TicketIn, kc: Kc):
     out: dict = {
         "ticket_id": key,
         "requirements": raw,
-        "linked_jira_tests": _linked_jira_tests_light(linked),
-        "linked_jira_work": _linked_jira_work_light(linked_work),
+        "linked_jira_tests": _linked_jira_issue_rows(linked, work=False),
+        "linked_jira_work": _linked_jira_issue_rows(linked_work, work=True),
         "linked_jira_work_type_labels": work_labels,
         "requirement_attachments": attachments,
     }

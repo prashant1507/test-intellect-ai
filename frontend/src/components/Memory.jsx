@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { fmtReqMarkdown, fmtTestsMarkdown, jiraWikiToMarkdown } from "../utils/format";
 import { resolvePushedJiraKey } from "../utils/jiraPushFingerprint";
-import { Copy, FloatingTooltip, Spinner } from "./common";
+import { Copy, FloatingTooltip, Spinner, markdownGfmComponents } from "./common";
 import { AutomationSkeletonIconButton } from "./AutomationSkeletonModal";
 import { JiraTestPushButton } from "./JiraTestPushButton";
 import { TestCaseBody } from "./TestCaseBody";
@@ -22,7 +22,7 @@ function MemoryRequirementsView({ requirements }) {
       {title ? <h4 className="memory-req-title">{title}</h4> : null}
       {desc ? (
         <div className="paste-md-preview memory-md-embed">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={{ a: mdLinkProps }}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownGfmComponents}>
             {jiraWikiToMarkdown(desc)}
           </ReactMarkdown>
         </div>

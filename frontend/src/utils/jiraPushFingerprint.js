@@ -1,3 +1,5 @@
+import { normTicketId } from "./format";
+
 function normalizeWs(s) {
   return String(s ?? "").trim().replace(/\s+/g, " ");
 }
@@ -38,15 +40,15 @@ export function normScenarioTitleForJira(tc) {
 }
 
 export function jiraPushedTitleKey(ticketId, tc) {
-  const tid = String(ticketId || "").trim().toUpperCase();
+  const tid = normTicketId(ticketId);
   if (!tid) return null;
   return `jt:${tid}:${normScenarioTitleForJira(tc)}`;
 }
 
 export function resolvePushedJiraKey(tc, ticketId, jiraPushed, scope) {
-  const tid = String(ticketId || "").trim().toUpperCase();
+  const tid = normTicketId(ticketId);
   if (!tid || !tc || typeof jiraPushed !== "object") return undefined;
-  const fromTc = String(tc.jira_issue_key || "").trim().toUpperCase();
+  const fromTc = normTicketId(tc.jira_issue_key);
   if (fromTc) return fromTc;
   const prefix = scope === "mem" ? "mem" : "main";
   const fp = jiraPushFingerprint(tc);

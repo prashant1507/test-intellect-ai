@@ -11,6 +11,10 @@ import { createPortal } from "react-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+export const markdownGfmComponents = {
+  a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
+};
+
 export function Spinner() {
   return (
     <svg className="spinner" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden>
@@ -79,12 +83,7 @@ export function PasteRequirementsPreview({ text }) {
   if (!t) return null;
   return (
     <div className="paste-md-preview" role="region" aria-label="Formatted preview of pasted requirements">
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          a: (props) => <a {...props} target="_blank" rel="noopener noreferrer" />,
-        }}
-      >
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownGfmComponents}>
         {text}
       </ReactMarkdown>
     </div>

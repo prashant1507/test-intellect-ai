@@ -130,15 +130,18 @@ export function readTheme() {
   return "light";
 }
 
+export function normTicketId(v) {
+  return String(v ?? "").trim().toUpperCase();
+}
+
 const PASTE_AUTO_MEMORY_KEY = /^TEST-[0-9A-F]{10}$/i;
 
 export function isPasteAutoMemoryKey(k) {
-  return PASTE_AUTO_MEMORY_KEY.test(String(k || "").trim());
+  return PASTE_AUTO_MEMORY_KEY.test(normTicketId(k));
 }
 
-/** Typical JIRA issue key (e.g. PROJ-123); excludes auto paste `TEST-…` keys. */
 export function isLikelyJiraIssueKey(k) {
-  const s = String(k || "").trim().toUpperCase();
+  const s = normTicketId(k);
   if (!s || isPasteAutoMemoryKey(s)) return false;
   return /^[A-Z][A-Z0-9_]*-\d+$/.test(s);
 }

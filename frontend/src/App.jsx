@@ -26,7 +26,14 @@ import {
   auditActionLabel,
   downloadAuditPdf,
 } from "./utils/audit";
-import { fmtReqMarkdown, fmtTestsMarkdown, formatTime, isLikelyJiraIssueKey, readTheme } from "./utils/format";
+import {
+  fmtReqMarkdown,
+  fmtTestsMarkdown,
+  formatTime,
+  isLikelyJiraIssueKey,
+  normTicketId,
+  readTheme,
+} from "./utils/format";
 import { parseApiError } from "./utils/parseApiError";
 import {
   jiraPushFingerprint,
@@ -144,12 +151,12 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const t = ticketId.trim().toUpperCase();
+    const t = normTicketId(ticketId);
     if (!t) {
       clearFetchedTicketState();
       return;
     }
-    if (key && t !== key.trim().toUpperCase()) {
+    if (key && t !== normTicketId(key)) {
       clearFetchedTicketState();
     }
   }, [ticketId, key, clearFetchedTicketState]);
@@ -184,9 +191,7 @@ export default function App() {
     setReq(d.requirements);
     setKey(d.ticket_id);
     const hj = d.history_jira_ticket_id;
-    setHistoryJiraTicketId(
-      hj != null && String(hj).trim() ? String(hj).trim().toUpperCase() : "",
-    );
+    setHistoryJiraTicketId(hj != null && String(hj).trim() ? normTicketId(hj) : "");
     setTests(d.test_cases || []);
     const lj = normalizeLinkedJiraFromApi(d);
     setLinkedJiraTests(lj.tests);
@@ -542,13 +547,13 @@ export default function App() {
 
   const refreshMemoryPanelIfOpen = useCallback(
     async (ticketUpper) => {
-      const key = String(ticketUpper || "").trim().toUpperCase();
-      if (!key) return;
+      const memKey = normTicketId(ticketUpper);
+      if (!memKey) return;
       try {
-        const d = await api(`/memory/item/${encodeURIComponent(key)}`);
+        const d = await api(`/memory/item/${encodeURIComponent(memKey)}`);
         setMemoryPanel((p) => {
           if (!p || p.phase !== "ok") return p;
-          if (String(p.ticket_id || "").trim().toUpperCase() !== key) return p;
+          if (normTicketId(p.ticket_id) !== memKey) return p;
           return {
             phase: "ok",
             ticket_id: d.ticket_id,
@@ -568,11 +573,9 @@ export default function App() {
       { scope = "main", memoryTicketId, updateExisting = false, bulkQuiet = false } = {},
     ) => {
       if (!bulkQuiet) setErr("");
-      const mainReqKey = (key || ticketId).trim().toUpperCase();
-      const tidForResolve =
-        scope === "memory" && memoryTicketId
-          ? String(memoryTicketId).trim().toUpperCase()
-          : mainReqKey;
+      const mainReqKey = normTicketId(key || ticketId);
+      const rk =
+        scope === "memory" && memoryTicketId ? normTicketId(memoryTicketId) : mainReqKey;
       if (!updateExisting && !jiraTestProject.trim()) {
         const msg = "JIRA Test Project is required to add a test case in JIRA.";
         if (!bulkQuiet) setErr(msg);
@@ -588,10 +591,6 @@ export default function App() {
         if (!bulkQuiet) setErr(msg);
         return false;
       }
-      const rk =
-        scope === "memory" && memoryTicketId
-          ? String(memoryTicketId).trim().toUpperCase()
-          : mainReqKey;
       if (!rk) {
         const msg =
           scope === "memory"
@@ -606,16 +605,15 @@ export default function App() {
         return false;
       }
       const fp = jiraPushFingerprint(tc);
-      const tid = scope === "memory" && memoryTicketId ? String(memoryTicketId).trim().toUpperCase() : rk;
       const prefix = scope === "memory" ? "mem" : "main";
-      const pushKey = `${prefix}:${tid}:${fp}`;
-      const descKey = `${prefix}:${tid}:d:${normDescForJira(tc)}`;
+      const pushKey = `${prefix}:${rk}:${fp}`;
+      const descKey = `${prefix}:${rk}:d:${normDescForJira(tc)}`;
       const titleKey = jiraPushedTitleKey(rk, tc);
       const otherPrefix = scope === "memory" ? "main" : "mem";
       const mirrorPush = `${otherPrefix}:${rk}:${fp}`;
       const mirrorDesc = `${otherPrefix}:${rk}:d:${normDescForJira(tc)}`;
       const scopeTag = scope === "memory" ? "mem" : "main";
-      const existingKey = resolvePushedJiraKey(tc, tidForResolve, jiraPushedRef.current, scopeTag);
+      const existingKey = resolvePushedJiraKey(tc, rk, jiraPushedRef.current, scopeTag);
       if (updateExisting) {
         if (!existingKey) {
           const msg = "This scenario is not linked to a JIRA issue. Add it first with +.";
@@ -770,7 +768,7 @@ export default function App() {
 
   const syncAllJiraBulk = useCallback(async () => {
     const shown = filterTestsByChip(tests);
-    if (mock || inputMode !== "jira" || !(key || ticketId).trim() || !jiraUrl.trim() || !username || !password) {
+    if (mock || inputMode !== "jira" || !normTicketId(key || ticketId) || !jiraUrl.trim() || !username || !password) {
       setErr("Use JIRA mode and fill URL, ticket, username, and password.");
       return;
     }
@@ -797,7 +795,7 @@ export default function App() {
         skipped: 0,
         failed: 0,
       });
-      const tidU = (key || ticketId).trim().toUpperCase();
+      const tidU = normTicketId(key || ticketId);
       for (let i = 0; i < shown.length; i++) {
       const tcRow = shown[i];
       const rowFp = jiraPushFingerprint(tcRow);
@@ -894,7 +892,7 @@ export default function App() {
       return;
     }
     const tc = cur[idx];
-    const tidU = (key || ticketId).trim().toUpperCase();
+    const tidU = normTicketId(key || ticketId);
     const pushedKey = resolvePushedJiraKey(tc, tidU, jiraPushed, "main");
     if (pushedKey || String(tc.jira_issue_key || "").trim() || tc.jira_existing) {
       setErr("Cannot delete a test case that is linked to JIRA.");
@@ -954,7 +952,7 @@ export default function App() {
   const persistEditedTestCase = useCallback(
     async (idx, updatedTc) => {
       const oldTc = tests?.[idx];
-      const tidU = (key || ticketId).trim().toUpperCase();
+      const tidU = normTicketId(key || ticketId);
       const nextTc = { ...stripTestCaseDiffMeta(updatedTc), change_status: "updated" };
       const nextList = (tests || []).map((t, i) => (i === idx ? nextTc : stripTestCaseDiffMeta(t)));
       setTests(nextList);
@@ -1001,7 +999,7 @@ export default function App() {
   );
 
   const startBulkSync = useCallback(() => {
-    if (mock || inputMode !== "jira" || !(key || ticketId).trim() || !jiraUrl.trim() || !String(username || "").trim() || !password) {
+    if (mock || inputMode !== "jira" || !normTicketId(key || ticketId) || !jiraUrl.trim() || !String(username || "").trim() || !password) {
       setErr("Use JIRA mode and fill URL, ticket, username, and password.");
       return;
     }
@@ -1148,7 +1146,7 @@ export default function App() {
   }, [jiraPushed]);
 
   useEffect(() => {
-    const tid = (key || ticketId).trim().toUpperCase();
+    const tid = normTicketId(key || ticketId);
     if (!tid || !tests?.length) return;
     const fpSet = new Set(tests.map((tc) => jiraPushFingerprint(tc)));
     setJiraPushed((prev) => {
@@ -1185,7 +1183,7 @@ export default function App() {
 
   useEffect(() => {
     if (memoryPanel?.phase !== "ok") return;
-    const tid = String(memoryPanel.ticket_id || "").trim().toUpperCase();
+    const tid = normTicketId(memoryPanel.ticket_id);
     if (!tid || !Array.isArray(memoryPanel.test_cases)) return;
     const fpSet = new Set(memoryPanel.test_cases.map((tc) => jiraPushFingerprint(tc)));
     setJiraPushed((prev) => {
@@ -1391,7 +1389,7 @@ export default function App() {
       setLastFetchAt(now);
       setAnnounce("Test cases generated.");
       await syncLists();
-      await refreshMemoryPanelIfOpen(String(d.ticket_id || "").trim().toUpperCase());
+      await refreshMemoryPanelIfOpen(normTicketId(d.ticket_id));
     } catch (e) {
       setErr(e.message || "Something went wrong.");
       setAnnounce("");
@@ -1444,7 +1442,7 @@ export default function App() {
         setLastGenerateAt(new Date().toISOString());
         setAnnounce("Test cases generated.");
         await syncLists();
-        await refreshMemoryPanelIfOpen(String(d.ticket_id || "").trim().toUpperCase());
+        await refreshMemoryPanelIfOpen(normTicketId(d.ticket_id));
         return;
       }
 
@@ -1460,7 +1458,7 @@ export default function App() {
         setDiff(d.requirements_diff != null && d.requirements_diff !== "" ? d.requirements_diff : null);
         setDiffExpanded(false);
         setLastFetchAt(new Date().toISOString());
-        const tidFetch = String(d.ticket_id || "").trim().toUpperCase();
+        const tidFetch = normTicketId(d.ticket_id);
         if (!mock && tidFetch) {
           try {
             const mem = await api(`/memory/item/${encodeURIComponent(tidFetch)}`);
@@ -1499,7 +1497,7 @@ export default function App() {
   const canSubmit = jiraUrl.trim() && ticketId.trim() && username.trim() && password;
   const canGenerateJira =
     !!req &&
-    String(ticketId || "").trim().toUpperCase() === String(key || "").trim().toUpperCase();
+    normTicketId(ticketId) === normTicketId(key);
   const canSubmitPaste = pasteText.trim().length > 0;
   const mf = memoryFilter.trim().toLowerCase();
   const memItems = mf ? memoryEntries.filter((e) => (e.ticket_id || "").toLowerCase().includes(mf)) : memoryEntries;
@@ -1512,7 +1510,7 @@ export default function App() {
     }
     return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })).join(", ");
   }, [linkedJiraWork]);
-  const mainRequirementKey = useMemo(() => (key || ticketId).trim().toUpperCase(), [key, ticketId]);
+  const mainRequirementKey = useMemo(() => normTicketId(key || ticketId), [key, ticketId]);
   const diffLong = diff && diff.length > 600;
   const diffShown = diffLong && !diffExpanded ? `${diff.slice(0, 600)}…` : diff;
 
@@ -1523,8 +1521,8 @@ export default function App() {
   const genOrBulkBusy = generatingTestCases || bulkJiraSync?.running;
 
   const pasteRequirementsHeadingKey = useMemo(() => {
-    const h = historyJiraTicketId.trim().toUpperCase();
-    const k = String(key || "").trim().toUpperCase();
+    const h = normTicketId(historyJiraTicketId);
+    const k = normTicketId(key);
     if (h && isLikelyJiraIssueKey(h)) return h;
     if (k && isLikelyJiraIssueKey(k)) return k;
     return "";
@@ -1542,7 +1540,7 @@ export default function App() {
     !password ||
     !jiraTestProject.trim();
   const memoryPushTicketId =
-    memoryPanel?.phase === "ok" ? String(memoryPanel.ticket_id || "").trim().toUpperCase() || null : null;
+    memoryPanel?.phase === "ok" ? normTicketId(memoryPanel.ticket_id) || null : null;
 
   if (bootPhase === "loading") {
     return (
@@ -1715,7 +1713,7 @@ export default function App() {
                       ) : (
                         <ul className="memory-list">
                           {memItems.map((e) => {
-                            const cur = ticketId.trim().toUpperCase() === (e.ticket_id || "").toUpperCase();
+                            const cur = normTicketId(ticketId) === normTicketId(e.ticket_id);
                             return (
                               <li key={e.ticket_id}>
                                 <button
@@ -2189,7 +2187,7 @@ export default function App() {
                     className="paste-requirements-textarea"
                     value={pasteText}
                     onChange={(e) => setPasteText(e.target.value)}
-                    placeholder="Paste plain text or Markdown (headings, lists, tables, code)…"
+                    placeholder="Paste plain text or Markdown…"
                     rows={2}
                     aria-required="true"
                     aria-describedby="hint-paste-preview"

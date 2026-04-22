@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { jiraBrowseHref } from "../utils/audit";
+import { normTicketId } from "../utils/format";
 import { Copy, FloatingTooltip, Spinner } from "./common";
 
 const LANG_OPTIONS = [
@@ -93,7 +94,7 @@ export function AutomationSkeletonModal({ tc, jiraBaseUrl, api, onClose, onAnnou
   if (!tc) return null;
 
   const title = String(tc.description || "").trim() || "Test case";
-  const testCaseIssueKey = String(tc.jira_issue_key || "").trim().toUpperCase();
+  const testCaseIssueKey = normTicketId(tc.jira_issue_key);
   const issueHref = testCaseIssueKey ? jiraBrowseHref(jiraBaseUrl, testCaseIssueKey) : null;
 
   return (
