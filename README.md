@@ -41,9 +41,12 @@ flowchart LR
   UI["React UI"] -->|/api| API["FastAPI main.py"]
   API --> JIRA["jira_client"]
   API --> LLM["ai_client"]
+  API --> AG["agentic"]
+  API --> IMG["requirement_attachments"]
   API --> MEM["memory_store (SQLite)"]
   API --> AUD["audit_store (SQLite)"]
   API --> KC["keycloak_auth"]
+  AG -.->|uses| LLM
 ```
 
 ---
