@@ -80,7 +80,7 @@ flowchart LR
 - **Automation Skeleton:** Generate code-style skeleton per case.
 - **Agentic:** Two-step validate-and-refine pipeline.
 
-### Auto test execution (Playwright)
+### Auto test execution (UI and API)
 
 - **Saved Suite:** Store cases; run one / run all; optional **tag** and **JIRA** filters; configurable **parallel**
   runs; env (browser, headless, timeout, trace, screenshot-on-pass, post-run analysis, HTML reports, retention of
