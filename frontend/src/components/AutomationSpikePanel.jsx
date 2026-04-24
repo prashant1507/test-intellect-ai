@@ -681,7 +681,8 @@ export function AutomationSpikePanel({
                         )
                         .map((s) => {
                           const bi = Number(s?.step_index ?? 0);
-                          const bddLine = bddStepLines[bi] ?? "";
+                          const bddLine =
+                            String(s?.step_text ?? "").trim() || (bddStepLines[bi] ?? "");
                           return (
                         <li key={s.step_index} className={s.pass ? "is-pass" : "is-fail"}>
                           {bddLine ? (

@@ -2112,6 +2112,10 @@ button.automation-spike-suite-stop-icon-btn:focus-visible {
   margin: 0 0 0.4rem;
   padding: 0.2rem 0 0.15rem 0.5rem;
   border-left: 2px solid color-mix(in srgb, var(--muted) 45%, var(--card-border));
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .automation-spike-analysis-action-line {
