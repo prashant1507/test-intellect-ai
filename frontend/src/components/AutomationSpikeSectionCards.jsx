@@ -21,6 +21,7 @@ import {
   stepShotAccordionId,
 } from "./AutomationRunStepScreenshot";
 import { ResizableScrollClip, useScrollClipHeightPx } from "./LinkedJiraLists";
+import { parseTagCsv } from "../utils/tagCsv";
 
 const SAVED_LINKED_LIST_VISIBLE_ROWS = 4;
 const SAVED_SELECTORS_VISIBLE_ROWS = 2;
@@ -376,25 +377,52 @@ function BddStepsView({ bdd }) {
 function SuiteCaseJiraScenarioLine({ c }) {
   const scenario = (c.title || "Untitled").trim() || "Untitled";
   const j = (c.jira_id || "").trim();
+  const tags = parseTagCsv(c.tag);
+  const head = [];
+  tags.forEach((tg, idx) => {
+    head.push(
+      <span key={`tag-${idx}`} className="automation-spike-suite-jira">
+        {tg}
+      </span>,
+    );
+  });
   if (j) {
-    return (
-      <>
-        <span className="automation-spike-suite-jira">{j}</span>
-        <span className="automation-spike-suite-sep" aria-hidden="true">
-          {" "}
-          ·{" "}
-        </span>
-        {scenario}
-      </>
+    head.push(
+      <span key="j" className="automation-spike-suite-jira">
+        {j}
+      </span>,
     );
   }
-  return scenario;
+  if (!head.length) {
+    return scenario;
+  }
+  return (
+    <>
+      {head.map((el, i) => (
+        <span key={i}>
+          {i > 0 ? (
+            <span className="automation-spike-suite-sep" aria-hidden="true">
+              {" "}
+              ·{" "}
+            </span>
+          ) : null}
+          {el}
+        </span>
+      ))}
+      <span className="automation-spike-suite-sep" aria-hidden="true">
+        {" "}
+        ·{" "}
+      </span>
+      {scenario}
+    </>
+  );
 }
 
 function suiteCaseDeletePreviewPlainText(c) {
   const scenario = String(c?.title || "Untitled").trim() || "Untitled";
   const j = String(c?.jira_id || "").trim();
-  const line = j ? `${j} · ${scenario}` : scenario;
+  const bits = [...parseTagCsv(c?.tag), j].filter(Boolean);
+  const line = bits.length ? `${bits.join(" · ")} · ${scenario}` : scenario;
   const s = String(line);
   return s.length > 120 ? `${s.slice(0, 120)}…` : s;
 }
@@ -610,6 +638,7 @@ export function AutomationSpikeSectionCards({
   const suiteRunUrlInputRef = useRef(null);
   const suiteRunOneUrlInputRef = useRef(null);
   const suiteReportsRecentDialogRef = useRef(null);
+  const suiteDeleteCaseDialogRef = useRef(null);
 
   const suiteListRef = useRef(null);
   const suiteKeyForClip = useMemo(
@@ -865,6 +894,15 @@ export function AutomationSpikeSectionCards({
     });
     return () => cancelAnimationFrame(id);
   }, [suiteReportsRecentOpen]);
+
+  useLayoutEffect(() => {
+    if (!suiteDeleteCase) return;
+    const id = requestAnimationFrame(() => {
+      document.getElementById("app-theme-toggle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      suiteDeleteCaseDialogRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [suiteDeleteCase]);
 
   useEffect(() => {
     const hasSuiteModal =
@@ -2019,8 +2057,10 @@ export function AutomationSpikeSectionCards({
         >
           <div
             id="automation-suite-delete-case-dialog"
+            ref={suiteDeleteCaseDialogRef}
             className="modal-dialog modal-dialog-tc-edit"
             role="dialog"
+            tabIndex={-1}
             aria-modal="true"
             aria-labelledby="automation-suite-delete-case-title"
             onClick={(e) => e.stopPropagation()}

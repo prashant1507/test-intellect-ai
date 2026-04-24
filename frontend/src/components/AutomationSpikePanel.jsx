@@ -13,6 +13,7 @@ import {
   getFirstFailingStepShotAccordionId,
   stepShotAccordionId,
 } from "./AutomationRunStepScreenshot";
+import { normalizeTagCsv } from "../utils/tagCsv";
 
 function spikeRunStatusDisplay(status) {
   const s = String(status || "").toLowerCase();
@@ -41,6 +42,7 @@ export function AutomationSpikePanel({
   const [bdd, setBdd] = useState("");
   const [url, setUrl] = useState("");
   const [jiraId, setJiraId] = useState("");
+  const [tag, setTag] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [saveSuiteErr, setSaveSuiteErr] = useState("");
@@ -127,6 +129,7 @@ export function AutomationSpikePanel({
       bdd,
       url: u,
       jira_id: jiraId.trim(),
+      tag: normalizeTagCsv(tag),
     };
     try {
       const out = await api("/automation/spike-run", "POST", body);
@@ -191,6 +194,7 @@ export function AutomationSpikePanel({
         bdd,
         url: "",
         jira_id: jiraT,
+        tag: normalizeTagCsv(tag),
       });
       bumpLists();
     } catch (e) {
@@ -257,28 +261,47 @@ export function AutomationSpikePanel({
           </span>
         </div>
       </div>
-      <div className="row">
-        <label htmlFor="automation-spike-url" className="label-with-info">
-          <span>URL</span>
-          <FieldInfo text="Application URL. Use a full URL (e.g. https://example.com)." />
-        </label>
-        <input
-          id="automation-spike-url"
-          ref={urlInputRef}
-          type="url"
-          value={url}
-          onChange={(e) => {
-            setUrl(e.target.value);
-            if (startUrlInvalid) setStartUrlInvalid(false);
-          }}
-          className={startUrlInvalid ? "form-field--invalid" : undefined}
-          aria-invalid={startUrlInvalid ? true : undefined}
-          disabled={formLocked}
-          aria-describedby="automation-spike-url-hint"
-        />
-        <span id="automation-spike-url-hint" className="sr-only">
-          Application URL. Use a full URL (e.g. https://example.com).
-        </span>
+      <div className="row cols-2">
+        <div>
+          <label htmlFor="automation-spike-url" className="label-with-info">
+            <span>URL</span>
+            <FieldInfo text="Application URL. Use a full URL (e.g. https://example.com)." />
+          </label>
+          <input
+            id="automation-spike-url"
+            ref={urlInputRef}
+            type="url"
+            value={url}
+            onChange={(e) => {
+              setUrl(e.target.value);
+              if (startUrlInvalid) setStartUrlInvalid(false);
+            }}
+            className={startUrlInvalid ? "form-field--invalid" : undefined}
+            aria-invalid={startUrlInvalid ? true : undefined}
+            disabled={formLocked}
+            aria-describedby="automation-spike-url-hint"
+          />
+          <span id="automation-spike-url-hint" className="sr-only">
+            Application URL. Use a full URL (e.g. https://example.com).
+          </span>
+        </div>
+        <div>
+          <label htmlFor="automation-spike-tag" className="label-with-info">
+            <span>Tag (Optional)</span>
+            <FieldInfo text="Comma-separated (e.g. Smoke, Regression, Login)." />
+          </label>
+          <input
+            id="automation-spike-tag"
+            value={tag}
+            onChange={(e) => setTag(e.target.value)}
+            disabled={formLocked}
+            autoComplete="off"
+            aria-describedby="automation-spike-tag-hint"
+          />
+          <span id="automation-spike-tag-hint" className="sr-only">
+            Optional comma-separated tags. Each tag appears separately in HTML reports By Tag.
+          </span>
+        </div>
       </div>
       <div className="row">
         <label htmlFor="automation-spike-test-steps" className="label-with-info">

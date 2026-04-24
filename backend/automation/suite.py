@@ -64,6 +64,7 @@ def run_suite_sequential(
                 u_run,
                 html_dom=(c.get("html_dom") or None),
                 jira_id=str(c.get("jira_id") or ""),
+                tag=str(c.get("tag") or ""),
             )
             st = "PASS" if r.get("status") == "completed" else "FAIL"
             rid = r.get("run_id", "")
@@ -127,6 +128,7 @@ def run_suite_sequential(
                 "debug_logs": r.get("debug_logs") or [],
                 "analysis": str(r.get("analysis") or ""),
                 "jira_id": str(c.get("jira_id") or ""),
+                "tag": str(c.get("tag") or ""),
                 "trace_href": trace_href,
             }
         )

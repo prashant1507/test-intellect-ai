@@ -9,6 +9,8 @@ from typing import Any
 
 from settings import settings
 
+from .tag_csv import normalize_tag_csv
+
 
 def _connect() -> sqlite3.Connection:
     p = Path(settings.automation_db_path)
@@ -109,6 +111,8 @@ def init_automation_db() -> None:
                 )
             if "last_suite_run_id" not in cols:
                 c.execute("ALTER TABLE automation_suite_cases ADD COLUMN last_suite_run_id TEXT")
+            if "tag" not in cols:
+                c.execute("ALTER TABLE automation_suite_cases ADD COLUMN tag TEXT")
         c.commit()
     finally:
         c.close()
@@ -359,10 +363,12 @@ def add_suite_case(
     html_dom: str,
     *,
     jira_id: str = "",
+    tag: str = "",
     case_id: str | None = None,
 ) -> str:
     cid = (case_id or str(uuid.uuid4())).strip() or str(uuid.uuid4())
     jira = (jira_id or "").strip() or None
+    ta = normalize_tag_csv(tag) or None
     c = _connect()
     try:
         mx = c.execute(
@@ -371,8 +377,8 @@ def add_suite_case(
         c.execute(
             """
             INSERT INTO automation_suite_cases
-              (id, created_at, sort_order, title, bdd, url, html_dom, jira_id)
-            VALUES (?,?,?,?,?,?,?,?)
+              (id, created_at, sort_order, title, bdd, url, html_dom, jira_id, tag)
+            VALUES (?,?,?,?,?,?,?,?,?)
             """,
             (
                 cid,
@@ -383,6 +389,7 @@ def add_suite_case(
                 url.strip(),
                 (html_dom or "").strip() or None,
                 jira,
+                ta,
             ),
         )
         c.commit()

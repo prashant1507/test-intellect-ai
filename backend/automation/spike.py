@@ -800,6 +800,7 @@ def _write_run_html(
     analysis: str,
     trace_href: str | None,
     jira_id: str = "",
+    tag: str = "",
 ) -> str | None:
     if not bool(getattr(settings, "automation_write_run_html", True)):
         return None
@@ -818,6 +819,7 @@ def _write_run_html(
         steps,
         log,
         jira_id=jira_id,
+        tag=tag,
         analysis=analysis,
         trace_href=th,
     )
@@ -836,6 +838,7 @@ def _execute_spike_sync(
     log: list[str],
     html_dom: str | None = None,
     jira_id: str = "",
+    tag: str = "",
 ) -> dict[str, Any]:
     bdd_lines = parse_bdd_step_lines(bdd)
     _l(log, f"Parsed BDD: {len(bdd_lines)} line(s).")
@@ -935,6 +938,7 @@ def _execute_spike_sync(
         analysis=analysis,
         trace_href=trace_href_htm,
         jira_id=jira_id,
+        tag=tag,
     )
     if report_url:
         summary["report_url"] = report_url
@@ -970,6 +974,7 @@ def run_automation_spike(
     url: str,
     html_dom: str | None = None,
     jira_id: str = "",
+    tag: str = "",
 ) -> dict[str, Any]:
     log: list[str] = []
     u = (url or "").strip()
@@ -982,7 +987,7 @@ def run_automation_spike(
     )
     try:
         return _execute_spike_sync(
-            run_id, title, bdd, u, log, html_dom=html_dom, jira_id=jira_id
+            run_id, title, bdd, u, log, html_dom=html_dom, jira_id=jira_id, tag=tag
         )
     except SpikeUserError as e:
         setattr(e, "run_id", run_id)
@@ -1019,7 +1024,8 @@ async def run_automation_spike_async(
     url: str,
     html_dom: str | None = None,
     jira_id: str = "",
+    tag: str = "",
 ) -> dict[str, Any]:
     return await asyncio.to_thread(
-        run_automation_spike, title, bdd, url, html_dom, jira_id
+        run_automation_spike, title, bdd, url, html_dom, jira_id, tag
     )

@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 from settings import settings
 
 from . import cancel
+from .tag_csv import normalize_tag_csv
 from .errors import SpikeUserError
 from .spike import run_automation_spike_async
 from .prefs import (
@@ -94,11 +95,17 @@ class SpikeRunIn(BaseModel):
     url: str = Field(..., min_length=1, description="Page URL to open in Playwright")
     html_dom: str | None = Field(default=None, max_length=2_000_000)
     jira_id: str = Field(default="", max_length=200)
+    tag: str = Field(default="", max_length=200)
 
     @field_validator("jira_id", mode="before")
     @classmethod
     def _spike_jira_strip(cls, v: object) -> str:
         return (str(v) if v is not None else "").strip()[:200]
+
+    @field_validator("tag", mode="before")
+    @classmethod
+    def _spike_tag_strip(cls, v: object) -> str:
+        return normalize_tag_csv(str(v) if v is not None else "")
 
     @field_validator("url", mode="before")
     @classmethod
@@ -180,6 +187,7 @@ async def automation_spike_run(body: SpikeRunIn) -> dict[str, Any]:
             body.url.strip(),
             body.html_dom,
             body.jira_id,
+            body.tag,
         )
     except SpikeUserError as e:
         d = e.logs
@@ -247,12 +255,18 @@ class SuiteCaseIn(BaseModel):
     url: str = Field(default="", max_length=4000)
     html_dom: str = ""
     jira_id: str = Field(default="", max_length=200)
+    tag: str = Field(default="", max_length=200)
 
     @field_validator("jira_id", mode="before")
     @classmethod
     def _jira_id_strip(cls, v: object) -> str:
         s = (str(v) if v is not None else "").strip()[:200]
         return s
+
+    @field_validator("tag", mode="before")
+    @classmethod
+    def _suite_tag_strip(cls, v: object) -> str:
+        return normalize_tag_csv(str(v) if v is not None else "")
 
 
 @router.get("/suite")
@@ -283,6 +297,7 @@ def automation_suite_add(body: SuiteCaseIn) -> dict[str, str]:
         body.url.strip(),
         (body.html_dom or "").strip(),
         jira_id=body.jira_id,
+        tag=body.tag,
     )
     return {"id": cid, "ok": "true"}
 

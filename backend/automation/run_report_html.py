@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import html
 import re
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -11,6 +12,7 @@ from urllib.parse import quote
 from settings import settings
 
 from .bdd import parse_bdd_step_lines
+from .tag_csv import parse_tag_tokens
 
 # Caps for self-contained (data: URL) HTML so files stay shareable but not unbounded.
 _MAX_SHOT_EMBED_BYTES = 12 * 1024 * 1024
@@ -327,12 +329,16 @@ def _one_step_block(
     )
 
 
-def _nav_label_text(jira: str, title: str) -> str:
+def _nav_label_text(jira: str, title: str, tag: str = "") -> str:
     j = (jira or "").strip() or "—"
     t = (title or "Untitled").strip() or "Untitled"
     if len(t) > 96:
         t = t[:95] + "…"
-    return f"{j} · {t}"
+    parts: list[str] = []
+    parts.extend(parse_tag_tokens(tag))
+    parts.append(j)
+    parts.append(t)
+    return " · ".join(parts)
 
 
 def _step_is_skipped(s: dict) -> bool:
@@ -379,6 +385,59 @@ def _html_report_nav_status_filter() -> str:
         f'<option value="aborted">Aborted</option>'
         f'<option value="fail">Fail</option>'
         f"</select></div>"
+    )
+
+
+def _tag_data_pipe(c: dict[str, Any] | None, *, tag: str = "") -> str:
+    if c is not None:
+        s = str(c.get("tag") or "")
+    else:
+        s = tag
+    return "|".join(parse_tag_tokens(s))
+
+
+def _tag_filter_choices(
+    cases: list[dict[str, Any]] | None, *, single_tag: str = ""
+) -> tuple[list[str], bool]:
+    if cases is not None:
+        s: set[str] = set()
+        has_untagged = False
+        for c in cases:
+            toks = parse_tag_tokens(str(c.get("tag") or ""))
+            if not toks:
+                has_untagged = True
+            else:
+                s.update(toks)
+        return (sorted(s, key=lambda x: (x.lower(), x)), has_untagged)
+    toks = parse_tag_tokens(single_tag)
+    if not toks:
+        return ([], True)
+    return (toks, False)
+
+
+def _html_report_tag_filter(unique_tags: list[str], include_untagged: bool) -> str:
+    opts: list[str] = [
+        f'<div class="report-nav-filter">',
+        f'<label class="report-nav-filter-label" for="reportTagSelect">Tag</label>',
+        f'<select class="report-nav-filter-select" id="reportTagSelect" '
+        f'aria-label="Filter test cases by tag">',
+        f'<option value="all" selected>All</option>',
+    ]
+    for t in unique_tags:
+        opts.append(f'<option value="{_e(t)}">{_e(t)}</option>')
+    if include_untagged:
+        opts.append('<option value="__untagged__">No tag</option>')
+    opts.append(f"</select></div>")
+    return "".join(opts)
+
+
+def _html_report_filters_aside(unique_tags: list[str], include_untagged: bool) -> str:
+    return (
+        f'<aside class="report-nav-filters-aside" aria-label="Report filters">'
+        f'<div class="report-nav-filters-stack">'
+        f"{_html_report_nav_status_filter()}"
+        f"{_html_report_tag_filter(unique_tags, include_untagged)}"
+        f"</div></aside>"
     )
 
 
@@ -491,9 +550,89 @@ def _html_hero_landing_suite() -> str:
     )
 
 
-def _html_landing_page_single(ok: bool) -> str:
-    inner = _html_hero_landing_single() + _html_section_case_dashboard(ok)
+def _html_landing_page_single(ok: bool, *, tag: str = "") -> str:
+    inner = (
+        _html_hero_landing_single()
+        + _html_section_case_dashboard(ok)
+        + _html_tag_breakdown_for_single_case((tag or "").strip(), ok)
+    )
     return f'<div class="report-landing-wrap">{inner}</div>'
+
+
+def _html_tag_breakdown_for_single_case(tag_raw: str, ok: bool) -> str:
+    labels = parse_tag_tokens(tag_raw)
+    if not labels:
+        labels = ["—"]
+    cpass, cfail = (1, 0) if ok else (0, 1)
+    max_c = 1
+    blocks: list[str] = []
+    for tag_label in labels:
+        bar_rows = [
+            _html_dash_hbar_row("Pass", cpass, max_c, "pass"),
+            _html_dash_hbar_row("Fail", cfail, max_c, "fail"),
+        ]
+        t = _e(tag_label)
+        blocks.append(
+            f'<div class="report-dash-by-tag-block" role="group" '
+            f'aria-label="{_e("Tag: " + tag_label)}">'
+            f'<p class="report-dash-by-tag-name">{t}</p>'
+            f'<div class="report-dash-bars">{"".join(bar_rows)}</div></div>'
+        )
+    return (
+        f'<section class="report-dash report-dash--by-tag" aria-label="Test status by tag">'
+        f'<h2 class="section-title"><span class="title-accent">By Tag</span></h2>'
+        f'{"".join(blocks)}'
+        f"</section>"
+    )
+
+
+def _aggregate_cases_by_tag(
+    cases: list[dict[str, Any]],
+) -> list[tuple[str, int, int]]:
+    d: defaultdict[str, list[int]] = defaultdict(lambda: [0, 0])
+    for c in cases:
+        toks = parse_tag_tokens(str(c.get("tag") or ""))
+        if not toks:
+            toks = ["—"]
+        else:
+            toks = list(dict.fromkeys(toks))
+        for lab in toks:
+            if c.get("ok"):
+                d[lab][0] += 1
+            else:
+                d[lab][1] += 1
+    return sorted(
+        ((k, v[0], v[1]) for k, v in d.items()),
+        key=lambda t: (t[0] == "—", t[0].lower()),
+    )
+
+
+def _html_tag_breakdown_for_suite(cases: list[dict[str, Any]]) -> str:
+    if not cases:
+        return ""
+    rows = _aggregate_cases_by_tag(cases)
+    blocks: list[str] = []
+    for label, cpass, cfail in rows:
+        max_c = max(cpass, cfail, 1)
+        bar_rows = [
+            _html_dash_hbar_row("Pass", cpass, max_c, "pass"),
+            _html_dash_hbar_row("Fail", cfail, max_c, "fail"),
+        ]
+        t = _e(label)
+        a = _e("Tag: " + label)
+        blocks.append(
+            f'<div class="report-dash-by-tag-block" role="group" aria-label="{a}">'
+            f'<p class="report-dash-by-tag-name">{t}</p>'
+            f'<div class="report-dash-bars">{"".join(bar_rows)}</div>'
+            f"</div>"
+        )
+    return (
+        f'<section class="report-dash report-dash--suite report-dash--by-tag" '
+        f'aria-label="Test status by tag">'
+        f'<h2 class="section-title"><span class="title-accent">By Tag</span></h2>'
+        f'{"".join(blocks)}'
+        f"</section>"
+    )
 
 
 def _html_suite_run_dashboard(cases: list[dict[str, Any]]) -> str:
@@ -526,6 +665,7 @@ def _html_landing_page_suite(cases: list[dict[str, Any]]) -> str:
         f'<div class="report-landing-wrap">'
         f"{_html_hero_landing_suite()}"
         f"{_html_suite_run_dashboard(cases)}"
+        f"{_html_tag_breakdown_for_suite(cases)}"
         f"</div>"
     )
 
@@ -540,6 +680,7 @@ def _build_case_content_html(
     log: list[str],
     *,
     jira_id: str = "",
+    tag: str = "",
     analysis: str = "",
     trace_href: str | None = None,
     embed_portable: bool = True,
@@ -547,6 +688,8 @@ def _build_case_content_html(
     h = _e(title or "Spike")
     u = _e(url)
     jira_e = _e((jira_id or "").strip() or "—")
+    _tag_list = parse_tag_tokens(tag)
+    tag_e = _e(" · ".join(_tag_list)) if _tag_list else "—"
     report_dt = _e(_format_report_datetime())
     overall = "PASS" if ok else "FAIL"
     bdd_pre = _format_bdd_to_html(bdd)
@@ -584,6 +727,7 @@ def _build_case_content_html(
   <dl class="report-meta">
     <dt>Date &amp; time</dt><dd class="report-datetime">{report_dt}</dd>
     <dt>JIRA ID</dt><dd class="report-jira">{jira_e}</dd>
+    <dt>TAG</dt><dd class="report-jira">{tag_e}</dd>
     <dt>URL</dt><dd><a class="report-url" href="{u}">{u}</a></dd>
     <dt>Run ID</dt><dd><code class="report-id">{_e(run_id)}</code></dd>
   </dl>
@@ -684,7 +828,7 @@ body{{
   margin:0 auto;
 }}
 .report-wrap--nav{{
-  max-width:min(100%,80rem);
+  max-width:min(100%,96rem);
 }}
 .report-toolbar{{
   display:flex;
@@ -700,6 +844,13 @@ body{{
   max-width:100%;
   min-width:0;
 }}
+.report-layout--3col{{
+  display:grid;
+  grid-template-columns:minmax(15rem,24rem) minmax(0,1fr) minmax(12.5rem,18rem);
+  align-items:start;
+  gap:1rem 1.25rem;
+  width:100%;
+}}
 .report-nav{{
   flex:0 0 clamp(18rem,26vw,26rem);
   max-width:min(42%,28rem);
@@ -712,6 +863,40 @@ body{{
   -webkit-overflow-scrolling:touch;
   padding:0.2rem 0.4rem 0.6rem 0.15rem;
   box-sizing:border-box;
+}}
+.report-layout--3col .report-nav{{
+  flex:unset;
+  max-width:100%;
+  min-width:0;
+  width:auto;
+}}
+.report-nav-filters-aside{{
+  flex:0 0 minmax(12.5rem,18rem);
+  min-width:0;
+  position:sticky;
+  top:0.75rem;
+  align-self:start;
+  max-height:calc(100vh - 2.5rem);
+  overflow-y:auto;
+  padding:0.2rem 0.15rem 0.6rem 0.25rem;
+  box-sizing:border-box;
+}}
+.report-nav-filters-stack{{
+  display:flex;
+  flex-direction:column;
+  gap:0.75rem;
+}}
+.report-nav-filters-aside .report-nav-filter{{
+  flex-direction:column;
+  align-items:stretch;
+  margin:0;
+  gap:0.35rem;
+}}
+.report-nav-filters-aside .report-nav-filter-label{{
+  margin:0;
+}}
+.report-nav-filters-aside .report-nav-filter-select{{
+  width:100%;
 }}
 .report-nav-list{{
   list-style:none;
@@ -867,6 +1052,26 @@ body{{
 .report-dash--suite .section-title{{
   margin-top:0;
 }}
+.report-dash--by-tag .section-title{{
+  margin-top:0;
+}}
+.report-dash--by-tag.report-dash--suite{{
+  margin-top:0.5rem;
+}}
+.report-dash-by-tag-block{{
+  margin:0 0 0.9rem 0;
+}}
+.report-dash-by-tag-block:last-child{{
+  margin-bottom:0;
+}}
+.report-dash-by-tag-name{{
+  margin:0 0 0.45rem 0;
+  font-size:0.9rem;
+  font-weight:600;
+  color:var(--text);
+  font-family:var(--mono);
+  word-break:break-word;
+}}
 .report-dash-kpis{{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(6.5rem,1fr));
@@ -948,6 +1153,25 @@ body{{
 @media (max-width:52rem){{
   .report-layout{{
     flex-direction:column;
+  }}
+  .report-layout--3col{{
+    display:flex;
+    flex-direction:column;
+    gap:0.85rem 1rem;
+  }}
+  .report-layout--3col .report-nav{{
+    order:1;
+  }}
+  .report-layout--3col .report-panels{{
+    order:2;
+  }}
+  .report-layout--3col .report-nav-filters-aside{{
+    order:3;
+    position:relative;
+    top:auto;
+    max-height:none;
+    max-width:100%;
+    width:100%;
   }}
   .report-nav{{
     position:relative;
@@ -1461,7 +1685,7 @@ pre.log{{
   body{{background:#fff!important;color:#000!important;}}
   [data-theme="dark"]{{color-scheme:light;}}
   .report-header,.report-section,.report-landing-hero,.report-dash{{box-shadow:none;break-inside:avoid;}}
-  .report-nav{{display:none;}}
+  .report-nav,.report-nav-filters-aside{{display:none;}}
   .report-panel--status-hidden{{display:block!important;}}
   .report-panel,#panel-dash{{display:block!important;}}
   .report-wrap--nav .report-panels .report-panel{{page-break-inside:avoid;}}
@@ -1515,28 +1739,43 @@ _REPORT_TAIL = """
     }});
   }});
   var fsel = document.getElementById("reportStatusSelect");
-  if (fsel) {{
-    function applyNavStatusFilter() {{
-      var v = fsel.value;
-      var all = (v === "all");
-      document.querySelectorAll("li[data-report-case-status]").forEach(function (li) {{
-        var st = li.getAttribute("data-report-case-status");
-        li.style.display = (all || st === v) ? "" : "none";
-      }});
-      document.querySelectorAll("article[data-report-case-status]").forEach(function (art) {{
-        var st = art.getAttribute("data-report-case-status");
-        if (all) {{ art.classList.remove("report-panel--status-hidden"); return; }}
-        if (st === v) {{ art.classList.remove("report-panel--status-hidden"); }}
-        else {{ art.classList.add("report-panel--status-hidden"); }}
-      }});
-      var activeP = document.querySelector(".report-panel.is-active");
-      if (activeP && activeP.getAttribute("data-report-case-status") && activeP.classList.contains("report-panel--status-hidden")) {{
-        var dashBtn = document.querySelector('.report-nav-item[data-target="panel-dash"]');
-        if (dashBtn) {{ dashBtn.click(); }}
-      }}
-    }}
-    fsel.addEventListener("change", applyNavStatusFilter);
+  var tsel = document.getElementById("reportTagSelect");
+  function rowMatchesTagFilters(art) {{
+    if (!tsel) return true;
+    var vTag = tsel.value;
+    if (vTag === "all") return true;
+    var tagPipe = (art.getAttribute("data-report-case-tags") || "").trim();
+    if (vTag === "__untagged__") return !tagPipe;
+    if (!tagPipe) return false;
+    var parts = tagPipe.split("|");
+    for (var i = 0; i < parts.length; i++) {{ if (parts[i] === vTag) return true; }}
+    return false;
   }}
+  function applyNavCaseFilters() {{
+    var vSt = fsel ? fsel.value : "all";
+    document.querySelectorAll("li[data-report-case-status]").forEach(function (li) {{
+      var st = li.getAttribute("data-report-case-status");
+      if (!st) return;
+      var okSt = (vSt === "all" || st === vSt);
+      var mTag = tsel ? rowMatchesTagFilters(li) : true;
+      li.style.display = (okSt && mTag) ? "" : "none";
+    }});
+    document.querySelectorAll("article[data-report-case-status]").forEach(function (art) {{
+      var st = art.getAttribute("data-report-case-status");
+      if (!st) return;
+      var okSt = (vSt === "all" || st === vSt);
+      var mTag = tsel ? rowMatchesTagFilters(art) : true;
+      if (okSt && mTag) {{ art.classList.remove("report-panel--status-hidden"); }}
+      else {{ art.classList.add("report-panel--status-hidden"); }}
+    }});
+    var activeP = document.querySelector(".report-panel.is-active");
+    if (activeP && activeP.getAttribute("data-report-case-status") && activeP.classList.contains("report-panel--status-hidden")) {{
+      var dashBtn = document.querySelector('.report-nav-item[data-target="panel-dash"]');
+      if (dashBtn) {{ dashBtn.click(); }}
+    }}
+  }}
+  if (fsel) fsel.addEventListener("change", applyNavCaseFilters);
+  if (tsel) tsel.addEventListener("change", applyNavCaseFilters);
 }})();
 </script>
 </body></html>"""
@@ -1551,12 +1790,14 @@ def render_spike_run_html(
     log: list[str],
     *,
     jira_id: str = "",
+    tag: str = "",
     analysis: str = "",
     trace_href: str | None = None,
     embed_portable: bool = True,
 ) -> str:
     jt = (jira_id or "").strip()
-    landing = _html_landing_page_single(ok)
+    ttag = (tag or "").strip()
+    landing = _html_landing_page_single(ok, tag=ttag)
     case_block = _build_case_content_html(
         run_id,
         title,
@@ -1566,15 +1807,19 @@ def render_spike_run_html(
         steps,
         log,
         jira_id=jira_id,
+        tag=tag,
         analysis=analysis,
         trace_href=trace_href,
         embed_portable=embed_portable,
     )
     st = _case_nav_data_status({"ok": ok, "steps": steps})
     nav_case_cls = _nav_st_classes(st)
-    filter_html = _html_report_nav_status_filter()
+    uniq_tags, inc_untagged = _tag_filter_choices(None, single_tag=ttag)
+    filters_aside = _html_report_filters_aside(uniq_tags, inc_untagged)
+    tag_pipe_attr = _e(_tag_data_pipe(None, tag=ttag))
     nav_dash = _e("Dashboard")
-    nav_title = _e(_nav_label_text(jt, (title or "").strip()))
+    nav_title = _e(_nav_label_text(jt, (title or "").strip(), ttag))
+    st_esc = _e(st)
     body_html = f"""<div class="report-wrap report-wrap--nav">
   <div class="report-toolbar">
     <button type="button" class="report-theme-btn" id="reportThemeToggle" aria-label="Switch to light mode">
@@ -1587,14 +1832,13 @@ def render_spike_run_html(
       </svg>
     </button>
   </div>
-  <div class="report-layout">
+  <div class="report-layout report-layout--3col">
     <nav class="report-nav" aria-label="Report sections">
-{filter_html}
       <ul class="report-nav-list">
         <li>
           <button type="button" class="report-nav-item is-active" data-target="panel-dash" aria-current="page">{nav_dash}</button>
         </li>
-        <li data-report-case-status="{st}">
+        <li data-report-case-status="{st_esc}" data-report-case-tags="{tag_pipe_attr}">
           <button type="button" class="{nav_case_cls}" data-target="case-0">{nav_title}</button>
         </li>
       </ul>
@@ -1603,10 +1847,11 @@ def render_spike_run_html(
       <article id="panel-dash" class="report-panel is-active" tabindex="-1">
 {landing}
       </article>
-      <article id="case-0" class="report-panel" data-report-case-status="{st}" tabindex="-1">
+      <article id="case-0" class="report-panel" data-report-case-status="{st_esc}" data-report-case-tags="{tag_pipe_attr}" tabindex="-1">
 {case_block}
       </article>
     </div>
+{filters_aside}
   </div>
 </div>"""
     return _emit_report_document("Report", body_html)
@@ -1651,6 +1896,7 @@ def render_batch_report_html(
             log = [str(log)]
         analysis = str(c.get("analysis") or "")
         jira = str(c.get("jira_id") or "")
+        tag = str(c.get("tag") or "")
         th = c.get("trace_href")
         trace_href: str | None
         if isinstance(th, str) and th.strip():
@@ -1666,26 +1912,33 @@ def render_batch_report_html(
             steps,
             log,
             jira_id=jira,
+            tag=tag,
             analysis=analysis,
             trace_href=trace_href,
             embed_portable=embed_portable,
         )
         cst = _case_nav_data_status(c)
         ncls = _nav_st_classes(cst)
-        lbl = _e(_nav_label_text((jira or "").strip(), (t or "").strip()))
+        tag_pipe_attr = _e(_tag_data_pipe(c))
+        lbl = _e(
+            _nav_label_text(
+                (jira or "").strip(), (t or "").strip(), (tag or "").strip()
+            )
+        )
         nav_items.append(
-            f'<li data-report-case-status="{_e(cst)}">'
+            f'<li data-report-case-status="{_e(cst)}" data-report-case-tags="{tag_pipe_attr}">'
             f'<button type="button" class="{ncls}" data-target="case-{i}">'
             f"{lbl}</button></li>"
         )
         arts.append(
-            f'<article id="case-{i}" class="report-panel" data-report-case-status="{_e(cst)}" tabindex="-1">\n'
+            f'<article id="case-{i}" class="report-panel" data-report-case-status="{_e(cst)}" data-report-case-tags="{tag_pipe_attr}" tabindex="-1">\n'
             f"{case_block}\n"
             f"</article>"
         )
     nav_html = "\n".join(nav_items)
     art_html = "\n".join(arts)
-    filter_batch = _html_report_nav_status_filter()
+    uniq_tags, inc_untagged = _tag_filter_choices(cases)
+    filters_aside = _html_report_filters_aside(uniq_tags, inc_untagged)
     body_html = f"""<div class="report-wrap report-wrap--nav">
   <div class="report-toolbar">
     <button type="button" class="report-theme-btn" id="reportThemeToggle" aria-label="Switch to light mode">
@@ -1698,9 +1951,8 @@ def render_batch_report_html(
       </svg>
     </button>
   </div>
-  <div class="report-layout">
+  <div class="report-layout report-layout--3col">
     <nav class="report-nav" aria-label="Report sections">
-{filter_batch}
       <ul class="report-nav-list">
 {nav_html}
       </ul>
@@ -1708,6 +1960,7 @@ def render_batch_report_html(
     <div class="report-panels">
 {art_html}
     </div>
+{filters_aside}
   </div>
 </div>"""
     return _emit_report_document("Report", body_html)

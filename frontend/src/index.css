@@ -1176,7 +1176,7 @@ button.automation-spike-run-artifact-dl.req-attach-dl {
   margin-left: -0.15rem;
 }
 
-.automation-spike-stack > .row:not(.cols-2) {
+.automation-spike-stack > .row:not(.cols-2):not(.cols-3) {
   gap: 0.35rem;
 }
 
@@ -3227,6 +3227,9 @@ textarea.paste-requirements-textarea {
 @media (min-width: 640px) {
   .row.cols-2 {
     grid-template-columns: 1fr 1fr;
+  }
+  .row.cols-3 {
+    grid-template-columns: 1fr 1fr 1fr;
   }
 }
 
