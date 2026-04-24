@@ -2,18 +2,18 @@ from __future__ import annotations
 
 from .store import get_automation_kv
 
-_BROWSER_PICK: frozenset[str] = frozenset({"chromium", "firefox", "msedge"})
+_BROWSER_PICK: frozenset[str] = frozenset({"chromium", "chrome", "firefox", "msedge"})
 
 # First-run values when `automation_kv` has no row. User choices are persisted in DB via the UI
 # (POST /api/automation/browser, /api/automation/env-options). Intentionally not read from .env.
-_DEFAULT_BROWSER = "chromium"  # Chrome
+_DEFAULT_BROWSER = "chromium"  # bundled Chromium
 _DEFAULT_HEADLESS = False  # show browser
 _DEFAULT_SCREENSHOT_ON_PASS = False
 _DEFAULT_TRACE_FILE_GENERATION = False
 
 
 def get_effective_automation_browser() -> str:
-    """Playwright family: chromium (Chrome), firefox, or msedge (Chromium+Edge)."""
+    """Playwright: chromium (bundled), chrome (Google Chrome), firefox, or msedge."""
     raw = (get_automation_kv("browser") or "").strip().lower()
     if raw in _BROWSER_PICK:
         return raw

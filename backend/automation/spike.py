@@ -538,6 +538,8 @@ def _run_spike_one_browser(
             browser = p.firefox.launch(headless=headless)
         elif browser_name == "msedge":
             browser = p.chromium.launch(channel="msedge", headless=headless)
+        elif browser_name == "chrome":
+            browser = p.chromium.launch(channel="chrome", headless=headless)
         else:
             browser = p.chromium.launch(headless=headless)
         try:

@@ -110,7 +110,7 @@ class CancelInF(BaseModel):
 
 
 class AutomationBrowserIn(BaseModel):
-    browser: Literal["chromium", "firefox", "msedge"]
+    browser: Literal["chromium", "chrome", "firefox", "msedge"]
 
 
 class AutomationEnvOptionsIn(BaseModel):

@@ -281,7 +281,6 @@ function SuiteCaseRow({ c, runDisabled, onView, onRun, onAnalysis, onHistory, on
             type="button"
             className="tc-edit-icon-btn"
             onClick={() => onView(c)}
-            disabled={runDisabled}
             aria-label="View test steps"
           >
             <svg
@@ -400,7 +399,7 @@ function SuiteCaseRow({ c, runDisabled, onView, onRun, onAnalysis, onHistory, on
   );
 }
 
-const BROWSER_RADIO_VALUES = ["chromium", "firefox", "msedge"];
+const BROWSER_RADIO_VALUES = ["chromium", "chrome", "firefox", "msedge"];
 
 export function AutomationSpikeSectionCards({
   api,
@@ -912,7 +911,8 @@ export function AutomationSpikeSectionCards({
                     aria-labelledby="automation-env-browser-label"
                   >
                     {[
-                      { value: "chromium", label: "Chrome" },
+                      { value: "chromium", label: "Chromium" },
+                      { value: "chrome", label: "Chrome" },
                       { value: "firefox", label: "Firefox" },
                       { value: "msedge", label: "Edge" },
                     ].map(({ value, label }) => (
