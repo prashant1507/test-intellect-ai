@@ -10,7 +10,7 @@ _BROWSER_PICK: frozenset[str] = frozenset({"chromium", "chrome", "firefox", "mse
 # POST /api/automation/browser and /api/automation/env-options, with fallbacks from settings
 # (optional .env) for `default_timeout_ms` alongside browser/headless/etc. Post-run analysis uses `settings` only.
 _DEFAULT_BROWSER = "chromium"  # bundled Chromium
-_DEFAULT_HEADLESS = False  # show browser
+_DEFAULT_HEADLESS = True  # headless until user turns it off (no DB row yet)
 _DEFAULT_SCREENSHOT_ON_PASS = False
 _DEFAULT_TRACE_FILE_GENERATION = False
 

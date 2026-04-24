@@ -675,6 +675,7 @@ def _run_spike_one_browser(
             browser = p.chromium.launch(headless=headless)
         try:
             context = browser.new_context()
+            context = browser.new_context(viewport={"width": 1920, "height": 1080})
             context.set_default_timeout(tw)
             if gen_trace:
                 context.tracing.start(screenshots=True, snapshots=True, sources=True)
