@@ -7,6 +7,16 @@ export function isUnifiedGherkin(tc) {
   );
 }
 
+export function testCaseToSpikeBdd(tc) {
+  if (!tc) return "";
+  if (isUnifiedGherkin(tc)) return (tc.steps || []).join("\n");
+  const parts = [];
+  if (tc.preconditions) parts.push(tc.preconditions);
+  (tc.steps || []).forEach((s) => parts.push(s));
+  if (tc.expected_result) parts.push(tc.expected_result);
+  return parts.join("\n");
+}
+
 function parseIntTc(s, fallback) {
   const n = parseInt(String(s ?? "").trim(), 10);
   return Number.isFinite(n) ? n : fallback;

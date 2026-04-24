@@ -363,31 +363,36 @@ function BddStepsView({ bdd }) {
   );
 }
 
+const SUITE_TAG_TEST_TYPE_RE = /^(ui|api)$/i;
+
+function suiteCaseSavedLineParts(c) {
+  const raw = parseTagCsv(c?.tag);
+  let testType = "";
+  let restTags;
+  if (raw.length && SUITE_TAG_TEST_TYPE_RE.test(String(raw[0]).trim())) {
+    testType = String(raw[0]).trim().toUpperCase() === "API" ? "API" : "UI";
+    restTags = raw.slice(1);
+  } else {
+    restTags = raw;
+  }
+  const tagsStr = restTags.length ? restTags.map((t) => String(t).trim()).filter(Boolean).join(", ") : "";
+  const req = String(c?.requirement_ticket_id || "").trim();
+  const testId = String(c?.jira_id || "").trim();
+  const scenario = String(c?.title || "Untitled").trim() || "Untitled";
+  return { testType, tagsStr, req, testId, scenario };
+}
+
+function suiteCaseSavedLinePlainText(c) {
+  const p = suiteCaseSavedLineParts(c);
+  return [p.testType || "—", p.tagsStr || "—", p.req || "—", p.testId || "—", p.scenario].join(" · ");
+}
+
 function SuiteCaseJiraScenarioLine({ c }) {
-  const scenario = (c.title || "Untitled").trim() || "Untitled";
-  const j = (c.jira_id || "").trim();
-  const tags = parseTagCsv(c.tag);
-  const head = [];
-  tags.forEach((tg, idx) => {
-    head.push(
-      <span key={`tag-${idx}`} className="automation-spike-suite-jira">
-        {tg}
-      </span>,
-    );
-  });
-  if (j) {
-    head.push(
-      <span key="j" className="automation-spike-suite-jira">
-        {j}
-      </span>,
-    );
-  }
-  if (!head.length) {
-    return scenario;
-  }
+  const p = suiteCaseSavedLineParts(c);
+  const segments = [p.testType || "—", p.tagsStr || "—", p.req || "—", p.testId || "—", p.scenario];
   return (
     <>
-      {head.map((el, i) => (
+      {segments.map((text, i) => (
         <span key={i}>
           {i > 0 ? (
             <span className="automation-spike-suite-sep" aria-hidden="true">
@@ -395,24 +400,19 @@ function SuiteCaseJiraScenarioLine({ c }) {
               ·{" "}
             </span>
           ) : null}
-          {el}
+          {i < 4 ? (
+            <span className="automation-spike-suite-jira">{text}</span>
+          ) : (
+            <span>{text}</span>
+          )}
         </span>
       ))}
-      <span className="automation-spike-suite-sep" aria-hidden="true">
-        {" "}
-        ·{" "}
-      </span>
-      {scenario}
     </>
   );
 }
 
 function suiteCaseDeletePreviewPlainText(c) {
-  const scenario = String(c?.title || "Untitled").trim() || "Untitled";
-  const j = String(c?.jira_id || "").trim();
-  const bits = [...parseTagCsv(c?.tag), j].filter(Boolean);
-  const line = bits.length ? `${bits.join(" · ")} · ${scenario}` : scenario;
-  const s = String(line);
+  const s = suiteCaseSavedLinePlainText(c);
   return s.length > 120 ? `${s.slice(0, 120)}…` : s;
 }
 

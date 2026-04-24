@@ -115,11 +115,17 @@ class SpikeRunIn(BaseModel):
     url: str = Field(..., min_length=1, description="Page URL to open in Playwright")
     html_dom: str | None = Field(default=None, max_length=2_000_000)
     jira_id: str = Field(default="", max_length=200)
+    requirement_ticket_id: str = Field(default="", max_length=200)
     tag: str = Field(default="", max_length=200)
 
     @field_validator("jira_id", mode="before")
     @classmethod
     def _spike_jira_strip(cls, v: object) -> str:
+        return (str(v) if v is not None else "").strip()[:200]
+
+    @field_validator("requirement_ticket_id", mode="before")
+    @classmethod
+    def _spike_req_ticket_strip(cls, v: object) -> str:
         return (str(v) if v is not None else "").strip()[:200]
 
     @field_validator("tag", mode="before")
@@ -211,6 +217,7 @@ async def automation_spike_run(body: SpikeRunIn) -> dict[str, Any]:
             body.html_dom,
             body.jira_id,
             body.tag,
+            requirement_ticket_id=body.requirement_ticket_id,
         )
     except SpikeUserError as e:
         d = e.logs
@@ -278,6 +285,7 @@ class SuiteCaseIn(BaseModel):
     url: str = Field(default="", max_length=4000)
     html_dom: str = ""
     jira_id: str = Field(default="", max_length=200)
+    requirement_ticket_id: str = Field(default="", max_length=200)
     tag: str = Field(default="", max_length=200)
 
     @field_validator("jira_id", mode="before")
@@ -285,6 +293,11 @@ class SuiteCaseIn(BaseModel):
     def _jira_id_strip(cls, v: object) -> str:
         s = (str(v) if v is not None else "").strip()[:200]
         return s
+
+    @field_validator("requirement_ticket_id", mode="before")
+    @classmethod
+    def _suite_req_ticket_strip(cls, v: object) -> str:
+        return (str(v) if v is not None else "").strip()[:200]
 
     @field_validator("tag", mode="before")
     @classmethod
@@ -319,6 +332,7 @@ def automation_suite_add(body: SuiteCaseIn) -> dict[str, str]:
         (body.html_dom or "").strip(),
         jira_id=body.jira_id,
         tag=body.tag,
+        requirement_ticket_id=body.requirement_ticket_id,
     )
     return {"id": cid, "ok": "true"}
 

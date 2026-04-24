@@ -5,6 +5,7 @@ import { TestCaseBody } from "./TestCaseBody";
 import { TestCaseSummaryBadges } from "./TestCaseSummaryBadges";
 import { changeStatusLabel, fmtTestsMarkdown, tcStatusSlug } from "../utils/format";
 import { jiraPushFingerprint, resolvePushedJiraKey } from "../utils/jiraPushFingerprint";
+import { testCaseToSpikeBdd } from "../utils/testCase";
 
 function mainJiraPushCopy({
   pushedKey,
@@ -60,6 +61,8 @@ export function MainTestCasesPanel({
   setAnnounce,
   genOrBulkBusy,
   onRequestDeleteTestCase,
+  showAutoTestRunButton,
+  onRunInAutoTest,
 }) {
   const setAllTc = (v) => () => tests?.length && setTcOpen(Object.fromEntries(tests.map((_, i) => [String(i), v])));
 
@@ -248,6 +251,38 @@ export function MainTestCasesPanel({
                             >
                               <path d="M12 20h9" />
                               <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                            </svg>
+                          </button>
+                        </FloatingTooltip>
+                      ) : null}
+                      {showAutoTestRunButton &&
+                      (inputMode === "jira" || inputMode === "paste") ? (
+                        <FloatingTooltip text="Fill Auto test from this case and open Auto test">
+                          <button
+                            type="button"
+                            className="tc-edit-icon-btn"
+                            disabled={genOrBulkBusy}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const jiraForAuto =
+                                String(tc.jira_issue_key || "").trim() || pushedKey || "";
+                              onRunInAutoTest?.({
+                                title: String(tc.description || "").trim(),
+                                jiraId: jiraForAuto,
+                                bdd: testCaseToSpikeBdd(tc),
+                              });
+                            }}
+                            aria-label="Run in Auto test"
+                          >
+                            <svg
+                              width="18"
+                              height="18"
+                              viewBox="0 0 24 24"
+                              fill="currentColor"
+                              stroke="none"
+                              aria-hidden
+                            >
+                              <polygon points="7 4 7 20 20 12 7 4" />
                             </svg>
                           </button>
                         </FloatingTooltip>

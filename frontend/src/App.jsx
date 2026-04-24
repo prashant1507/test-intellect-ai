@@ -115,6 +115,8 @@ export default function App() {
   const [automationEnv, setAutomationEnv] = useState(null);
   const [automationListRefresh, setAutomationListRefresh] = useState(0);
   const [automationSpikeRunBusy, setAutomationSpikeRunBusy] = useState(false);
+  const [automationSpikePrefillAt, setAutomationSpikePrefillAt] = useState(0);
+  const [automationSpikePrefill, setAutomationSpikePrefill] = useState(null);
   const [automationSuiteRunBusy, setAutomationSuiteRunBusy] = useState(false);
   const [automationRetentionDays, setAutomationRetentionDays] = useState(null);
   const [showAuditUi, setShowAuditUi] = useState(true);
@@ -1630,6 +1632,25 @@ export default function App() {
     !String(username || "").trim() ||
     !password ||
     !jiraTestProject.trim();
+
+  const runTestCaseInAutoMode = useCallback(
+    (payload) => {
+      if (!showAutoTestsUi) {
+        setAnnounce("Enable Auto test in settings to use this action.");
+        return;
+      }
+      setInputMode("automation");
+      inputModeRef.current = "automation";
+      const reqFromPayload = String(payload?.requirementTicketId ?? "").trim();
+      setAutomationSpikePrefill({
+        ...payload,
+        requirementTicketId: reqFromPayload || mainRequirementKey || "",
+      });
+      setAutomationSpikePrefillAt((n) => n + 1);
+    },
+    [showAutoTestsUi, mainRequirementKey],
+  );
+
   const memoryPushTicketId =
     memoryPanel?.phase === "ok" ? normTicketId(memoryPanel.ticket_id) || null : null;
 
@@ -2162,6 +2183,15 @@ export default function App() {
                       setMemoryAutomationSkelIdx(idx);
                     }}
                     automationSkeletonDisabled={genOrBulkBusy}
+                    showAutoTestRunButton={showAutoTestsUi}
+                    onRunInAutoTest={
+                      showAutoTestsUi
+                        ? (p) => {
+                            setMemoryPanel(null);
+                            runTestCaseInAutoMode(p);
+                          }
+                        : undefined
+                    }
                   />
                 </div>
               </div>
@@ -2373,6 +2403,8 @@ export default function App() {
                     automationEnv != null &&
                     !!automationEnv.automation_trace_file_generation
                   }
+                  prefillAt={automationSpikePrefillAt}
+                  prefillFromCase={automationSpikePrefill}
                 />
               </div>
             ) : null}
@@ -2820,6 +2852,8 @@ export default function App() {
               setAnnounce={setAnnounce}
               genOrBulkBusy={genOrBulkBusy}
               onRequestDeleteTestCase={requestDeleteTestCase}
+              showAutoTestRunButton={showAutoTestsUi}
+              onRunInAutoTest={runTestCaseInAutoMode}
             />
           </div>
           ) : null}

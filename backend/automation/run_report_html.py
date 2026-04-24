@@ -678,6 +678,7 @@ def _build_case_content_html(
     log: list[str],
     *,
     jira_id: str = "",
+    requirement_ticket_id: str = "",
     tag: str = "",
     analysis: str = "",
     trace_href: str | None = None,
@@ -685,6 +686,7 @@ def _build_case_content_html(
 ) -> str:
     h = _e(title or "Spike")
     u = _e(url)
+    req_e = _e((requirement_ticket_id or "").strip() or "—")
     jira_e = _e((jira_id or "").strip() or "—")
     _tag_list = parse_tag_tokens(tag)
     tag_e = _e(" · ".join(_tag_list)) if _tag_list else "—"
@@ -724,7 +726,8 @@ def _build_case_content_html(
   </div>
   <dl class="report-meta">
     <dt>Date &amp; time</dt><dd class="report-datetime">{report_dt}</dd>
-    <dt>JIRA ID</dt><dd class="report-jira">{jira_e}</dd>
+    <dt>Requirement ticket</dt><dd class="report-jira">{req_e}</dd>
+    <dt>Test ID</dt><dd class="report-jira">{jira_e}</dd>
     <dt>Tags</dt><dd class="report-jira">{tag_e}</dd>
     <dt>URL</dt><dd><a class="report-url" href="{u}">{u}</a></dd>
     <dt>Run ID</dt><dd><code class="report-id">{_e(run_id)}</code></dd>
@@ -1788,6 +1791,7 @@ def render_spike_run_html(
     log: list[str],
     *,
     jira_id: str = "",
+    requirement_ticket_id: str = "",
     tag: str = "",
     analysis: str = "",
     trace_href: str | None = None,
@@ -1805,6 +1809,7 @@ def render_spike_run_html(
         steps,
         log,
         jira_id=jira_id,
+        requirement_ticket_id=requirement_ticket_id,
         tag=tag,
         analysis=analysis,
         trace_href=trace_href,
@@ -1894,6 +1899,7 @@ def render_batch_report_html(
             log = [str(log)]
         analysis = str(c.get("analysis") or "")
         jira = str(c.get("jira_id") or "")
+        req_tid = str(c.get("requirement_ticket_id") or "")
         tag = str(c.get("tag") or "")
         th = c.get("trace_href")
         trace_href: str | None
@@ -1910,6 +1916,7 @@ def render_batch_report_html(
             steps,
             log,
             jira_id=jira,
+            requirement_ticket_id=req_tid,
             tag=tag,
             analysis=analysis,
             trace_href=trace_href,

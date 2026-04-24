@@ -857,6 +857,7 @@ def _write_run_html(
     trace_href: str | None,
     jira_id: str = "",
     tag: str = "",
+    requirement_ticket_id: str = "",
 ) -> str | None:
     if not bool(getattr(settings, "automation_write_run_html", True)):
         return None
@@ -876,6 +877,7 @@ def _write_run_html(
         log,
         jira_id=jira_id,
         tag=tag,
+        requirement_ticket_id=requirement_ticket_id,
         analysis=analysis,
         trace_href=th,
     )
@@ -896,6 +898,7 @@ def _execute_spike_sync(
     jira_id: str = "",
     tag: str = "",
     *,
+    requirement_ticket_id: str = "",
     write_run_html: bool = True,
 ) -> dict[str, Any]:
     bdd_lines = parse_bdd_step_lines(bdd)
@@ -999,6 +1002,7 @@ def _execute_spike_sync(
             trace_href=trace_href_htm,
             jira_id=jira_id,
             tag=tag,
+            requirement_ticket_id=requirement_ticket_id,
         )
         if report_url:
             summary["report_url"] = report_url
@@ -1038,6 +1042,7 @@ def run_automation_spike(
     jira_id: str = "",
     tag: str = "",
     *,
+    requirement_ticket_id: str = "",
     write_run_html: bool = True,
 ) -> dict[str, Any]:
     log: list[str] = []
@@ -1059,6 +1064,7 @@ def run_automation_spike(
             html_dom=html_dom,
             jira_id=jira_id,
             tag=tag,
+            requirement_ticket_id=requirement_ticket_id,
             write_run_html=write_run_html,
         )
     except SpikeUserError as e:
@@ -1098,6 +1104,7 @@ async def run_automation_spike_async(
     jira_id: str = "",
     tag: str = "",
     *,
+    requirement_ticket_id: str = "",
     write_run_html: bool = True,
 ) -> dict[str, Any]:
     return await asyncio.to_thread(
@@ -1108,5 +1115,6 @@ async def run_automation_spike_async(
         html_dom,
         jira_id,
         tag,
+        requirement_ticket_id=requirement_ticket_id,
         write_run_html=write_run_html,
     )

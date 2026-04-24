@@ -113,6 +113,10 @@ def init_automation_db() -> None:
                 c.execute("ALTER TABLE automation_suite_cases ADD COLUMN last_suite_run_id TEXT")
             if "tag" not in cols:
                 c.execute("ALTER TABLE automation_suite_cases ADD COLUMN tag TEXT")
+            if "requirement_ticket_id" not in cols:
+                c.execute(
+                    "ALTER TABLE automation_suite_cases ADD COLUMN requirement_ticket_id TEXT"
+                )
         c.commit()
     finally:
         c.close()
@@ -339,7 +343,7 @@ def would_duplicate_suite_case(title: str, jira_id: str) -> str | None:
                 (j,),
             ).fetchone()
             if r:
-                return "A saved suite case with this JIRA ID already exists."
+                return "A saved suite case with this Test ID already exists."
         else:
             r = c.execute(
                 """
@@ -364,11 +368,13 @@ def add_suite_case(
     *,
     jira_id: str = "",
     tag: str = "",
+    requirement_ticket_id: str = "",
     case_id: str | None = None,
 ) -> str:
     cid = (case_id or str(uuid.uuid4())).strip() or str(uuid.uuid4())
     jira = (jira_id or "").strip() or None
     ta = normalize_tag_csv(tag) or None
+    reqt = (requirement_ticket_id or "").strip() or None
     c = _connect()
     try:
         mx = c.execute(
@@ -377,8 +383,8 @@ def add_suite_case(
         c.execute(
             """
             INSERT INTO automation_suite_cases
-              (id, created_at, sort_order, title, bdd, url, html_dom, jira_id, tag)
-            VALUES (?,?,?,?,?,?,?,?,?)
+              (id, created_at, sort_order, title, bdd, url, html_dom, jira_id, tag, requirement_ticket_id)
+            VALUES (?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 cid,
@@ -390,6 +396,7 @@ def add_suite_case(
                 (html_dom or "").strip() or None,
                 jira,
                 ta,
+                reqt,
             ),
         )
         c.commit()

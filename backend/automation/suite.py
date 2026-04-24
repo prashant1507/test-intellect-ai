@@ -78,6 +78,7 @@ def _run_one_suite_case(
                 html_dom=(c.get("html_dom") or None),
                 jira_id=str(c.get("jira_id") or ""),
                 tag=str(c.get("tag") or ""),
+                requirement_ticket_id=str(c.get("requirement_ticket_id") or ""),
                 write_run_html=False,
             )
             st = "PASS" if r.get("status") == "completed" else "FAIL"
@@ -141,6 +142,7 @@ def _run_one_suite_case(
         "debug_logs": r.get("debug_logs") or [],
         "analysis": str(r.get("analysis") or ""),
         "jira_id": str(c.get("jira_id") or ""),
+        "requirement_ticket_id": str(c.get("requirement_ticket_id") or ""),
         "tag": str(c.get("tag") or ""),
         "trace_href": trace_href,
     }

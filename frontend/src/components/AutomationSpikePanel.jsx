@@ -43,10 +43,13 @@ export function AutomationSpikePanel({
   suiteRunBusy = false,
   onSpikeRunBusyChange,
   traceFileGeneration = true,
+  prefillAt = 0,
+  prefillFromCase = null,
 }) {
   const [title, setTitle] = useState("");
   const [bdd, setBdd] = useState("");
   const [url, setUrl] = useState("");
+  const [requirementTicketId, setRequirementTicketId] = useState("");
   const [jiraId, setJiraId] = useState("");
   const [tag, setTag] = useState("");
   const [busy, setBusy] = useState(false);
@@ -57,6 +60,7 @@ export function AutomationSpikePanel({
   const [saveScenarioInvalid, setSaveScenarioInvalid] = useState(false);
   const [saveBddInvalid, setSaveBddInvalid] = useState(false);
   const [startUrlInvalid, setStartUrlInvalid] = useState(false);
+  const [startScenarioInvalid, setStartScenarioInvalid] = useState(false);
   const [startBddInvalid, setStartBddInvalid] = useState(false);
   const [stopInProgress, setStopInProgress] = useState(false);
   const [analysisExpandedShotId, setAnalysisExpandedShotId] = useState(null);
@@ -66,7 +70,7 @@ export function AutomationSpikePanel({
   const bddTextareaRef = useRef(null);
   const saveSuiteSuccessFlashRef = useRef(null);
   const [saveSuiteSuccessFlash, setSaveSuiteSuccessFlash] = useState(false);
-  const [testType, setTestType] = useState("");
+  const [testType, setTestType] = useState("UI");
   const [saveTestTypeInvalid, setSaveTestTypeInvalid] = useState(false);
   const testTypeFirstRadioRef = useRef(null);
 
@@ -103,6 +107,23 @@ export function AutomationSpikePanel({
   }, []);
 
   useEffect(() => {
+    if (prefillAt < 1 || !prefillFromCase) return;
+    setTitle(String(prefillFromCase.title ?? ""));
+    setRequirementTicketId(
+      String(prefillFromCase.requirementTicketId ?? "").trim(),
+    );
+    setJiraId(String(prefillFromCase.jiraId ?? "").trim());
+    setBdd(String(prefillFromCase.bdd ?? ""));
+    setSaveScenarioInvalid(false);
+    setSaveBddInvalid(false);
+    setStartScenarioInvalid(false);
+    setStartBddInvalid(false);
+    requestAnimationFrame(() => {
+      scenarioInputRef.current?.focus();
+    });
+  }, [prefillAt, prefillFromCase]);
+
+  useEffect(() => {
     const rid = result?.run_id;
     if (rid == null) {
       setAnalysisExpandedShotId(null);
@@ -129,26 +150,32 @@ export function AutomationSpikePanel({
     setErr("");
     setSaveSuiteInfo("");
     setResult(null);
+    setStartScenarioInvalid(false);
     setStartUrlInvalid(false);
     setStartBddInvalid(false);
+    const titleT = title.trim();
     const u = url.trim();
+    const okTitle = Boolean(titleT);
     const okUrl = Boolean(u);
     const okBdd = Boolean(bdd.trim());
-    if (!okUrl || !okBdd) {
+    if (!okTitle || !okUrl || !okBdd) {
+      if (!okTitle) setStartScenarioInvalid(true);
       if (!okUrl) setStartUrlInvalid(true);
       if (!okBdd) setStartBddInvalid(true);
       requestAnimationFrame(() => {
-        if (!okUrl) urlInputRef.current?.focus();
+        if (!okTitle) scenarioInputRef.current?.focus();
+        else if (!okUrl) urlInputRef.current?.focus();
         else bddTextareaRef.current?.focus();
       });
       return;
     }
     setBusy(true);
     const body = {
-      title: title.trim(),
+      title: titleT,
       bdd,
       url: u,
       jira_id: jiraId.trim(),
+      requirement_ticket_id: requirementTicketId.trim(),
       tag: normalizeTagCsv(tag),
     };
     try {
@@ -169,6 +196,7 @@ export function AutomationSpikePanel({
     setSaveBddInvalid(false);
     setSaveTestTypeInvalid(false);
     const titleT = title.trim();
+    const reqT = requirementTicketId.trim();
     const jiraT = jiraId.trim();
     const okTitle = Boolean(titleT);
     const okBdd = Boolean(bdd.trim());
@@ -198,7 +226,7 @@ export function AutomationSpikePanel({
           )
         ) {
           setSaveSuiteInfo(
-            "A saved suite case with this JIRA ID already exists.",
+            "A saved suite case with this Test ID already exists.",
           );
           return;
         }
@@ -218,6 +246,7 @@ export function AutomationSpikePanel({
         bdd,
         url: "",
         jira_id: jiraT,
+        requirement_ticket_id: reqT,
         tag: suiteTagWithTestType(testType, tag),
       });
       bumpLists();
@@ -346,11 +375,34 @@ export function AutomationSpikePanel({
           </span>
         </div>
       </div>
-      <div className="row cols-2 automation-spike-auto-test-grid">
+      <div className="row cols-3 automation-spike-auto-test-grid">
+        <div className="automation-spike-field-col">
+          <label
+            htmlFor="automation-spike-requirement-ticket-id"
+            className="label-with-info"
+          >
+            <span>Requirement Ticket ID</span>
+            <FieldInfo text="Requirement / Story ticket." />
+          </label>
+          <input
+            id="automation-spike-requirement-ticket-id"
+            value={requirementTicketId}
+            onChange={(e) => setRequirementTicketId(e.target.value)}
+            disabled={formLocked}
+            autoComplete="off"
+            aria-describedby="automation-spike-requirement-ticket-id-hint"
+          />
+          <span
+            id="automation-spike-requirement-ticket-id-hint"
+            className="sr-only"
+          >
+            Requirement / Story ticket.
+          </span>
+        </div>
         <div className="automation-spike-field-col">
           <label htmlFor="automation-spike-jira-id" className="label-with-info">
-            <span>JIRA ID (Optional)</span>
-            <FieldInfo text="Issue key from JIRA." />
+            <span>Test ID</span>
+            <FieldInfo text="Test ID from JIRA." />
           </label>
           <input
             id="automation-spike-jira-id"
@@ -361,13 +413,13 @@ export function AutomationSpikePanel({
             aria-describedby="automation-spike-jira-id-hint"
           />
           <span id="automation-spike-jira-id-hint" className="sr-only">
-            Issue key from JIRA.
+            Test ID from JIRA.
           </span>
         </div>
         <div className="automation-spike-field-col">
           <label htmlFor="automation-spike-scenario" className="label-with-info">
             <span>Scenario</span>
-            <FieldInfo text="Scenario name." />
+            <FieldInfo text="Required for Start test. Also required when saving to suite." />
           </label>
           <input
             id="automation-spike-scenario"
@@ -376,14 +428,21 @@ export function AutomationSpikePanel({
             onChange={(e) => {
               setTitle(e.target.value);
               if (saveScenarioInvalid) setSaveScenarioInvalid(false);
+              if (startScenarioInvalid) setStartScenarioInvalid(false);
             }}
-            className={saveScenarioInvalid ? "form-field--invalid" : undefined}
-            aria-invalid={saveScenarioInvalid ? true : undefined}
+            className={
+              saveScenarioInvalid || startScenarioInvalid
+                ? "form-field--invalid"
+                : undefined
+            }
+            aria-invalid={
+              saveScenarioInvalid || startScenarioInvalid ? true : undefined
+            }
             disabled={formLocked}
             aria-describedby="automation-spike-scenario-hint"
           />
           <span id="automation-spike-scenario-hint" className="sr-only">
-            Scenario name
+            Scenario name. Required before starting a test.
           </span>
         </div>
       </div>
@@ -453,7 +512,7 @@ export function AutomationSpikePanel({
       {saveSuiteInfo ? (
         <p
           className={
-            saveSuiteInfo.includes("JIRA ID")
+            saveSuiteInfo.includes("Test ID")
               ? "automation-spike-err"
               : "automation-spike-muted"
           }

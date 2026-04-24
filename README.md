@@ -237,6 +237,7 @@ Other routes and request schemas: see **`backend/main.py`**.
 - Analysis for each test case will have details of last execution only if executed from 'Saved Suite'
 - Green dot will appear for currently running test case
 - View Report will show report from 'Start Test' as well
+- 'Run Test Case' button will be enabled when `SHOW_AUTO_TESTS_UI=true`
 
 ---
 
