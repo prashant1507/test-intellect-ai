@@ -54,9 +54,11 @@ flowchart LR
   API --> IMG["requirement images"]
   API --> MEM["memory_store SQLite"]
   API --> AUD["audit_store SQLite"]
-  API --> AT["automation Playwright"]
+  API --> ATU["automation UI"]
+  API --> ATA["automation API"]
   API --> KC["keycloak_auth"]
   AG -.->|uses| LLM
+  ATA -.->|plans API steps| LLM
 ```
 
 ---
