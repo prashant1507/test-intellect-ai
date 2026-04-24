@@ -1,4 +1,3 @@
-import json
 from pathlib import Path
 
 from pydantic import field_validator
@@ -76,7 +75,7 @@ class Settings(BaseSettings):
     show_automation_ui: bool = True
     automation_post_analysis: bool = True
     automation_write_run_html: bool = True
-    # Browser / headless / screenshots / trace / use-MCP: use automation.prefs (DB + first-run
+    # Browser / headless / screenshots / trace: use automation.prefs (DB + first-run
     # defaults), not this file — see get_effective_automation_* and GET/POST /api/automation/*.
     automation_default_timeout_ms: int = 30_000
     automation_db_path: str = "data/automation/selectors.db"
@@ -84,18 +83,6 @@ class Settings(BaseSettings):
     automation_reports_dir: str = "data/automation/reports"
     automation_retention_days: int = 20
     automation_spike_prerun: bool = True
-    automation_mcp_cmd: str = "npx"
-    automation_mcp_args: str = '["-y", "@playwright/mcp@latest"]'
-    automation_mcp_tool_run_code: str = "browser_run_code"
-    automation_mcp_tool_navigate: str = "browser_navigate"
-    @field_validator("automation_mcp_args", mode="before")
-    @classmethod
-    def _automation_mcp_args_str(cls, v: object) -> str:
-        if v is None:
-            return '["-y", "@playwright/mcp@latest"]'
-        if isinstance(v, str):
-            return v.strip() or '["-y", "@playwright/mcp@latest"]'
-        return json.dumps(v)
     @field_validator("automation_db_path", mode="before")
     @classmethod
     def _automation_db_path(cls, v: object) -> str:

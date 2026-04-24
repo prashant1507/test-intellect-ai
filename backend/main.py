@@ -59,7 +59,6 @@ from automation.prefs import (
     get_effective_automation_headless,
     get_effective_automation_screenshot_on_pass,
     get_effective_automation_trace_file_generation,
-    get_effective_automation_use_mcp,
 )
 from automation.retention import prune_automation_artifacts
 from automation.store import init_automation_db
@@ -308,7 +307,6 @@ class ConfigResponse(BaseModel):
     automation_browser: str = "chromium"
     automation_headless: bool = False
     automation_screenshot_on_pass: bool = False
-    automation_use_mcp: bool = False
     automation_trace_file_generation: bool = False
 
 
@@ -818,7 +816,6 @@ def get_config():
         automation_browser=get_effective_automation_browser(),
         automation_headless=get_effective_automation_headless(),
         automation_screenshot_on_pass=get_effective_automation_screenshot_on_pass(),
-        automation_use_mcp=get_effective_automation_use_mcp(),
         automation_trace_file_generation=get_effective_automation_trace_file_generation(),
     )
 

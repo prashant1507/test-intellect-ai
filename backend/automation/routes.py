@@ -20,7 +20,6 @@ from .prefs import (
     get_effective_automation_headless,
     get_effective_automation_screenshot_on_pass,
     get_effective_automation_trace_file_generation,
-    get_effective_automation_use_mcp,
 )
 from .store import (
     add_suite_case,
@@ -118,7 +117,6 @@ class AutomationEnvOptionsIn(BaseModel):
     automation_headless: bool
     automation_screenshot_on_pass: bool
     automation_trace_file_generation: bool
-    automation_use_mcp: bool
 
 
 def _automation_env_payload() -> dict[str, Any]:
@@ -126,7 +124,6 @@ def _automation_env_payload() -> dict[str, Any]:
         "automation_browser": get_effective_automation_browser(),
         "automation_headless": get_effective_automation_headless(),
         "automation_screenshot_on_pass": get_effective_automation_screenshot_on_pass(),
-        "automation_use_mcp": get_effective_automation_use_mcp(),
         "automation_trace_file_generation": get_effective_automation_trace_file_generation(),
     }
 
@@ -147,7 +144,6 @@ def automation_set_env_options(body: AutomationEnvOptionsIn) -> dict[str, Any]:
     set_automation_kv("headless", "1" if body.automation_headless else "0")
     set_automation_kv("screenshot_on_pass", "1" if body.automation_screenshot_on_pass else "0")
     set_automation_kv("trace_file_generation", "1" if body.automation_trace_file_generation else "0")
-    set_automation_kv("use_mcp", "1" if body.automation_use_mcp else "0")
     return _automation_env_payload()
 
 

@@ -10,7 +10,6 @@ _DEFAULT_BROWSER = "chromium"  # Chrome
 _DEFAULT_HEADLESS = False  # show browser
 _DEFAULT_SCREENSHOT_ON_PASS = False
 _DEFAULT_TRACE_FILE_GENERATION = False
-_DEFAULT_USE_MCP = False
 
 
 def get_effective_automation_browser() -> str:
@@ -38,7 +37,3 @@ def get_effective_automation_screenshot_on_pass() -> bool:
 
 def get_effective_automation_trace_file_generation() -> bool:
     return _get_bool_from_kv_or_default("trace_file_generation", _DEFAULT_TRACE_FILE_GENERATION)
-
-
-def get_effective_automation_use_mcp() -> bool:
-    return _get_bool_from_kv_or_default("use_mcp", _DEFAULT_USE_MCP)

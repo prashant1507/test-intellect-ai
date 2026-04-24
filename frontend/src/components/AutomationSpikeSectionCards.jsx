@@ -22,7 +22,6 @@ function buildEnvOptionsBody(envObj, patch) {
     automation_trace_file_generation:
       patch.automation_trace_file_generation ??
       !!envObj.automation_trace_file_generation,
-    automation_use_mcp: patch.automation_use_mcp ?? !!envObj.automation_use_mcp,
   };
 }
 
@@ -956,19 +955,11 @@ export function AutomationSpikeSectionCards({
                   },
                   {
                     name: "automation-opt-trace",
-                    label: "Generate trace file",
+                    label: "Generate Trace File",
                     labelledBy: "automation-env-opt-trace",
                     on: !!env.automation_trace_file_generation,
                     patchOn: { automation_trace_file_generation: true },
                     patchOff: { automation_trace_file_generation: false },
-                  },
-                  {
-                    name: "automation-opt-mcp",
-                    label: "Playwright MCP",
-                    labelledBy: "automation-env-opt-mcp",
-                    on: !!env.automation_use_mcp,
-                    patchOn: { automation_use_mcp: true },
-                    patchOff: { automation_use_mcp: false },
                   },
                 ].map(({ name, label, labelledBy, on, patchOn, patchOff }) => (
                   <Fragment key={name}>

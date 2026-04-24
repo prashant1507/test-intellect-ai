@@ -18,7 +18,6 @@ from .prefs import (
     get_effective_automation_headless,
     get_effective_automation_screenshot_on_pass,
     get_effective_automation_trace_file_generation,
-    get_effective_automation_use_mcp,
 )
 from .store import (
     begin_run,
@@ -523,12 +522,6 @@ def _run_spike_one_browser(
     *,
     html_dom: str | None = None,
 ) -> list[dict[str, Any]]:
-    if get_effective_automation_use_mcp():
-        from .mcp_spike import run_mcp_spike_one_browser
-
-        return run_mcp_spike_one_browser(
-            run_id, title, bdd_lines, url, spec_from_cache, log, html_dom=html_dom
-        )
     from playwright.sync_api import expect, sync_playwright
 
     browser_name = get_effective_automation_browser()
@@ -873,11 +866,6 @@ def run_automation_spike(
     log: list[str] = []
     u = (url or "").strip()
     run_id = str(uuid.uuid4())
-    if get_effective_automation_use_mcp():
-        _l(
-            log,
-            "Playwright MCP: browser automation uses Playwright MCP (stdio), not in-process Playwright.",
-        )
     _l(log, f"run_id={run_id} title={title!r} url={u!r}")
     begin_run(
         run_id,
