@@ -12,10 +12,13 @@ from ai_client import llm_chat_completion, parse_llm_json_object, spike_post_run
 from settings import settings
 
 from .bdd import parse_bdd_structured, parse_bdd_step_lines
+from .run_report_html import render_spike_run_html
 from .errors import SpikeUserError
 from .prefs import (
     get_effective_automation_browser,
+    get_effective_automation_default_timeout_ms,
     get_effective_automation_headless,
+    get_effective_automation_post_analysis,
     get_effective_automation_screenshot_on_pass,
     get_effective_automation_trace_file_generation,
 )
@@ -320,6 +323,67 @@ def _parse_steps_payload(raw: object, n: int, log: list[str]) -> list[dict[str, 
     raise ValueError("top-level is not a JSON object")
 
 
+def _raw_steps_list_from_llm_parsed(data: Any) -> list[Any] | None:
+    if data is None:
+        return None
+    if isinstance(data, dict) and isinstance(data.get("steps"), list):
+        return data["steps"]
+    if isinstance(data, list):
+        return data
+    return None
+
+
+def _llm_reconcile_step_count(
+    title: str,
+    bdd_lines: list[str],
+    dom: str,
+    draft: list[Any],
+    log: list[str],
+) -> list[dict[str, Any]] | None:
+    n = len(bdd_lines)
+    safe = [x if isinstance(x, dict) else {} for x in draft]
+    sys_r = (
+        f'Return only JSON: {{"steps": [...]}}. "steps" MUST have length {n} (one object per BDD line in order). '
+        f"The draft has {len(draft)} items; expand, split, or replace so the final list has exactly {n} items. "
+        'Each object: "playwright_selector", "action", "value" (string).'
+    )
+    num = "\n".join(f"  {i}. {line}" for i, line in enumerate(bdd_lines))
+    u = f"Title: {title}\nBDD:\n{num}\n\nDraft steps:\n{json.dumps(safe, ensure_ascii=False)}\n\nHTML:\n{_truncate_dom(dom)}"
+    raw = llm_chat_completion(sys_r, u, temperature=0.05, max_tokens=12_000)
+    data = parse_llm_json_object(raw)
+    sl: Any = None
+    if isinstance(data, dict) and isinstance(data.get("steps"), list):
+        sl = data["steps"]
+    elif isinstance(data, list):
+        sl = data
+    if not isinstance(sl, list) or len(sl) != n or not all(isinstance(x, dict) for x in sl):
+        return None
+    _l(log, f"LLM: reconcile -> {n} step(s).")
+    return [dict(x) for x in sl]
+
+
+def _heuristic_pad_to_n(
+    spec: list[Any], n: int, bdd_lines: list[str], log: list[str]
+) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for i in range(n):
+        o: dict[str, Any]
+        if i < len(spec) and isinstance(spec[i], dict):
+            o = dict(spec[i])
+        else:
+            bline = bdd_lines[i] if i < len(bdd_lines) else ""
+            q = _quoted_hint(bline)
+            if q:
+                o = {"playwright_selector": f"text={q}", "action": "assert_text", "value": q}
+            else:
+                o = {"playwright_selector": "body", "action": "assert_visible", "value": ""}
+            _l(log, f"heuristic step {i} for {bline[:90]!r}")
+        if not isinstance(o.get("playwright_selector"), str) or not (o.get("playwright_selector") or "").strip():
+            o["playwright_selector"] = "body"
+        out.append(o)
+    return out
+
+
 def _llm_build_steps(
     title: str, bdd_lines: list[str], dom: str, log: list[str]
 ) -> list[dict[str, Any]]:
@@ -356,14 +420,26 @@ def _llm_build_steps(
             data = {"steps": data}
             break
         _l(log, f"LLM: step count retry {attempt + 1} (got {len((data or {}).get('steps', data if isinstance(data, list) else []))!r} need {n})")
-    if isinstance(data, dict) and "steps" in data and isinstance(data["steps"], list):
-        if len(data["steps"]) != n:
-            raise ValueError(f"need {n} items (you returned {len(data['steps'])})")
-    steps = _parse_steps_payload(data, n, log)
-    for i, st in enumerate(steps):
+    steps_list = _raw_steps_list_from_llm_parsed(data) or []
+    if len(steps_list) > n:
+        _l(log, f"LLM: trim step list {len(steps_list)} -> {n}")
+        steps_list = steps_list[:n]
+    if len(steps_list) < n and _llm_base_ok():
+        rec = _llm_reconcile_step_count(title, bdd_lines, dom, steps_list, log)
+        if rec is not None:
+            steps_list = rec
+    if len(steps_list) < n:
+        _l(
+            log,
+            f"LLM: still {len(steps_list)} step(s) need {n}, applying heuristic padding",
+        )
+        steps_list = _heuristic_pad_to_n(steps_list, n, bdd_lines, log)
+    for i, st in enumerate(steps_list):
+        if not isinstance(st, dict):
+            raise ValueError(f"step {i} is not a JSON object")
         if not isinstance(st.get("playwright_selector"), str):
             raise ValueError(f"step {i} missing playwright_selector")
-    return steps
+    return [dict(s) for s in steps_list]
 
 
 def _llm_validate_and_refine_steps(
@@ -527,7 +603,7 @@ def _run_spike_one_browser(
     browser_name = get_effective_automation_browser()
     headless = get_effective_automation_headless()
     shot_on_pass = get_effective_automation_screenshot_on_pass()
-    tw = int(settings.automation_default_timeout_ms)
+    tw = int(get_effective_automation_default_timeout_ms())
     run_dir = Path(settings.automation_artifacts_dir) / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     trace_path = run_dir / "trace.zip"
@@ -713,25 +789,38 @@ def _run_spike_one_browser(
 
 
 def _write_run_html(
-    run_id: str, title: str, url: str, ok: bool, steps: list[dict], log: list[str]
+    run_id: str,
+    title: str,
+    bdd: str,
+    url: str,
+    ok: bool,
+    steps: list[dict],
+    log: list[str],
+    *,
+    analysis: str,
+    trace_href: str | None,
+    jira_id: str = "",
 ) -> str | None:
     if not bool(getattr(settings, "automation_write_run_html", True)):
         return None
     rep = Path(settings.automation_reports_dir)
     rep.mkdir(parents=True, exist_ok=True)
     p = rep / f"{run_id}.html"
-    rows = "\n".join(
-        f"<tr><td>{e.get('step_index')}</td><td><code>{e.get('selector','')[:200]}</code></td>"
-        f"<td>{e.get('action')}</td><td>{'ok' if e.get('pass') else 'fail'}</td>"
-        f"<td>{(e.get('err') or '')[:300]}</td></tr>"
-        for e in steps
+    th: str | None = None
+    if trace_href and get_effective_automation_trace_file_generation():
+        th = trace_href
+    body = render_spike_run_html(
+        run_id,
+        title,
+        bdd,
+        url,
+        ok,
+        steps,
+        log,
+        jira_id=jira_id,
+        analysis=analysis,
+        trace_href=th,
     )
-    body = f"""<!doctype html><html><head><meta charset="utf-8"><title>Run {run_id}</title>
-<style>table{{border-collapse:collapse}}td,th{{border:1px solid #ccc;padding:4px 8px;font:14px system-ui}}code{{font-size:12px}}</style>
-</head><body><h1>{title or 'Spike'}</h1><p>URL: {url}</p><p>Result: <b>{'PASS' if ok else 'FAIL'}</b></p>
-<table><thead><tr><th>#</th><th>Selector</th><th>action</th><th>r</th><th>err</th></tr></thead><tbody>
-{rows}</tbody></table><h2>Log</h2><pre style="background:#f5f5f5;white-space:pre-wrap;padding:8px">"""
-    body += "\n".join(log[-200:]) + "</pre></body></html>"
     try:
         p.write_text(body, encoding="utf-8")
     except OSError:
@@ -746,6 +835,7 @@ def _execute_spike_sync(
     url: str,
     log: list[str],
     html_dom: str | None = None,
+    jira_id: str = "",
 ) -> dict[str, Any]:
     bdd_lines = parse_bdd_step_lines(bdd)
     _l(log, f"Parsed BDD: {len(bdd_lines)} line(s).")
@@ -794,7 +884,7 @@ def _execute_spike_sync(
     art = Path(settings.automation_artifacts_dir)
     ok = all(x.get("pass") for x in final)
     analysis = ""
-    if bool(getattr(settings, "automation_post_analysis", True)) and _llm_base_ok():
+    if get_effective_automation_post_analysis() and _llm_base_ok():
         analysis = spike_post_run_analysis(
             title, u, ok, [dict(s) for s in final], "\n".join(log[-500:])
         )
@@ -830,7 +920,22 @@ def _execute_spike_sync(
         "analysis": analysis,
     }
     err_msg = None if ok else next((s.get("err") for s in rel_steps if s.get("err")), "failed")
-    report_url = _write_run_html(run_id, title, u, ok, rel_steps, log)
+    base_artifacts = f"/api/automation/artifacts/{run_id}"
+    trace_href_htm = (
+        f"{base_artifacts}/trace.zip" if (run_dir / "trace.zip").is_file() else None
+    )
+    report_url = _write_run_html(
+        run_id,
+        title,
+        bdd,
+        u,
+        ok,
+        rel_steps,
+        log,
+        analysis=analysis,
+        trace_href=trace_href_htm,
+        jira_id=jira_id,
+    )
     if report_url:
         summary["report_url"] = report_url
     update_run(
@@ -864,6 +969,7 @@ def run_automation_spike(
     bdd: str,
     url: str,
     html_dom: str | None = None,
+    jira_id: str = "",
 ) -> dict[str, Any]:
     log: list[str] = []
     u = (url or "").strip()
@@ -875,7 +981,9 @@ def run_automation_spike(
         compute_fingerprint(title, bdd, u, _dom_fingerprint_snip(html_dom)),
     )
     try:
-        return _execute_spike_sync(run_id, title, bdd, u, log, html_dom=html_dom)
+        return _execute_spike_sync(
+            run_id, title, bdd, u, log, html_dom=html_dom, jira_id=jira_id
+        )
     except SpikeUserError as e:
         setattr(e, "run_id", run_id)
         _l(e.logs, f"SpikeUserError: {e}")
@@ -910,5 +1018,8 @@ async def run_automation_spike_async(
     bdd: str,
     url: str,
     html_dom: str | None = None,
+    jira_id: str = "",
 ) -> dict[str, Any]:
-    return await asyncio.to_thread(run_automation_spike, title, bdd, url, html_dom)
+    return await asyncio.to_thread(
+        run_automation_spike, title, bdd, url, html_dom, jira_id
+    )

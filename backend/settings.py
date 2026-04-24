@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ENV = Path(__file__).resolve().parent.parent / ".env"
@@ -33,7 +33,9 @@ class Settings(BaseSettings):
         "mock",
         "show_memory_ui",
         "show_audit_ui",
-        "show_automation_ui",
+        "show_jira_mode_ui",
+        "show_paste_requirements_mode_ui",
+        "show_auto_tests_ui",
         "use_keycloak",
         "llm_requirement_images_enabled",
         "automation_spike_prerun",
@@ -44,6 +46,16 @@ class Settings(BaseSettings):
     @classmethod
     def _coerce_bool(cls, v: object) -> bool:
         return _env_bool(v)
+
+    @model_validator(mode="after")
+    def at_least_one_requirement_mode(self) -> "Settings":
+        if not (
+            self.show_jira_mode_ui
+            or self.show_paste_requirements_mode_ui
+            or self.show_auto_tests_ui
+        ):
+            self.show_jira_mode_ui = True
+        return self
 
     jira_url: str = ""
     jira_username: str = ""
@@ -57,6 +69,8 @@ class Settings(BaseSettings):
     mock: bool = False
     show_memory_ui: bool = True
     show_audit_ui: bool = True
+    show_jira_mode_ui: bool = True
+    show_paste_requirements_mode_ui: bool = True
     use_keycloak: bool = False
     keycloak_url: str = ""
     keycloak_internal_url: str = ""
@@ -72,11 +86,9 @@ class Settings(BaseSettings):
     llm_requirement_images_max_total_mb: int = 200
     paste_mode_priorities: str = ""
     memory_similarity_threshold: float = 0.92
-    show_automation_ui: bool = True
+    show_auto_tests_ui: bool = True
     automation_post_analysis: bool = True
     automation_write_run_html: bool = True
-    # Browser / headless / screenshots / trace: use automation.prefs (DB + first-run
-    # defaults), not this file — see get_effective_automation_* and GET/POST /api/automation/*.
     automation_default_timeout_ms: int = 30_000
     automation_db_path: str = "data/automation/selectors.db"
     automation_artifacts_dir: str = "data/automation/runs"

@@ -296,7 +296,14 @@ def list_suite_cases() -> list[dict[str, Any]]:
     c = _connect()
     try:
         cur = c.execute(
-            "SELECT * FROM automation_suite_cases ORDER BY sort_order ASC, created_at ASC"
+            """
+            SELECT
+              s.*,
+              r.status AS last_suite_run_status
+            FROM automation_suite_cases s
+            LEFT JOIN automation_runs r ON r.id = s.last_suite_run_id
+            ORDER BY s.sort_order ASC, s.created_at ASC
+            """
         )
         return [dict(x) for x in cur.fetchall()]
     finally:

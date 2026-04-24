@@ -8,13 +8,30 @@ import {
   useState,
 } from "react";
 import { flushSync } from "react-dom";
-import { FieldInfo, FloatingTooltip, Spinner } from "./common";
+import {
+  FieldInfo,
+  FloatingTooltip,
+  InlineDownloadIconButton,
+  Spinner,
+  downloadUrlAsFile,
+  suggestedFilenameFromUrl,
+} from "./common";
+import {
+  AutomationRunStepScreenshot,
+  stepShotAccordionId,
+} from "./AutomationRunStepScreenshot";
 import { ResizableScrollClip, useScrollClipHeightPx } from "./LinkedJiraLists";
 
 const SAVED_LINKED_LIST_VISIBLE_ROWS = 4;
 const SAVED_SELECTORS_VISIBLE_ROWS = 2;
+const SUITE_REPORTS_RECENT_LS_KEY = "automation-suite-reports-recent-open";
 
 function buildEnvOptionsBody(envObj, patch) {
+  const defTo =
+    typeof envObj.automation_default_timeout_ms === "number" &&
+    !Number.isNaN(envObj.automation_default_timeout_ms)
+      ? envObj.automation_default_timeout_ms
+      : 30_000;
   return {
     automation_headless: patch.automation_headless ?? !!envObj.automation_headless,
     automation_screenshot_on_pass:
@@ -22,6 +39,7 @@ function buildEnvOptionsBody(envObj, patch) {
     automation_trace_file_generation:
       patch.automation_trace_file_generation ??
       !!envObj.automation_trace_file_generation,
+    automation_default_timeout_ms: patch.automation_default_timeout_ms ?? defTo,
   };
 }
 
@@ -46,6 +64,13 @@ function formatHistoryTime(iso) {
   return d.toLocaleTimeString(undefined, { timeStyle: "short" });
 }
 
+function formatReportListAt(iso) {
+  if (iso == null || !String(iso).trim()) return "—";
+  const d = new Date(String(iso));
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+}
+
 const BDD_ANALYSIS_STEP = /^(Given|When|Then|And)\b/i;
 const BDD_ANALYSIS_SKIP_HDR = /^(Feature|Scenario|Background)\b/i;
 
@@ -59,11 +84,20 @@ function parseBddStepLinesForAnalysis(bdd) {
   return out;
 }
 
+const SKIP_PREV_FAIL_ERR = /^skipped \(previous step failed\)$/i;
+
 function stepIsPass(step) {
   const p = step?.pass;
   if (p === true || p === 1) return true;
   if (p === false || p === 0) return false;
   return Boolean(p);
+}
+
+function shouldShowErrInStepAnalysis(err) {
+  if (err == null) return false;
+  const t = String(err).trim();
+  if (!t) return false;
+  return !SKIP_PREV_FAIL_ERR.test(t);
 }
 
 function analysisStepClass(step) {
@@ -77,7 +111,29 @@ function analysisStepClass(step) {
   return "automation-spike-analysis-step automation-spike-analysis-step--fail";
 }
 
+function buildStepIndexMap(stepList) {
+  const m = new Map();
+  if (!Array.isArray(stepList)) return { map: m, hasIndex: false };
+  for (const s of stepList) {
+    if (!s || typeof s !== "object") continue;
+    const k = Number(s.step_index);
+    if (Number.isFinite(k) && k >= 0) m.set(k, s);
+  }
+  return { map: m, hasIndex: m.size > 0 };
+}
+
+function stepForBddLineIndex(steps, byIdx, hasIndex, i) {
+  if (hasIndex) return byIdx.get(i) ?? null;
+  if (i < steps.length) return steps[i];
+  return null;
+}
+
 function SuiteAnalysisStepsView({ bdd, runDetail }) {
+  const [expandedShotId, setExpandedShotId] = useState(null);
+  useEffect(() => {
+    setExpandedShotId(null);
+  }, [runDetail?.run_id]);
+
   if (runDetail?.noRunId) {
     return (
       <p className="automation-spike-muted">
@@ -95,6 +151,7 @@ function SuiteAnalysisStepsView({ bdd, runDetail }) {
   if (runDetail?.loading) {
     return <p className="automation-spike-muted">Loading step results…</p>;
   }
+  const runId = runDetail?.run_id;
   const lineTexts = parseBddStepLinesForAnalysis(bdd);
   const rawSteps = Array.isArray(runDetail?.steps) ? runDetail.steps : [];
   const runErr = runDetail?.error != null ? String(runDetail.error).trim() : "";
@@ -105,37 +162,111 @@ function SuiteAnalysisStepsView({ bdd, runDetail }) {
       steps = lineTexts.map((t) => ({ step_text: t, pass: true, err: null }));
     }
   }
+  const { map: byStepIndex, hasIndex: stepsHaveIndex } = buildStepIndexMap(steps);
   const rows = [];
-  for (let i = 0; i < steps.length; i += 1) {
-    const s = steps[i];
-    const line = lineTexts[i] != null ? lineTexts[i] : String(s?.step_text || "").trim() || "—";
-    const showReason = s?.err != null && String(s.err).trim() !== "" && !stepIsPass(s);
-    rows.push(
-      <div
-        key={`st-${i}`}
-        className={analysisStepClass(s)}
-        role="listitem"
-      >
-        <div className="automation-spike-analysis-step-line">{line}</div>
-        {showReason ? (
-          <div className="automation-spike-analysis-step-reason">{String(s.err)}</div>
-        ) : null}
-      </div>,
+  if (lineTexts.length === 0 && steps.length > 0) {
+    const ordered = [...steps].sort(
+      (a, b) => Number(a?.step_index ?? 0) - Number(b?.step_index ?? 0),
     );
-  }
-  for (let j = steps.length; j < lineTexts.length; j += 1) {
-    rows.push(
-      <div
-        key={`un-${j}`}
-        className="automation-spike-analysis-step automation-spike-analysis-step--skipped"
-        role="listitem"
-      >
-        <div className="automation-spike-analysis-step-line">{lineTexts[j]}</div>
-        <div className="automation-spike-analysis-step-reason">
-          {runErr || "Not executed (run did not reach this step)."}
-        </div>
-      </div>,
-    );
+    ordered.forEach((s, i) => {
+      const line = String(s?.step_text || "").trim() || "—";
+      const showReason =
+        shouldShowErrInStepAnalysis(s?.err) && !stepIsPass(s);
+      rows.push(
+        <div
+          key={`st-orphan-${i}`}
+          className={analysisStepClass(s)}
+          role="listitem"
+        >
+          <div className="automation-spike-analysis-step-line">{line}</div>
+          {showReason ? (
+            <div className="automation-spike-analysis-step-reason">{String(s.err)}</div>
+          ) : null}
+          <AutomationRunStepScreenshot
+            runId={runId}
+            step={s}
+            defaultExpanded={false}
+            accordionId={stepShotAccordionId(runId, s, i)}
+            expandedAccordionId={expandedShotId}
+            onExpandedAccordionChange={setExpandedShotId}
+          />
+        </div>,
+      );
+    });
+  } else {
+    for (let i = 0; i < lineTexts.length; i += 1) {
+      const s = stepForBddLineIndex(steps, byStepIndex, stepsHaveIndex, i);
+      if (s == null) {
+        rows.push(
+          <div
+            key={`un-${i}`}
+            className="automation-spike-analysis-step automation-spike-analysis-step--skipped"
+            role="listitem"
+          >
+            <div className="automation-spike-analysis-step-line">{lineTexts[i]}</div>
+            <div className="automation-spike-analysis-step-reason">
+              {runErr || "Not executed (run did not reach this step)."}
+            </div>
+          </div>,
+        );
+        continue;
+      }
+      const line = (lineTexts[i] ?? String(s?.step_text || "").trim()) || "—";
+      const showReason =
+        shouldShowErrInStepAnalysis(s?.err) && !stepIsPass(s);
+        rows.push(
+        <div
+          key={`st-${i}`}
+          className={analysisStepClass(s)}
+          role="listitem"
+        >
+          <div className="automation-spike-analysis-step-line">{line}</div>
+          {showReason ? (
+            <div className="automation-spike-analysis-step-reason">{String(s.err)}</div>
+          ) : null}
+          <AutomationRunStepScreenshot
+            runId={runId}
+            step={s}
+            defaultExpanded={false}
+            accordionId={stepShotAccordionId(runId, s, i)}
+            expandedAccordionId={expandedShotId}
+            onExpandedAccordionChange={setExpandedShotId}
+          />
+        </div>,
+      );
+    }
+    if (stepsHaveIndex && lineTexts.length > 0) {
+      const extraKs = [...byStepIndex.keys()]
+        .filter((k) => k >= lineTexts.length)
+        .sort((a, b) => a - b);
+      for (const k of extraKs) {
+        const s = byStepIndex.get(k);
+        if (!s) continue;
+        const line = String(s?.step_text || "").trim() || `Step ${k}`;
+        const showReason =
+          shouldShowErrInStepAnalysis(s?.err) && !stepIsPass(s);
+        rows.push(
+          <div
+            key={`st-extra-${k}`}
+            className={analysisStepClass(s)}
+            role="listitem"
+          >
+            <div className="automation-spike-analysis-step-line">{line}</div>
+            {showReason ? (
+              <div className="automation-spike-analysis-step-reason">{String(s.err)}</div>
+            ) : null}
+            <AutomationRunStepScreenshot
+              runId={runId}
+              step={s}
+              defaultExpanded={false}
+              accordionId={stepShotAccordionId(runId, s, k)}
+              expandedAccordionId={expandedShotId}
+              onExpandedAccordionChange={setExpandedShotId}
+            />
+          </div>,
+        );
+      }
+    }
   }
   if (rows.length === 0) {
     return <p className="automation-spike-muted">No step data for this run.</p>;
@@ -260,8 +391,25 @@ function SuiteCaseJiraScenarioLine({ c }) {
   return scenario;
 }
 
+function suiteCaseDeletePreviewPlainText(c) {
+  const scenario = String(c?.title || "Untitled").trim() || "Untitled";
+  const j = String(c?.jira_id || "").trim();
+  const line = j ? `${j} · ${scenario}` : scenario;
+  const s = String(line);
+  return s.length > 120 ? `${s.slice(0, 120)}…` : s;
+}
+
+function lastRunStatusToClassSuffix(status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "completed") return "pass";
+  if (s === "aborted") return "aborted";
+  if (!s || s === "running") return null;
+  return "fail";
+}
+
 function SuiteCaseRow({ c, runDisabled, onView, onRun, onAnalysis, onHistory, onDelete, isRunningInSuite }) {
   const hasSuiteAnalysis = Boolean(String(c.last_suite_analysis ?? "").trim());
+  const runColor = lastRunStatusToClassSuffix(c.last_suite_run_status);
   return (
     <li>
       <span className="automation-spike-suite-title">
@@ -302,7 +450,12 @@ function SuiteCaseRow({ c, runDisabled, onView, onRun, onAnalysis, onHistory, on
         <FloatingTooltip text="Run this saved case">
           <button
             type="button"
-            className="tc-edit-icon-btn"
+            className={[
+              "tc-edit-icon-btn",
+              runColor && `automation-spike-run-by-status--${runColor}`,
+            ]
+              .filter(Boolean)
+              .join(" ")}
             onClick={() => onRun(c)}
             disabled={runDisabled}
             aria-label="Run this saved case"
@@ -319,13 +472,13 @@ function SuiteCaseRow({ c, runDisabled, onView, onRun, onAnalysis, onHistory, on
             </svg>
           </button>
         </FloatingTooltip>
-        <FloatingTooltip text="View run analysis">
+        <FloatingTooltip text="View run analysis. This shows analysis for the last run only.">
           <button
             type="button"
             className="tc-edit-icon-btn"
             onClick={() => onAnalysis(c)}
             disabled={runDisabled || !hasSuiteAnalysis}
-            aria-label="View run analysis"
+            aria-label="View run analysis. This shows analysis for the last run only."
           >
             <svg
               width="18"
@@ -372,7 +525,7 @@ function SuiteCaseRow({ c, runDisabled, onView, onRun, onAnalysis, onHistory, on
           <button
             type="button"
             className="tc-delete-icon-btn"
-            onClick={() => onDelete(c.id)}
+            onClick={() => onDelete(c)}
             disabled={runDisabled}
             aria-label="Remove from saved suite"
           >
@@ -408,6 +561,9 @@ export function AutomationSpikeSectionCards({
   listRefreshKey = 0,
   spikeRunBusy = false,
   onSuiteRunBusyChange,
+  automationRetentionDays = null,
+  auditModalOpen = false,
+  onDismissAudit,
 }) {
   const [suiteCases, setSuiteCases] = useState([]);
   const [selectors, setSelectors] = useState([]);
@@ -429,12 +585,31 @@ export function AutomationSpikeSectionCards({
   const [suiteRunOneUrlDraft, setSuiteRunOneUrlDraft] = useState("");
   const [suiteRunOneUrlInvalid, setSuiteRunOneUrlInvalid] = useState(false);
   const [suiteRunningCaseId, setSuiteRunningCaseId] = useState(null);
+  const [suiteDeleteCase, setSuiteDeleteCase] = useState(null);
+  const [suiteReportsRecentOpen, setSuiteReportsRecentOpen] = useState(() => {
+    try {
+      return typeof localStorage !== "undefined" && localStorage.getItem(SUITE_REPORTS_RECENT_LS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [suiteReportsRecentList, setSuiteReportsRecentList] = useState([]);
+  const [suiteReportsRecentErr, setSuiteReportsRecentErr] = useState("");
+  const [suiteReportsRecentLoading, setSuiteReportsRecentLoading] = useState(false);
   const [browserSaving, setBrowserSaving] = useState(false);
   const [browserErr, setBrowserErr] = useState("");
   const [envOptionsSaving, setEnvOptionsSaving] = useState(false);
+  const [automationTimeoutDraft, setAutomationTimeoutDraft] = useState(null);
   const [envOptionsErr, setEnvOptionsErr] = useState("");
+  useEffect(() => {
+    try {
+      if (suiteReportsRecentOpen) localStorage.setItem(SUITE_REPORTS_RECENT_LS_KEY, "1");
+      else localStorage.removeItem(SUITE_REPORTS_RECENT_LS_KEY);
+    } catch {}
+  }, [suiteReportsRecentOpen]);
   const suiteRunUrlInputRef = useRef(null);
   const suiteRunOneUrlInputRef = useRef(null);
+  const suiteReportsRecentDialogRef = useRef(null);
 
   const suiteListRef = useRef(null);
   const suiteKeyForClip = useMemo(
@@ -528,6 +703,10 @@ export function AutomationSpikeSectionCards({
   }, [refreshLists, listRefreshKey]);
 
   useEffect(() => {
+    setAutomationTimeoutDraft(null);
+  }, [env?.automation_default_timeout_ms]);
+
+  useEffect(() => {
     onSuiteRunBusyChange?.(suiteBusy);
   }, [suiteBusy, onSuiteRunBusyChange]);
 
@@ -562,36 +741,6 @@ export function AutomationSpikeSectionCards({
     };
   }, [onSuiteRunBusyChange]);
 
-  const deleteCase = async (id) => {
-    if (!id) return;
-    setSuiteBusy(true);
-    setSuiteErr("");
-    try {
-      await api(`/automation/suite/${encodeURIComponent(id)}`, "DELETE");
-      await refreshLists();
-    } catch (e) {
-      setSuiteErr(e?.message || String(e));
-    } finally {
-      setSuiteBusy(false);
-    }
-  };
-
-  const openRunAllDialog = useCallback(() => {
-    setSuiteErr("");
-    setSuiteRunUrlInvalid(false);
-    setSuiteRunUrlDraft("");
-    setSuiteRunDialogOpen(true);
-  }, []);
-
-  const openRunOneCase = useCallback((c) => {
-    if (!c?.id) return;
-    setSuiteErr("");
-    setSuiteRunOneUrlInvalid(false);
-    setSuiteRunOneUrlDraft(String(c.url || "").trim());
-    setSuiteRunOneCase(c);
-    setSuiteRunOneDialogOpen(true);
-  }, []);
-
   const closeRunOneCaseDialog = useCallback(() => {
     setSuiteRunOneDialogOpen(false);
     setSuiteRunOneCase(null);
@@ -613,12 +762,259 @@ export function AutomationSpikeSectionCards({
     setSuiteHistoryRows(null);
     setSuiteHistoryErr("");
   }, []);
-  const openSuiteHistory = useCallback((c) => {
-    if (!c?.id) return;
-    setSuiteHistoryViewCase(c);
+
+  const closeSuiteReportsRecent = useCallback(() => {
+    setSuiteReportsRecentOpen(false);
+  }, []);
+
+  const closeAllSuiteOverlays = useCallback(() => {
+    setSuiteBddViewCase(null);
+    setSuiteAnalysisViewCase(null);
+    setSuiteAnalysisRunDetail(null);
+    setSuiteHistoryViewCase(null);
     setSuiteHistoryRows(null);
     setSuiteHistoryErr("");
+    setSuiteRunDialogOpen(false);
+    setSuiteRunUrlInvalid(false);
+    setSuiteRunOneDialogOpen(false);
+    setSuiteRunOneCase(null);
+    setSuiteRunOneUrlInvalid(false);
+    setSuiteDeleteCase(null);
+    setSuiteReportsRecentOpen(false);
   }, []);
+
+  const requestDeleteSuiteCase = useCallback(
+    (c) => {
+      if (!c?.id) return;
+      onDismissAudit?.();
+      closeAllSuiteOverlays();
+      setSuiteDeleteCase(c);
+    },
+    [onDismissAudit, closeAllSuiteOverlays],
+  );
+
+  const cancelDeleteSuiteCase = useCallback(() => {
+    setSuiteDeleteCase(null);
+  }, []);
+
+  const confirmDeleteSuiteCase = async () => {
+    const c = suiteDeleteCase;
+    if (!c?.id) return;
+    setSuiteDeleteCase(null);
+    setSuiteBusy(true);
+    setSuiteErr("");
+    try {
+      await api(`/automation/suite/${encodeURIComponent(c.id)}`, "DELETE");
+      await refreshLists();
+    } catch (e) {
+      setSuiteErr(e?.message || String(e));
+    } finally {
+      setSuiteBusy(false);
+    }
+  };
+
+  const openSuiteBddView = useCallback(
+    (c) => {
+      onDismissAudit?.();
+      closeAllSuiteOverlays();
+      setSuiteBddViewCase(c);
+    },
+    [onDismissAudit, closeAllSuiteOverlays],
+  );
+  const openSuiteAnalysis = useCallback(
+    (c) => {
+      onDismissAudit?.();
+      closeAllSuiteOverlays();
+      setSuiteAnalysisViewCase(c);
+    },
+    [onDismissAudit, closeAllSuiteOverlays],
+  );
+  const openSuiteHistory = useCallback(
+    (c) => {
+      if (!c?.id) return;
+      onDismissAudit?.();
+      closeAllSuiteOverlays();
+      setSuiteHistoryViewCase(c);
+      setSuiteHistoryRows(null);
+      setSuiteHistoryErr("");
+    },
+    [onDismissAudit, closeAllSuiteOverlays],
+  );
+
+  useLayoutEffect(() => {
+    if (auditModalOpen) closeAllSuiteOverlays();
+  }, [auditModalOpen, closeAllSuiteOverlays]);
+
+  useEffect(() => {
+    if (!suiteReportsRecentOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeSuiteReportsRecent();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [suiteReportsRecentOpen, closeSuiteReportsRecent]);
+
+  useLayoutEffect(() => {
+    if (!suiteReportsRecentOpen) return;
+    const id = requestAnimationFrame(() => {
+      document.getElementById("app-theme-toggle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      suiteReportsRecentDialogRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [suiteReportsRecentOpen]);
+
+  useEffect(() => {
+    const hasSuiteModal =
+      Boolean(suiteBddViewCase) ||
+      Boolean(suiteAnalysisViewCase) ||
+      Boolean(suiteHistoryViewCase) ||
+      suiteRunDialogOpen ||
+      (suiteRunOneDialogOpen && suiteRunOneCase) ||
+      Boolean(suiteDeleteCase) ||
+      suiteReportsRecentOpen;
+    if (!hasSuiteModal) return undefined;
+
+    const onDocPointerDown = (e) => {
+      if (!(e.target instanceof Node)) return;
+      const t = e.target;
+      if (suiteRunOneDialogOpen && suiteRunOneCase) {
+        const d = document.getElementById("automation-suite-run-one-url-dialog");
+        if (d?.contains(t)) return;
+        closeRunOneCaseDialog();
+        return;
+      }
+      if (suiteRunDialogOpen) {
+        const d = document.getElementById("automation-suite-run-url-dialog");
+        if (d?.contains(t)) return;
+        closeRunAllDialog();
+        return;
+      }
+      if (suiteReportsRecentOpen) {
+        const d = document.getElementById("automation-suite-reports-recent-dialog");
+        if (d?.contains(t)) return;
+        closeSuiteReportsRecent();
+        return;
+      }
+      if (suiteDeleteCase) {
+        const d = document.getElementById("automation-suite-delete-case-dialog");
+        if (d?.contains(t)) return;
+        cancelDeleteSuiteCase();
+        return;
+      }
+      if (suiteHistoryViewCase) {
+        const d = document.getElementById("automation-suite-run-history-dialog");
+        if (d?.contains(t)) return;
+        closeSuiteHistoryView();
+        return;
+      }
+      if (suiteAnalysisViewCase) {
+        const d = document.getElementById("automation-suite-analysis-dialog");
+        if (d?.contains(t)) return;
+        closeSuiteAnalysisView();
+        return;
+      }
+      if (suiteBddViewCase) {
+        const d = document.getElementById("automation-suite-bdd-view-dialog");
+        if (d?.contains(t)) return;
+        closeSuiteBddView();
+        return;
+      }
+    };
+
+    const t = window.setTimeout(() => {
+      document.addEventListener("pointerdown", onDocPointerDown, true);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener("pointerdown", onDocPointerDown, true);
+    };
+  }, [
+    suiteBddViewCase,
+    suiteAnalysisViewCase,
+    suiteHistoryViewCase,
+    suiteRunDialogOpen,
+    suiteRunOneDialogOpen,
+    suiteRunOneCase,
+    suiteDeleteCase,
+    suiteReportsRecentOpen,
+    closeSuiteBddView,
+    closeSuiteAnalysisView,
+    closeSuiteHistoryView,
+    closeRunAllDialog,
+    closeRunOneCaseDialog,
+    cancelDeleteSuiteCase,
+    closeSuiteReportsRecent,
+  ]);
+
+  useEffect(() => {
+    if (!suiteDeleteCase) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setSuiteDeleteCase(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [suiteDeleteCase]);
+
+  const openRunAllDialog = useCallback(() => {
+    onDismissAudit?.();
+    closeAllSuiteOverlays();
+    setSuiteErr("");
+    setSuiteRunUrlInvalid(false);
+    setSuiteRunUrlDraft("");
+    setSuiteRunDialogOpen(true);
+  }, [onDismissAudit, closeAllSuiteOverlays]);
+
+  const openSuiteReportsRecent = useCallback(() => {
+    onDismissAudit?.();
+    closeAllSuiteOverlays();
+    setSuiteErr("");
+    setSuiteReportsRecentOpen(true);
+  }, [onDismissAudit, closeAllSuiteOverlays]);
+
+  useEffect(() => {
+    if (!suiteReportsRecentOpen) return undefined;
+    let cancelled = false;
+    setSuiteReportsRecentErr("");
+    setSuiteReportsRecentLoading(true);
+    (async () => {
+      try {
+        const d = await api("/automation/suite-reports-recent", "GET");
+        if (cancelled) return;
+        setSuiteReportsRecentList(Array.isArray(d.reports) ? d.reports : []);
+      } catch (e) {
+        if (!cancelled) {
+          setSuiteReportsRecentList([]);
+          setSuiteReportsRecentErr(e?.message || String(e));
+        }
+      } finally {
+        if (!cancelled) setSuiteReportsRecentLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [suiteReportsRecentOpen, api]);
+
+  const openRunOneCase = useCallback(
+    (c) => {
+      if (!c?.id) return;
+      onDismissAudit?.();
+      closeAllSuiteOverlays();
+      setSuiteErr("");
+      setSuiteRunOneUrlInvalid(false);
+      setSuiteRunOneUrlDraft(String(c.url || "").trim());
+      setSuiteRunOneCase(c);
+      setSuiteRunOneDialogOpen(true);
+    },
+    [onDismissAudit, closeAllSuiteOverlays],
+  );
 
   useLayoutEffect(() => {
     if (!suiteRunDialogOpen) return;
@@ -639,6 +1035,14 @@ export function AutomationSpikeSectionCards({
     });
     return () => cancelAnimationFrame(id);
   }, [suiteRunDialogOpen]);
+
+  useEffect(() => {
+    if (!suiteRunOneDialogOpen) return undefined;
+    const id = requestAnimationFrame(() => {
+      document.getElementById("app-theme-toggle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [suiteRunOneDialogOpen]);
 
   useEffect(() => {
     if (!suiteRunDialogOpen) return;
@@ -887,7 +1291,7 @@ export function AutomationSpikeSectionCards({
           <h2>
             <span className="label-with-info">
               <span>Environment</span>
-              <FieldInfo text="Saved in the automation database. Defaults come from environment variables until you change a value here." />
+              <FieldInfo text="Saved in the automation database." />
             </span>
           </h2>
         </div>
@@ -898,12 +1302,12 @@ export function AutomationSpikeSectionCards({
                 className="automation-spike-env-grid"
                 aria-label="Automation environment"
               >
-                <span
-                  className="automation-spike-env-grid-label"
-                  id="automation-env-browser-label"
-                >
-                  Browser
-                </span>
+                    <span
+                      className="automation-spike-env-grid-label"
+                      id="automation-env-browser-label"
+                    >
+                      Browser
+                    </span>
                 <div className="automation-spike-env-grid-control">
                   <div
                     className="automation-spike-browser-radios"
@@ -1008,6 +1412,58 @@ export function AutomationSpikeSectionCards({
                     </div>
                   </Fragment>
                 ))}
+                <span
+                  className="automation-spike-env-grid-label"
+                  id="automation-env-opt-timeout"
+                >
+                  <span className="label-with-info">
+                    <span>Default Timeout (ms)</span>
+                    <FieldInfo text="Playwright default action timeout. Range 1000–600000." />
+                  </span>
+                </span>
+                <div className="automation-spike-env-grid-control">
+                  <input
+                    type="number"
+                    min={1000}
+                    max={600000}
+                    step={1000}
+                    className="automation-spike-env-timeout-input"
+                    id="automation-env-default-timeout-ms"
+                    aria-labelledby="automation-env-opt-timeout"
+                    value={
+                      automationTimeoutDraft !== null
+                        ? automationTimeoutDraft
+                        : String(
+                            typeof env.automation_default_timeout_ms === "number"
+                              ? env.automation_default_timeout_ms
+                              : 30000,
+                          )
+                    }
+                    onChange={(e) => setAutomationTimeoutDraft(e.target.value)}
+                    onBlur={() => {
+                      const cur =
+                        typeof env.automation_default_timeout_ms === "number"
+                          ? env.automation_default_timeout_ms
+                          : 30000;
+                      const raw =
+                        automationTimeoutDraft !== null
+                          ? automationTimeoutDraft
+                          : String(cur);
+                      setAutomationTimeoutDraft(null);
+                      const v = parseInt(String(raw).trim(), 10);
+                      if (Number.isNaN(v)) return;
+                      const clamped = Math.min(600000, Math.max(1000, v));
+                      if (clamped !== cur) {
+                        void onEnvOptionsChange({
+                          automation_default_timeout_ms: clamped,
+                        });
+                      }
+                    }}
+                    disabled={
+                      browserSaving || envOptionsSaving || suiteBusy || spikeRunBusy
+                    }
+                  />
+                </div>
                 {browserErr ? (
                   <p
                     className="automation-spike-err automation-spike-env-grid-alert"
@@ -1049,49 +1505,185 @@ export function AutomationSpikeSectionCards({
           </h2>
           <span className="linked-jira-tests-count">Count: {suiteCases.length}</span>
         </div>
+        {typeof automationRetentionDays === "number" ? (
+          <p className="automation-spike-saved-suite-retention" role="status">
+            {automationRetentionDays > 0 ? (
+              <>
+                Reports, Traces, Screenshots and History over{" "}
+                {automationRetentionDays}{" "}
+                {automationRetentionDays === 1 ? "day" : "days"} will be automatically deleted.
+              </>
+            ) : (
+              <>Retention: automatic removal of old run data is off.</>
+            )}
+          </p>
+        ) : null}
         {suiteErr ? <p className="automation-spike-err">{suiteErr}</p> : null}
         <div className="automation-spike-suite-actions">
-          {lastSuiteReport?.report_url ? (
-            <a
-              href={lastSuiteReport.report_url}
-              className="automation-spike-link automation-spike-suite-report-link"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Auto Test Report
-            </a>
-          ) : null}
           <div className="automation-spike-suite-actions-lead">
-            <button
-              type="button"
-              className="primary"
-              onClick={openRunAllDialog}
-              disabled={suiteBusy || suiteCases.length === 0 || spikeRunBusy}
+            {lastSuiteReport?.report_url ? (
+              <>
+                <FloatingTooltip text="Open report">
+                  <a
+                    href={lastSuiteReport.report_url}
+                    className="automation-spike-suite-report-icon-link"
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label="Open auto test report"
+                  >
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <path d="M14 2v6h6" />
+                      <path d="M16 13H8" />
+                      <path d="M16 17H8" />
+                      <path d="M10 9H8" />
+                    </svg>
+                  </a>
+                </FloatingTooltip>
+                <FloatingTooltip text="Download report">
+                  <span className="automation-spike-suite-report-dl-wrap">
+                    <InlineDownloadIconButton
+                      className="automation-spike-suite-report-dl"
+                      ariaLabel="Download report"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        void downloadUrlAsFile(
+                          lastSuiteReport.report_url,
+                          suggestedFilenameFromUrl(lastSuiteReport.report_url, "report.html"),
+                        );
+                      }}
+                    />
+                  </span>
+                </FloatingTooltip>
+              </>
+            ) : null}
+            <FloatingTooltip text="View saved auto test reports">
+              <button
+                type="button"
+                className="automation-spike-suite-recent-reports-icon-btn"
+                onClick={() => void openSuiteReportsRecent()}
+                aria-label="View recent suite run reports"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <line x1="7" y1="8" x2="16" y2="8" />
+                  <line x1="7" y1="12" x2="16" y2="12" />
+                  <line x1="7" y1="16" x2="13" y2="16" />
+                </svg>
+              </button>
+            </FloatingTooltip>
+            <FloatingTooltip
+              text={
+                suiteBusy
+                  ? "Running suite…"
+                  : "Run all tests in the saved suite, in order"
+              }
             >
-              {suiteBusy ? "Running Suite…" : "Run All"}
-            </button>
+              <button
+                type="button"
+                className="primary automation-spike-suite-run-all-icon"
+                onClick={openRunAllDialog}
+                disabled={suiteBusy || suiteCases.length === 0 || spikeRunBusy}
+                aria-busy={suiteBusy || undefined}
+                aria-label={suiteBusy ? "Running suite…" : "Run all tests in the saved suite"}
+              >
+                {suiteBusy ? (
+                  <Spinner />
+                ) : (
+                  <svg
+                    width="20"
+                    height="20"
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    aria-hidden
+                  >
+                    <path d="M3 5.5h7v2.25H3V5.5zm0 5.25h5.25V13H3v-2.25zm0 5.25H11v2.25H3V16z" />
+                    <path d="M14.5 4.5v15L24 12l-9.5-7.5z" />
+                  </svg>
+                )}
+              </button>
+            </FloatingTooltip>
             {suiteBusy ? (
               <>
-                <button
-                  type="button"
-                  className="secondary has-icon"
-                  onClick={() => void requestStopCurrentTest()}
-                  disabled={suiteStopKind !== null}
-                  aria-busy={suiteStopKind === "current"}
-                >
-                  {suiteStopKind === "current" ? <Spinner /> : null}
-                  {suiteStopKind === "current" ? "In progress…" : "Stop Current Test"}
-                </button>
-                <button
-                  type="button"
-                  className="secondary has-icon"
-                  onClick={() => void requestStopAllSuite()}
-                  disabled={suiteStopKind !== null}
-                  aria-busy={suiteStopKind === "all"}
-                >
-                  {suiteStopKind === "all" ? <Spinner /> : null}
-                  {suiteStopKind === "all" ? "In progress…" : "Stop all Tests"}
-                </button>
+                <FloatingTooltip text="Stop the current test now. The suite will continue with the next case.">
+                  <button
+                    type="button"
+                    className="automation-spike-suite-stop-icon-btn"
+                    onClick={() => void requestStopCurrentTest()}
+                    disabled={suiteStopKind !== null}
+                    aria-busy={suiteStopKind === "current"}
+                    aria-label={
+                      suiteStopKind === "current"
+                        ? "Stopping current test…"
+                        : "Stop the currently running test"
+                    }
+                  >
+                    {suiteStopKind === "current" ? (
+                      <Spinner />
+                    ) : (
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        aria-hidden
+                      >
+                        <rect x="5" y="5" width="14" height="14" rx="1.5" />
+                      </svg>
+                    )}
+                  </button>
+                </FloatingTooltip>
+                <FloatingTooltip text="Stop the whole suite run.">
+                  <button
+                    type="button"
+                    className="automation-spike-suite-stop-icon-btn"
+                    onClick={() => void requestStopAllSuite()}
+                    disabled={suiteStopKind !== null}
+                    aria-busy={suiteStopKind === "all"}
+                    aria-label={
+                      suiteStopKind === "all"
+                        ? "Stopping entire suite…"
+                        : "Stop the entire suite run"
+                    }
+                  >
+                    {suiteStopKind === "all" ? (
+                      <Spinner />
+                    ) : (
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        aria-hidden
+                      >
+                        <rect x="3" y="3" width="7" height="7" rx="1.25" />
+                        <rect x="14" y="3" width="7" height="7" rx="1.25" />
+                        <rect x="3" y="14" width="7" height="7" rx="1.25" />
+                        <rect x="14" y="14" width="7" height="7" rx="1.25" />
+                      </svg>
+                    )}
+                  </button>
+                </FloatingTooltip>
               </>
             ) : null}
           </div>
@@ -1119,11 +1711,11 @@ export function AutomationSpikeSectionCards({
                       suiteRunningCaseId && String(c.id) === String(suiteRunningCaseId),
                     )}
                     runDisabled={suiteBusy || spikeRunBusy}
-                    onView={setSuiteBddViewCase}
+                    onView={openSuiteBddView}
                     onRun={openRunOneCase}
-                    onAnalysis={setSuiteAnalysisViewCase}
+                    onAnalysis={openSuiteAnalysis}
                     onHistory={openSuiteHistory}
-                    onDelete={deleteCase}
+                    onDelete={requestDeleteSuiteCase}
                   />
                 ))}
               </ul>
@@ -1274,6 +1866,46 @@ export function AutomationSpikeSectionCards({
                   runDetail={suiteAnalysisRunDetail}
                 />
               </div>
+              {suiteAnalysisRunDetail &&
+              !suiteAnalysisRunDetail.loading &&
+              !suiteAnalysisRunDetail.fetchError &&
+              !suiteAnalysisRunDetail.noRunId &&
+              suiteAnalysisRunDetail.trace_url ? (
+                <div className="automation-spike-suite-analysis-trace-block">
+                  <div className="automation-spike-suite-analysis-section-label">Playwright Trace File</div>
+                  <div className="automation-spike-suite-analysis-trace-row">
+                    <p
+                      className="automation-spike-trace-hint automation-spike-suite-analysis-trace-hint"
+                      role="note"
+                    >
+                      Open with: <kbd className="automation-spike-kbd">npx playwright show-trace</kbd>{" "}
+                      &lt;file&gt;
+                    </p>
+                    <span
+                      className="automation-spike-step-shot-dl-wrap"
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      role="presentation"
+                    >
+                      <FloatingTooltip text="Download trace file (.zip)">
+                        <InlineDownloadIconButton
+                          className="automation-spike-step-shot-dl"
+                          ariaLabel="Download Playwright trace file"
+                          onClick={() =>
+                            void downloadUrlAsFile(
+                              suiteAnalysisRunDetail.trace_url,
+                              suggestedFilenameFromUrl(
+                                suiteAnalysisRunDetail.trace_url,
+                                "trace.zip",
+                              ),
+                            )
+                          }
+                        />
+                      </FloatingTooltip>
+                    </span>
+                  </div>
+                </div>
+              ) : null}
               <div className="automation-spike-suite-analysis-panel">
                 <div className="automation-spike-suite-analysis-panel-head">
                   <div className="automation-spike-suite-analysis-section-label">Post-Run Summary</div>
@@ -1372,6 +2004,172 @@ export function AutomationSpikeSectionCards({
             </div>
             <div className="modal-dialog-tc-edit-actions">
               <button type="button" className="secondary" onClick={closeSuiteHistoryView}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {suiteDeleteCase ? (
+        <div
+          className="modal-backdrop modal-backdrop--main-area"
+          role="presentation"
+          onClick={cancelDeleteSuiteCase}
+        >
+          <div
+            id="automation-suite-delete-case-dialog"
+            className="modal-dialog modal-dialog-tc-edit"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="automation-suite-delete-case-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-dialog-head">
+              <h2 id="automation-suite-delete-case-title" className="modal-dialog-title">
+                Remove from saved suite?
+              </h2>
+              <button
+                type="button"
+                className="modal-dialog-close"
+                onClick={cancelDeleteSuiteCase}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-dialog-tc-edit-body">
+              <p className="modal-dialog-sub">
+                This removes &quot;{suiteCaseDeletePreviewPlainText(suiteDeleteCase)}&quot; from the saved suite. This
+                cannot be undone.
+              </p>
+              <div className="modal-dialog-tc-edit-actions">
+                <button
+                  type="button"
+                  className="primary danger-btn"
+                  onClick={() => void confirmDeleteSuiteCase()}
+                  disabled={suiteBusy}
+                >
+                  Remove
+                </button>
+                <button type="button" onClick={cancelDeleteSuiteCase} disabled={suiteBusy}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {suiteReportsRecentOpen ? (
+        <div
+          className="modal-backdrop modal-backdrop--main-area"
+          role="presentation"
+          onClick={closeSuiteReportsRecent}
+        >
+          <div
+            id="automation-suite-reports-recent-dialog"
+            ref={suiteReportsRecentDialogRef}
+            className="modal-dialog modal-dialog-tc-edit automation-spike-bdd-view-modal automation-spike-suite-reports-recent-modal"
+            role="dialog"
+            tabIndex={-1}
+            aria-modal="true"
+            aria-labelledby="automation-suite-reports-recent-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-dialog-head">
+              <h2 id="automation-suite-reports-recent-title" className="modal-dialog-title">
+                Auto Test Reports
+              </h2>
+              <button
+                type="button"
+                className="modal-dialog-close"
+                onClick={closeSuiteReportsRecent}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-dialog-tc-edit-body">
+              {suiteReportsRecentErr ? (
+                <p className="automation-spike-err" role="alert">
+                  {suiteReportsRecentErr}
+                </p>
+              ) : null}
+              {suiteReportsRecentLoading ? (
+                <p className="automation-spike-muted">
+                  <Spinner /> <span>Loading…</span>
+                </p>
+              ) : suiteReportsRecentList.length === 0 && !suiteReportsRecentErr ? (
+                <p className="automation-spike-muted">No reports yet.</p>
+              ) : (
+                <div
+                  className="automation-spike-run-history-table-wrap automation-spike-suite-reports-table-wrap"
+                  role="region"
+                  aria-label="Recent suite run reports"
+                >
+                  <table className="automation-spike-run-history-table">
+                    <tbody>
+                      {suiteReportsRecentList.map((row) => (
+                        <tr key={row.name}>
+                          <td>{formatReportListAt(row.modified_at)}</td>
+                          <td>
+                            <code className="automation-spike-suite-reports-filename">{row.name}</code>
+                          </td>
+                          <td className="automation-spike-suite-reports-actions-col">
+                            <span className="automation-spike-suite-reports-actions">
+                              <FloatingTooltip text="Open report">
+                                <a
+                                  href={row.report_url}
+                                  className="automation-spike-suite-report-icon-link"
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  aria-label={`Open report ${row.name}`}
+                                >
+                                  <svg
+                                    width="20"
+                                    height="20"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    aria-hidden
+                                  >
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                    <path d="M14 2v6h6" />
+                                    <path d="M16 13H8" />
+                                    <path d="M16 17H8" />
+                                    <path d="M10 9H8" />
+                                  </svg>
+                                </a>
+                              </FloatingTooltip>
+                              <FloatingTooltip text="Download report">
+                                <span className="automation-spike-suite-report-dl-wrap">
+                                  <InlineDownloadIconButton
+                                    className="automation-spike-suite-report-dl"
+                                    ariaLabel={`Download report ${row.name}`}
+                                    onClick={() =>
+                                      void downloadUrlAsFile(
+                                        row.report_url,
+                                        suggestedFilenameFromUrl(row.report_url, row.name),
+                                      )
+                                    }
+                                  />
+                                </span>
+                              </FloatingTooltip>
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+            <div className="modal-dialog-tc-edit-actions">
+              <button type="button" onClick={closeSuiteReportsRecent}>
                 Close
               </button>
             </div>

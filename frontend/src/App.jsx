@@ -109,11 +109,14 @@ export default function App() {
   const [memoryAutomationSkelIdx, setMemoryAutomationSkelIdx] = useState(null);
   const [auditFilters, setAuditFilters] = useState({ user: "", ticket: "", action: "", jiraUser: "" });
   const [showMemoryUi, setShowMemoryUi] = useState(true);
-  const [showAutomationUi, setShowAutomationUi] = useState(true);
+  const [showJiraModeUi, setShowJiraModeUi] = useState(true);
+  const [showPasteModeUi, setShowPasteModeUi] = useState(true);
+  const [showAutoTestsUi, setShowAutoTestsUi] = useState(true);
   const [automationEnv, setAutomationEnv] = useState(null);
   const [automationListRefresh, setAutomationListRefresh] = useState(0);
   const [automationSpikeRunBusy, setAutomationSpikeRunBusy] = useState(false);
   const [automationSuiteRunBusy, setAutomationSuiteRunBusy] = useState(false);
+  const [automationRetentionDays, setAutomationRetentionDays] = useState(null);
   const [showAuditUi, setShowAuditUi] = useState(true);
   const [bootPhase, setBootPhase] = useState("loading");
   const [bootError, setBootError] = useState("");
@@ -135,11 +138,17 @@ export default function App() {
   }, [inputMode]);
 
   useEffect(() => {
-    if (!showAutomationUi && inputMode === "automation") {
-      inputModeRef.current = "jira";
-      setInputMode("jira");
+    const visible = [];
+    if (showJiraModeUi) visible.push("jira");
+    if (showPasteModeUi) visible.push("paste");
+    if (showAutoTestsUi) visible.push("automation");
+    if (visible.length === 0) return;
+    if (!visible.includes(inputMode)) {
+      const next = visible[0];
+      inputModeRef.current = next;
+      setInputMode(next);
     }
-  }, [showAutomationUi, inputMode]);
+  }, [showJiraModeUi, showPasteModeUi, showAutoTestsUi, inputMode]);
 
   useEffect(() => {
     if (!memoryPanel) setMemoryAutomationSkelIdx(null);
@@ -1130,7 +1139,12 @@ export default function App() {
         setMock(!!c.mock);
         if (typeof c.show_memory_ui === "boolean") setShowMemoryUi(c.show_memory_ui);
         if (typeof c.show_audit_ui === "boolean") setShowAuditUi(c.show_audit_ui);
-        if (typeof c.show_automation_ui === "boolean") setShowAutomationUi(c.show_automation_ui);
+        if (typeof c.show_jira_mode_ui === "boolean") setShowJiraModeUi(c.show_jira_mode_ui);
+        if (typeof c.show_paste_requirements_mode_ui === "boolean")
+          setShowPasteModeUi(c.show_paste_requirements_mode_ui);
+        if (typeof c.show_auto_tests_ui === "boolean") setShowAutoTestsUi(c.show_auto_tests_ui);
+        if (typeof c.automation_retention_days === "number")
+          setAutomationRetentionDays(c.automation_retention_days);
         try {
           const er = await fetch("/api/automation/env").then((r) => (r.ok ? r.json() : null));
           if (er && typeof er === "object") setAutomationEnv(er);
@@ -1347,7 +1361,12 @@ export default function App() {
 
   useEffect(() => {
     if (!useKeycloak || !oidcUser) return undefined;
-    if (isAnyGenBusy(busy)) return undefined;
+    if (
+      isAnyGenBusy(busy) ||
+      automationSpikeRunBusy ||
+      automationSuiteRunBusy
+    )
+      return undefined;
     const idleMs = idleMinutes * 60 * 1000;
     let last = Date.now();
     const bump = () => {
@@ -1364,7 +1383,15 @@ export default function App() {
       events.forEach((e) => window.removeEventListener(e, bump));
       window.clearInterval(iv);
     };
-  }, [useKeycloak, oidcUser, idleMinutes, busy, redirectToKeycloakLogin]);
+  }, [
+    useKeycloak,
+    oidcUser,
+    idleMinutes,
+    busy,
+    automationSpikeRunBusy,
+    automationSuiteRunBusy,
+    redirectToKeycloakLogin,
+  ]);
 
   useEffect(() => {
     if (bootPhase !== "ready" || !oidcUser || !useKeycloak) return;
@@ -2174,52 +2201,62 @@ export default function App() {
           ) : null}
 
           <div className="card form-card">
-            <div className="mode-switch" role="tablist" aria-label="Requirement source">
-              <button
-                type="button"
-                role="tab"
-                aria-selected={inputMode === "jira"}
-                className={`mode-tab${inputMode === "jira" ? " active" : ""}`}
-                onClick={() => {
-                  if (inputMode === "jira") return;
-                  inputModeRef.current = "jira";
-                  setInputMode("jira");
-                  resetWorkspaceOnInputModeChange();
-                }}
-              >
-                JIRA
-              </button>
-              <button
-                type="button"
-                role="tab"
-                aria-selected={inputMode === "paste"}
-                className={`mode-tab${inputMode === "paste" ? " active" : ""}`}
-                onClick={() => {
-                  if (inputMode === "paste") return;
-                  inputModeRef.current = "paste";
-                  setInputMode("paste");
-                  resetWorkspaceOnInputModeChange();
-                }}
-              >
-                Paste Requirements
-              </button>
-              {showAutomationUi ? (
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={inputMode === "automation"}
-                  className={`mode-tab${inputMode === "automation" ? " active" : ""}`}
-                  onClick={() => {
-                    if (inputMode === "automation") return;
-                    inputModeRef.current = "automation";
-                    setInputMode("automation");
-                    resetWorkspaceOnInputModeChange();
-                  }}
-                >
-                  Auto Tests
-                </button>
-              ) : null}
-            </div>
+            {showJiraModeUi || showPasteModeUi || showAutoTestsUi ? (
+              <div className="mode-switch" role="tablist" aria-label="Requirement source">
+                {showJiraModeUi ? (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={inputMode === "jira"}
+                    className={`mode-tab${inputMode === "jira" ? " active" : ""}`}
+                    onClick={() => {
+                      if (inputMode === "jira") return;
+                      inputModeRef.current = "jira";
+                      setInputMode("jira");
+                      resetWorkspaceOnInputModeChange();
+                    }}
+                  >
+                    JIRA
+                  </button>
+                ) : null}
+                {showPasteModeUi ? (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={inputMode === "paste"}
+                    className={`mode-tab${inputMode === "paste" ? " active" : ""}`}
+                    onClick={() => {
+                      if (inputMode === "paste") return;
+                      inputModeRef.current = "paste";
+                      setInputMode("paste");
+                      resetWorkspaceOnInputModeChange();
+                    }}
+                  >
+                    Paste Requirements
+                  </button>
+                ) : null}
+                {showAutoTestsUi ? (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={inputMode === "automation"}
+                    className={`mode-tab${inputMode === "automation" ? " active" : ""}`}
+                    onClick={() => {
+                      if (inputMode === "automation") return;
+                      inputModeRef.current = "automation";
+                      setInputMode("automation");
+                      resetWorkspaceOnInputModeChange();
+                    }}
+                  >
+                    Auto Tests
+                  </button>
+                ) : null}
+              </div>
+            ) : (
+              <p className="form-hint-warn" role="status">
+                No requirement mode is enabled in server configuration.
+              </p>
+            )}
             <fieldset
               disabled={generatingTestCases && inputMode !== "automation"}
               className="form-card-fieldset"
@@ -2319,7 +2356,7 @@ export default function App() {
                   roundsInputId="agenticRoundsPaste"
                 />
               </>
-            ) : inputMode === "automation" && showAutomationUi ? (
+            ) : inputMode === "automation" && showAutoTestsUi ? (
               <AutomationSpikePanel
                 api={api}
                 onListsChanged={() => setAutomationListRefresh((n) => n + 1)}
@@ -2583,7 +2620,7 @@ export default function App() {
             </fieldset>
           </div>
 
-          {inputMode === "automation" && showAutomationUi ? (
+          {inputMode === "automation" && showAutoTestsUi ? (
             <AutomationSpikeSectionCards
               api={api}
               env={automationEnv}
@@ -2591,6 +2628,9 @@ export default function App() {
               listRefreshKey={automationListRefresh}
               spikeRunBusy={automationSpikeRunBusy}
               onSuiteRunBusyChange={setAutomationSuiteRunBusy}
+              automationRetentionDays={automationRetentionDays}
+              auditModalOpen={auditModalOpen}
+              onDismissAudit={() => setAuditModalOpen(false)}
             />
           ) : null}
 

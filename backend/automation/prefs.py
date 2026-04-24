@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from settings import settings
+
 from .store import get_automation_kv
 
 _BROWSER_PICK: frozenset[str] = frozenset({"chromium", "chrome", "firefox", "msedge"})
 
-# First-run values when `automation_kv` has no row. User choices are persisted in DB via the UI
-# (POST /api/automation/browser, /api/automation/env-options). Intentionally not read from .env.
+# First-run when `automation_kv` has no row: user choices are persisted in DB via
+# POST /api/automation/browser and /api/automation/env-options, with fallbacks from settings
+# (optional .env) for `default_timeout_ms` alongside browser/headless/etc. Post-run analysis uses `settings` only.
 _DEFAULT_BROWSER = "chromium"  # bundled Chromium
 _DEFAULT_HEADLESS = False  # show browser
 _DEFAULT_SCREENSHOT_ON_PASS = False
@@ -37,3 +40,18 @@ def get_effective_automation_screenshot_on_pass() -> bool:
 
 def get_effective_automation_trace_file_generation() -> bool:
     return _get_bool_from_kv_or_default("trace_file_generation", _DEFAULT_TRACE_FILE_GENERATION)
+
+
+def get_effective_automation_post_analysis() -> bool:
+    return bool(settings.automation_post_analysis)
+
+
+def get_effective_automation_default_timeout_ms() -> int:
+    raw = get_automation_kv("default_timeout_ms")
+    if raw is None or not str(raw).strip():
+        return int(settings.automation_default_timeout_ms)
+    try:
+        n = int(str(raw).strip())
+    except ValueError:
+        return int(settings.automation_default_timeout_ms)
+    return min(max(n, 1000), 600_000)

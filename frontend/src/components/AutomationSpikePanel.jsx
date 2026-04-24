@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { FieldInfo, Spinner } from "./common";
+import {
+  FieldInfo,
+  FloatingTooltip,
+  InlineDownloadIconButton,
+  Spinner,
+  downloadUrlAsFile,
+  suggestedFilenameFromUrl,
+} from "./common";
+import {
+  AutomationRunStepScreenshot,
+  getFirstFailingStepShotAccordionId,
+  stepShotAccordionId,
+} from "./AutomationRunStepScreenshot";
 
 function spikeRunStatusDisplay(status) {
   const s = String(status || "").toLowerCase();
@@ -39,6 +51,8 @@ export function AutomationSpikePanel({
   const [startUrlInvalid, setStartUrlInvalid] = useState(false);
   const [startBddInvalid, setStartBddInvalid] = useState(false);
   const [stopInProgress, setStopInProgress] = useState(false);
+  const [analysisExpandedShotId, setAnalysisExpandedShotId] = useState(null);
+  const analysisShotRunInited = useRef(null);
   const scenarioInputRef = useRef(null);
   const urlInputRef = useRef(null);
   const bddTextareaRef = useRef(null);
@@ -66,6 +80,27 @@ export function AutomationSpikePanel({
     };
   }, [onSpikeRunBusyChange]);
 
+  useEffect(() => {
+    const rid = result?.run_id;
+    if (rid == null) {
+      setAnalysisExpandedShotId(null);
+      analysisShotRunInited.current = null;
+      return;
+    }
+    const ridS = String(rid);
+    if (analysisShotRunInited.current !== ridS) {
+      analysisShotRunInited.current = ridS;
+      setAnalysisExpandedShotId(
+        getFirstFailingStepShotAccordionId(rid, result?.steps) ?? null,
+      );
+      return;
+    }
+    setAnalysisExpandedShotId((prev) => {
+      if (prev != null) return prev;
+      return getFirstFailingStepShotAccordionId(rid, result?.steps) ?? null;
+    });
+  }, [result?.run_id, result?.steps]);
+
   const formLocked = busy || suiteRunBusy;
 
   const run = async () => {
@@ -91,6 +126,7 @@ export function AutomationSpikePanel({
       title: title.trim(),
       bdd,
       url: u,
+      jira_id: jiraId.trim(),
     };
     try {
       const out = await api("/automation/spike-run", "POST", body);
@@ -361,26 +397,57 @@ export function AutomationSpikePanel({
                 <div className="automation-spike-run-artifact">
                   <span className="automation-spike-run-artifact-label">Trace</span>
                   <div className="automation-spike-run-artifact-body">
-                    <a href={result.trace_url} className="automation-spike-link">
-                      Download Trace File
-                    </a>
-                    <p className="automation-spike-trace-hint" role="note">
-                      Open with: <kbd className="automation-spike-kbd">npx playwright show-trace</kbd> &lt;file&gt;
-                    </p>
+                    <div className="automation-spike-run-artifact-trace-line">
+                      <FloatingTooltip
+                        text="Download trace file (.zip)"
+                        wrapClassName="automation-spike-trace-dl-tooltip-wrap"
+                      >
+                        <InlineDownloadIconButton
+                          className="automation-spike-run-artifact-dl"
+                          ariaLabel="Download Playwright trace file"
+                          onClick={() =>
+                            void downloadUrlAsFile(
+                              result.trace_url,
+                              suggestedFilenameFromUrl(result.trace_url, "trace.zip"),
+                            )
+                          }
+                        />
+                      </FloatingTooltip>
+                      <p
+                        className="automation-spike-trace-hint automation-spike-trace-hint--inline"
+                        role="note"
+                      >
+                        Open with: <kbd className="automation-spike-kbd">npx playwright show-trace</kbd>{" "}
+                        &lt;file&gt;
+                      </p>
+                    </div>
                   </div>
                 </div>
               ) : null}
               {result.report_url ? (
                 <div className="automation-spike-run-artifact">
                   <span className="automation-spike-run-artifact-label">Report</span>
-                  <div className="automation-spike-run-artifact-body">
+                  <div className="automation-spike-run-artifact-body automation-spike-run-artifact-body--with-dl">
+                    <FloatingTooltip text="Download report">
+                      <InlineDownloadIconButton
+                        className="automation-spike-run-artifact-dl"
+                        ariaLabel="Download report"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          void downloadUrlAsFile(
+                            result.report_url,
+                            suggestedFilenameFromUrl(result.report_url, "report.html"),
+                          );
+                        }}
+                      />
+                    </FloatingTooltip>
                     <a
                       href={result.report_url}
                       className="automation-spike-link automation-spike-link--external"
                       target="_blank"
                       rel="noreferrer"
                     >
-                      Open HTML report
+                      Open Report
                     </a>
                   </div>
                 </div>
@@ -418,7 +485,12 @@ export function AutomationSpikePanel({
                   <div className="automation-spike-analysis-steps">
                     <p className="automation-spike-analysis-steps-label">Displayed Selectors</p>
                     <ol className="automation-spike-steps">
-                      {result.steps.map((s) => (
+                      {[...result.steps]
+                        .sort(
+                          (a, b) =>
+                            Number(a?.step_index ?? 0) - Number(b?.step_index ?? 0),
+                        )
+                        .map((s) => (
                         <li key={s.step_index} className={s.pass ? "is-pass" : "is-fail"}>
                           <code>{s.selector}</code> — {s.action}
                           {s.actual_text != null && s.actual_text !== "" ? (
@@ -427,7 +499,18 @@ export function AutomationSpikePanel({
                               — text: {s.actual_text.length > 200 ? `${s.actual_text.slice(0, 200)}…` : s.actual_text}
                             </span>
                           ) : null}
-                          {s.err ? <span className="automation-spike-err"> — {s.err}</span> : null}
+                          {s.err && !/^skipped \(previous step failed\)$/i.test(String(s.err).trim()) ? (
+                            <span className="automation-spike-err"> — {s.err}</span>
+                          ) : null}
+                          <div className="automation-spike-step-shot-wrap">
+                            <AutomationRunStepScreenshot
+                              runId={result?.run_id}
+                              step={s}
+                              accordionId={stepShotAccordionId(result?.run_id, s, 0)}
+                              expandedAccordionId={analysisExpandedShotId}
+                              onExpandedAccordionChange={setAnalysisExpandedShotId}
+                            />
+                          </div>
                         </li>
                       ))}
                     </ol>

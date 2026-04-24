@@ -955,6 +955,19 @@ button.logout-icon-btn:focus-visible {
   gap: 0.25rem;
 }
 
+.automation-spike-run-artifact-body--with-dl {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.5rem;
+  row-gap: 0.2rem;
+}
+
+button.automation-spike-run-artifact-dl.req-attach-dl {
+  margin: 0;
+  align-self: center;
+}
+
 .automation-spike-run-artifact-body .automation-spike-link,
 .automation-spike-run-artifact-body .automation-spike-link:visited,
 .automation-spike-run-artifact-body .automation-spike-link:any-link {
@@ -980,12 +993,33 @@ button.logout-icon-btn:focus-visible {
   margin-left: 0.1em;
 }
 
+/* Row: icon + "Open with…" on one line; tooltip anchor is not stretched (was full-width in column flex). */
+.automation-spike-run-artifact-trace-line {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 0.65rem;
+  row-gap: 0.25rem;
+  min-width: 0;
+}
+
+.field-info-wrap.automation-spike-trace-dl-tooltip-wrap {
+  flex-shrink: 0;
+  align-self: center;
+}
+
 .automation-spike-result .automation-spike-trace-hint {
   display: block;
   margin: 0;
   font-size: 0.7rem;
   line-height: 1.4;
   color: var(--muted);
+}
+
+.automation-spike-result .automation-spike-trace-hint.automation-spike-trace-hint--inline {
+  flex: 1 1 12rem;
+  min-width: 0;
 }
 
 .automation-spike-kbd {
@@ -1086,7 +1120,8 @@ button.logout-icon-btn:focus-visible {
   gap: 0.65rem;
   min-width: 0;
   padding: 0.7rem 0.85rem 0.8rem;
-  max-height: min(50vh, 22rem);
+  /* Was min(50vh, 22rem) — too short; screenshots in nested scroll were almost unusable. */
+  max-height: min(86vh, 60rem);
   overflow-y: auto;
   overflow-x: hidden;
   background: color-mix(in srgb, var(--card-bg) 97%, var(--border));
@@ -1180,6 +1215,15 @@ button.logout-icon-btn:focus-visible {
   font-weight: inherit;
 }
 
+.automation-spike-saved-suite-retention {
+  margin: 0.75rem 0 0.5rem;
+  font-size: 0.8rem;
+  color: var(--warn-text);
+  background: none;
+  padding: 0;
+  border: none;
+}
+
 .automation-spike-suite-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1199,17 +1243,167 @@ button.logout-icon-btn:focus-visible {
   margin-left: auto;
 }
 
-.automation-spike-suite-report-link {
+a.automation-spike-suite-report-icon-link {
   flex-shrink: 0;
-  font-size: 0.95rem;
-  font-weight: 400;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--link) 40%, var(--card-border));
+  border-radius: 8px;
   color: var(--link);
-  text-decoration: underline;
-  text-underline-offset: 0.15em;
+  background: var(--card-bg, transparent);
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.automation-spike-suite-report-link:hover {
-  color: var(--copy);
+a.automation-spike-suite-report-icon-link:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--link) 12%, transparent);
+  border-color: color-mix(in srgb, var(--link) 55%, var(--card-border));
+}
+
+a.automation-spike-suite-report-icon-link:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.automation-spike-suite-report-dl-wrap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+button.automation-spike-suite-report-dl.req-attach-dl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  border: 1px solid color-mix(in srgb, var(--link) 40%, var(--card-border));
+  border-radius: 8px;
+  color: var(--link);
+  background: var(--card-bg, transparent);
+  line-height: 0;
+}
+
+button.automation-spike-suite-report-dl.req-attach-dl:hover:not(:disabled) {
+  color: var(--text);
+  background: color-mix(in srgb, var(--link) 12%, transparent);
+  border-color: color-mix(in srgb, var(--link) 55%, var(--card-border));
+}
+
+button.automation-spike-suite-report-dl.req-attach-dl:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+button.automation-spike-suite-run-all-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.4rem;
+  min-height: 2.4rem;
+  padding: 0.45rem;
+  border: none;
+  border-radius: 8px;
+  line-height: 0;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.08);
+}
+
+button.automation-spike-suite-run-all-icon .spinner {
+  color: #fff;
+}
+
+button.automation-spike-suite-recent-reports-icon-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--link) 40%, var(--card-border));
+  border-radius: 8px;
+  line-height: 0;
+  color: var(--link);
+  background: var(--card-bg, transparent);
+  -webkit-tap-highlight-color: transparent;
+}
+
+button.automation-spike-suite-recent-reports-icon-btn:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--link) 12%, transparent);
+  border-color: color-mix(in srgb, var(--link) 55%, var(--card-border));
+}
+
+button.automation-spike-suite-recent-reports-icon-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button.automation-spike-suite-stop-icon-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.4rem;
+  min-height: 2.4rem;
+  padding: 0.45rem;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  line-height: 0;
+  background: var(--secondary-bg);
+  color: var(--secondary-text, var(--text));
+  -webkit-tap-highlight-color: transparent;
+}
+
+button.automation-spike-suite-stop-icon-btn:hover:not(:disabled) {
+  filter: brightness(0.98);
+  border-color: color-mix(in srgb, var(--text) 12%, var(--card-border));
+}
+
+button.automation-spike-suite-stop-icon-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+button.automation-spike-suite-stop-icon-btn[aria-busy="true"]:disabled {
+  opacity: 1;
+  cursor: wait;
+}
+
+button.automation-spike-suite-stop-icon-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.automation-spike-suite-reports-filename {
+  font-size: 0.7rem;
+  font-weight: 500;
+  word-break: break-all;
+}
+
+.automation-spike-suite-reports-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.automation-spike-suite-reports-actions-col {
+  width: 1%;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.automation-spike-suite-reports-recent-modal .modal-dialog-tc-edit-body {
+  max-height: min(60vh, 28rem);
+  overflow: auto;
 }
 
 .automation-spike-suite-linked-wrap,
@@ -1450,6 +1644,12 @@ button.logout-icon-btn:focus-visible {
   font-size: 0.72rem;
 }
 
+input.automation-spike-env-timeout-input {
+  max-width: 9rem;
+  width: 100%;
+  min-width: 0;
+}
+
 .automation-spike-env-options-err {
   margin: 0.2rem 0 0 !important;
 }
@@ -1544,6 +1744,85 @@ button.logout-icon-btn:focus-visible {
   margin-top: 0;
 }
 
+.automation-spike-suite-item-actions
+  .tc-edit-icon-btn.automation-spike-run-by-status--pass {
+  color: #166534;
+  background: color-mix(in srgb, #22c55e 12%, var(--card-bg));
+  border-color: color-mix(in srgb, #22c55e 35%, var(--card-border));
+}
+.automation-spike-suite-item-actions
+  .tc-edit-icon-btn.automation-spike-run-by-status--pass:hover:not(:disabled) {
+  color: #14532d;
+  background: color-mix(in srgb, #22c55e 18%, var(--card-bg));
+  border-color: color-mix(in srgb, #22c55e 40%, var(--card-border));
+}
+.automation-spike-suite-item-actions
+  .tc-edit-icon-btn.automation-spike-run-by-status--fail {
+  color: #b91c1c;
+  background: color-mix(in srgb, #ef4444 12%, var(--card-bg));
+  border-color: color-mix(in srgb, #ef4444 35%, var(--card-border));
+}
+.automation-spike-suite-item-actions
+  .tc-edit-icon-btn.automation-spike-run-by-status--fail:hover:not(:disabled) {
+  color: #991b1b;
+  background: color-mix(in srgb, #ef4444 18%, var(--card-bg));
+  border-color: color-mix(in srgb, #ef4444 40%, var(--card-border));
+}
+.automation-spike-suite-item-actions
+  .tc-edit-icon-btn.automation-spike-run-by-status--aborted {
+  color: #b45309;
+  background: color-mix(in srgb, #f59e0b 14%, var(--card-bg));
+  border-color: color-mix(in srgb, #f59e0b 30%, var(--card-border));
+}
+.automation-spike-suite-item-actions
+  .tc-edit-icon-btn.automation-spike-run-by-status--aborted:hover:not(:disabled) {
+  color: #92400e;
+  background: color-mix(in srgb, #f59e0b 20%, var(--card-bg));
+  border-color: color-mix(in srgb, #f59e0b 35%, var(--card-border));
+}
+[data-theme="dark"]
+  .automation-spike-suite-item-actions
+  .tc-edit-icon-btn.automation-spike-run-by-status--pass {
+  color: #86efac;
+  background: color-mix(in srgb, #22c55e 16%, var(--card-bg));
+  border-color: color-mix(in srgb, #22c55e 30%, var(--card-border));
+}
+[data-theme="dark"]
+  .automation-spike-suite-item-actions
+  .tc-edit-icon-btn.automation-spike-run-by-status--pass:hover:not(:disabled) {
+  color: #bbf7d0;
+  background: color-mix(in srgb, #22c55e 22%, var(--card-bg));
+  border-color: color-mix(in srgb, #22c55e 36%, var(--card-border));
+}
+[data-theme="dark"]
+  .automation-spike-suite-item-actions
+  .tc-edit-icon-btn.automation-spike-run-by-status--fail {
+  color: #fecaca;
+  background: color-mix(in srgb, #ef4444 14%, var(--card-bg));
+  border-color: color-mix(in srgb, #ef4444 28%, var(--card-border));
+}
+[data-theme="dark"]
+  .automation-spike-suite-item-actions
+  .tc-edit-icon-btn.automation-spike-run-by-status--fail:hover:not(:disabled) {
+  color: #fff;
+  background: color-mix(in srgb, #ef4444 20%, var(--card-bg));
+  border-color: color-mix(in srgb, #ef4444 32%, var(--card-border));
+}
+[data-theme="dark"]
+  .automation-spike-suite-item-actions
+  .tc-edit-icon-btn.automation-spike-run-by-status--aborted {
+  color: #fdba74;
+  background: color-mix(in srgb, #f59e0b 16%, var(--card-bg));
+  border-color: color-mix(in srgb, #f59e0b 26%, var(--card-border));
+}
+[data-theme="dark"]
+  .automation-spike-suite-item-actions
+  .tc-edit-icon-btn.automation-spike-run-by-status--aborted:hover:not(:disabled) {
+  color: #ffedd5;
+  background: color-mix(in srgb, #f59e0b 22%, var(--card-bg));
+  border-color: color-mix(in srgb, #f59e0b 32%, var(--card-border));
+}
+
 .automation-spike-bdd-view-scenario {
   margin: 0 0 0.65rem;
   font-size: 0.78rem;
@@ -1586,6 +1865,40 @@ button.logout-icon-btn:focus-visible {
   word-break: break-word;
 }
 
+.automation-spike-suite-analysis-trace-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-width: 0;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: var(--card-bg);
+  box-sizing: border-box;
+}
+
+.automation-spike-suite-analysis-trace-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.5rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding-right: 0.05rem;
+}
+
+.automation-spike-suite-analysis-trace-hint,
+.automation-spike-suite-analysis-trace-block .automation-spike-trace-hint {
+  display: block;
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
 .automation-spike-suite-analysis-bdd-block {
   display: flex;
   flex-direction: column;
@@ -1605,8 +1918,9 @@ button.logout-icon-btn:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: min(40vh, 16rem);
-  overflow: auto;
+  /* Let the parent Analysis panel / modal body scroll; nested max-height was clipping tall screenshots. */
+  max-height: none;
+  overflow: visible;
   padding: 0.5rem 0.65rem;
   border: 1px solid var(--card-border);
   border-radius: 8px;
@@ -1615,9 +1929,10 @@ button.logout-icon-btn:focus-visible {
   line-height: 1.45;
 }
 
-/* ~4 BDD step rows visible; remainder scrolls (Analysis modal only) */
+/* View Analysis modal: one scroll (dialog body) — step list is not a separate tiny viewport. */
 .automation-spike-suite-analysis-bdd-block .automation-spike-analysis-steps {
-  max-height: min(11.5rem, 38vh);
+  max-height: none;
+  overflow: visible;
 }
 
 .automation-spike-analysis-step {
@@ -1682,6 +1997,101 @@ button.logout-icon-btn:focus-visible {
   font-style: normal;
 }
 
+.automation-spike-step-shot {
+  margin-top: 0.4rem;
+  max-width: 100%;
+}
+
+.automation-spike-step-shot > .automation-spike-step-shot-summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--link);
+  user-select: none;
+}
+
+.automation-spike-step-shot > .automation-spike-step-shot-summary::-webkit-details-marker {
+  display: none;
+}
+
+.automation-spike-step-shot[open] > .automation-spike-step-shot-summary {
+  color: var(--text);
+}
+
+.automation-spike-step-shot > .automation-spike-step-shot-summary--row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.5rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding-right: 0.05rem;
+}
+
+.automation-spike-step-shot-summary-text {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.automation-spike-step-shot-dl-wrap {
+  flex-shrink: 0;
+  line-height: 0;
+}
+
+.automation-spike-step-shot-body {
+  margin-top: 0.35rem;
+  padding: 0.4rem;
+  max-width: 100%;
+  max-height: min(75vh, 48rem);
+  overflow: auto;
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--card-bg) 88%, var(--text));
+  box-sizing: border-box;
+}
+
+/* Screenshot dimensions drive the box once the image has loaded and the Screenshot section is open */
+.automation-spike-step-shot-body--fit {
+  min-width: 0;
+  box-sizing: border-box;
+  /* Prefer showing the full capture width when the column allows. */
+  width: 100%;
+  max-width: 100%;
+}
+
+.automation-spike-step-shot-body--fit .automation-spike-step-shot-img {
+  max-width: 100%;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+}
+
+.automation-spike-step-shot-img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.automation-spike-step-shot-missing {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.automation-spike-step-shot-wrap {
+  margin: 0.4rem 0 0.15rem 0;
+  padding: 0;
+  max-width: 100%;
+}
+
+.automation-spike-analysis-panel .automation-spike-step-shot-wrap,
+.automation-spike-analysis-panel .automation-spike-step-shot-wrap .automation-spike-step-shot {
+  max-width: min(100%, 48rem);
+}
+
 .automation-spike-suite-analysis-panel {
   display: flex;
   flex-direction: column;
@@ -1738,7 +2148,8 @@ button.logout-icon-btn:focus-visible {
 }
 
 .automation-spike-suite-analysis-modal .modal-dialog-tc-edit-body {
-  max-height: min(70vh, 32rem);
+  max-height: min(88dvh, 56rem);
+  max-height: min(88vh, 56rem);
   min-width: 0;
   overflow-x: auto;
   overflow-y: auto;
@@ -2106,6 +2517,24 @@ button.automation-spike-iconbtn:disabled {
 
 .modal-dialog.automation-spike-bdd-view-modal {
   max-width: min(52rem, 100%);
+}
+
+.modal-dialog.modal-dialog-tc-edit.automation-spike-suite-analysis-modal {
+  width: 100%;
+  max-width: 100%;
+  max-height: min(92vh, 720px);
+  max-height: min(92dvh, 720px);
+  height: auto;
+  box-shadow: 0 16px 56px rgba(0, 0, 0, 0.28);
+}
+
+.modal-backdrop--main-area .modal-dialog.modal-dialog-tc-edit.automation-spike-suite-analysis-modal {
+  width: 100%;
+  max-width: 100%;
+  max-height: min(92vh, max(0px, calc(100vh - 10rem)), calc(100% - 2rem));
+  max-height: min(92dvh, max(0px, calc(100dvh - 10rem)), calc(100% - 2rem));
+  height: auto;
+  min-height: 0;
 }
 
 .modal-dialog.modal-dialog-automation-skel {

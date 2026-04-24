@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import html
-import json
 import uuid
 from pathlib import Path
 from typing import Any
@@ -11,6 +9,7 @@ from settings import settings
 from . import cancel
 from . import suite_state
 from .errors import SpikeUserError
+from .run_report_html import render_batch_report_html
 from .spike import run_automation_spike
 from .store import (
     append_suite_case_run_history,
@@ -43,8 +42,8 @@ def run_suite_sequential(
     report_id = str(uuid.uuid4())
     p = Path(settings.automation_reports_dir) / f"{report_id}.html"
     p.parent.mkdir(parents=True, exist_ok=True)
-    rows: list[str] = []
     results: list[dict] = []
+    batch_cases: list[dict[str, Any]] = []
     d_url = (default_url or "").strip()
     single_target = len(to_run) == 1 and bool(want)
     for c in to_run:
@@ -64,6 +63,7 @@ def run_suite_sequential(
                 str(c.get("bdd") or ""),
                 u_run,
                 html_dom=(c.get("html_dom") or None),
+                jira_id=str(c.get("jira_id") or ""),
             )
             st = "PASS" if r.get("status") == "completed" else "FAIL"
             rid = r.get("run_id", "")
@@ -104,9 +104,6 @@ def run_suite_sequential(
             set_suite_case_last_run_id_only(cid, str(rid).strip())
         if cid:
             append_suite_case_run_history(cid, str(rid or ""), st)
-        rows.append(
-            f"<tr><td>{html.escape(t, quote=True)}</td><td>{st}</td><td><code>{html.escape(rid, quote=True)}</code></td></tr>"
-        )
         results.append(
             {
                 "case_id": cid,
@@ -116,14 +113,30 @@ def run_suite_sequential(
                 "status": r.get("status", "failed"),
             }
         )
-    body = f"""<!DOCTYPE html><html><head><meta charset="utf-8"><title>Suite {report_id[:8]}</title>
-<style>table{{border-collapse:collapse}}td,th{{border:1px solid #ccc;padding:4px 8px;font-family:system-ui}}</style>
-</head><body><h1>Automation suite</h1><p>Report id: {html.escape(report_id, quote=True)}</p>
-<p>Cases in suite: {len(all_cases)} — cases run: {len(to_run)}</p>
-<table><thead><tr><th>Title</th><th>Result</th><th>Run id</th></tr></thead><tbody>
-{"".join(rows)}</tbody></table>
-<h2>JSON</h2><pre style="background:#f5f5f5;padding:8px;overflow:auto">{html.escape(json.dumps(results, ensure_ascii=False, indent=2), quote=True)}</pre>
-</body></html>"""
+        tru = r.get("trace_url")
+        trace_href = tru if isinstance(tru, str) and tru.strip() else None
+        batch_cases.append(
+            {
+                "run_id": str(rid or ""),
+                "title": t,
+                "bdd": str(c.get("bdd") or ""),
+                "url": u_run,
+                "ok": st == "PASS",
+                "case_status": st,
+                "steps": r.get("steps") or [],
+                "debug_logs": r.get("debug_logs") or [],
+                "analysis": str(r.get("analysis") or ""),
+                "jira_id": str(c.get("jira_id") or ""),
+                "trace_href": trace_href,
+            }
+        )
+    if batch_cases:
+        body = render_batch_report_html(report_id, batch_cases)
+    else:
+        body = (
+            f"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"/>"
+            '<title>Report</title></head><body><p>No cases in this run.</p></body></html>'
+        )
     p.write_text(body, encoding="utf-8")
     report_url = f"/api/automation/suite-reports/{p.name}"
     return {

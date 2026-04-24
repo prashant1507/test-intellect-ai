@@ -56,7 +56,9 @@ from requirement_images import merge_and_validate
 from automation import routes as automation_routes
 from automation.prefs import (
     get_effective_automation_browser,
+    get_effective_automation_default_timeout_ms,
     get_effective_automation_headless,
+    get_effective_automation_post_analysis,
     get_effective_automation_screenshot_on_pass,
     get_effective_automation_trace_file_generation,
 )
@@ -294,7 +296,9 @@ class ConfigResponse(BaseModel):
     mock: bool = False
     show_memory_ui: bool = True
     show_audit_ui: bool = True
-    show_automation_ui: bool = True
+    show_jira_mode_ui: bool = True
+    show_paste_requirements_mode_ui: bool = True
+    show_auto_tests_ui: bool = True
     use_keycloak: bool = False
     keycloak_url: str = ""
     keycloak_realm: str = ""
@@ -308,6 +312,9 @@ class ConfigResponse(BaseModel):
     automation_headless: bool = False
     automation_screenshot_on_pass: bool = False
     automation_trace_file_generation: bool = False
+    automation_post_analysis: bool = True
+    automation_default_timeout_ms: int = 30_000
+    automation_retention_days: int = 20
 
 
 def _req_snapshot(d: dict) -> str:
@@ -804,7 +811,9 @@ def get_config():
         mock=s.mock,
         show_memory_ui=s.show_memory_ui,
         show_audit_ui=s.show_audit_ui,
-        show_automation_ui=s.show_automation_ui,
+        show_jira_mode_ui=s.show_jira_mode_ui,
+        show_paste_requirements_mode_ui=s.show_paste_requirements_mode_ui,
+        show_auto_tests_ui=s.show_auto_tests_ui,
         use_keycloak=s.use_keycloak,
         keycloak_url=_strip(s.keycloak_url),
         keycloak_realm=_strip(s.keycloak_realm),
@@ -817,6 +826,9 @@ def get_config():
         automation_headless=get_effective_automation_headless(),
         automation_screenshot_on_pass=get_effective_automation_screenshot_on_pass(),
         automation_trace_file_generation=get_effective_automation_trace_file_generation(),
+        automation_post_analysis=get_effective_automation_post_analysis(),
+        automation_default_timeout_ms=get_effective_automation_default_timeout_ms(),
+        automation_retention_days=s.automation_retention_days,
     )
 
 

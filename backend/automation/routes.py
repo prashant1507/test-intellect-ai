@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Literal
 
@@ -17,7 +18,9 @@ from .errors import SpikeUserError
 from .spike import run_automation_spike_async
 from .prefs import (
     get_effective_automation_browser,
+    get_effective_automation_default_timeout_ms,
     get_effective_automation_headless,
+    get_effective_automation_post_analysis,
     get_effective_automation_screenshot_on_pass,
     get_effective_automation_trace_file_generation,
 )
@@ -58,8 +61,9 @@ def _run_detail(row: dict, steps: list) -> dict[str, Any]:
         summary = json.loads(st) if st else {}
     except json.JSONDecodeError:
         summary = {}
-    tr = (row.get("trace_path") or "").strip() or f"{rid}/trace.zip"
-    tr_url = f"{base}/trace.zip" if tr else None
+    tr_zip = Path(settings.automation_artifacts_dir) / str(rid) / "trace.zip"
+    trace_on_disk = tr_zip.is_file()
+    tr_url = f"{base}/trace.zip" if trace_on_disk else None
     out_s = []
     for s in steps:
         p = s.get("screenshot_path")
@@ -77,7 +81,7 @@ def _run_detail(row: dict, steps: list) -> dict[str, Any]:
         "fingerprint": row.get("fingerprint", ""),
         "error": row.get("error"),
         "used_cache": bool(row.get("used_cache")),
-        "trace_stored": bool(tr and tr_url),
+        "trace_stored": trace_on_disk,
         "trace_url": tr_url,
         "steps": out_s,
         "summary": summary,
@@ -89,6 +93,12 @@ class SpikeRunIn(BaseModel):
     bdd: str = Field(..., min_length=1, description="BDD line(s)")
     url: str = Field(..., min_length=1, description="Page URL to open in Playwright")
     html_dom: str | None = Field(default=None, max_length=2_000_000)
+    jira_id: str = Field(default="", max_length=200)
+
+    @field_validator("jira_id", mode="before")
+    @classmethod
+    def _spike_jira_strip(cls, v: object) -> str:
+        return (str(v) if v is not None else "").strip()[:200]
 
     @field_validator("url", mode="before")
     @classmethod
@@ -117,6 +127,7 @@ class AutomationEnvOptionsIn(BaseModel):
     automation_headless: bool
     automation_screenshot_on_pass: bool
     automation_trace_file_generation: bool
+    automation_default_timeout_ms: int = Field(..., ge=1000, le=600_000)
 
 
 def _automation_env_payload() -> dict[str, Any]:
@@ -125,6 +136,8 @@ def _automation_env_payload() -> dict[str, Any]:
         "automation_headless": get_effective_automation_headless(),
         "automation_screenshot_on_pass": get_effective_automation_screenshot_on_pass(),
         "automation_trace_file_generation": get_effective_automation_trace_file_generation(),
+        "automation_post_analysis": get_effective_automation_post_analysis(),
+        "automation_default_timeout_ms": get_effective_automation_default_timeout_ms(),
     }
 
 
@@ -144,6 +157,7 @@ def automation_set_env_options(body: AutomationEnvOptionsIn) -> dict[str, Any]:
     set_automation_kv("headless", "1" if body.automation_headless else "0")
     set_automation_kv("screenshot_on_pass", "1" if body.automation_screenshot_on_pass else "0")
     set_automation_kv("trace_file_generation", "1" if body.automation_trace_file_generation else "0")
+    set_automation_kv("default_timeout_ms", str(int(body.automation_default_timeout_ms)))
     return _automation_env_payload()
 
 
@@ -165,6 +179,7 @@ async def automation_spike_run(body: SpikeRunIn) -> dict[str, Any]:
             body.bdd,
             body.url.strip(),
             body.html_dom,
+            body.jira_id,
         )
     except SpikeUserError as e:
         d = e.logs
@@ -311,6 +326,56 @@ def automation_run_report_file(name: str) -> FileResponse:
     if not p.is_file():
         raise HTTPException(status_code=404, detail="not found")
     return FileResponse(p, media_type="text/html; charset=utf-8")
+
+
+_MAX_SUITE_REPORTS_LIST = 2000
+
+@router.get("/suite-reports-recent")
+def automation_suite_reports_recent() -> dict[str, Any]:
+    """HTML reports under ``automation_reports_dir``, newest first.
+
+    When :env:`AUTOMATION_RETENTION_DAYS` > 0, only files modified after the cutoff
+    (now minus that many days) are included. Listing is capped at
+    :data:`_MAX_SUITE_REPORTS_LIST` for API safety, not by retention day count.
+    """
+    rep = Path(settings.automation_reports_dir)
+    days = int(getattr(settings, "automation_retention_days", 20) or 0)
+    now = datetime.now(timezone.utc)
+    if days > 0:
+        cutoff_ts = (now - timedelta(days=days)).timestamp()
+    else:
+        cutoff_ts = 0.0
+    max_items = _MAX_SUITE_REPORTS_LIST
+    rows: list[tuple[float, str]] = []
+    if rep.is_dir():
+        for p in rep.glob("*.html"):
+            if p.name.startswith("."):
+                continue
+            try:
+                m = p.stat().st_mtime
+            except OSError:
+                continue
+            if m < cutoff_ts:
+                continue
+            rows.append((m, p.name))
+    rows.sort(key=lambda x: -x[0])
+    rows = rows[:max_items]
+    out: list[dict[str, str]] = []
+    for m, name in rows:
+        out.append(
+            {
+                "name": name,
+                "report_url": f"/api/automation/suite-reports/{name}",
+                "modified_at": datetime.fromtimestamp(m, tz=timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z"),
+            }
+        )
+    return {
+        "reports": out,
+        "retention_days": days,
+        "max_listed": max_items,
+    }
 
 
 @router.get("/suite-reports/{name}")

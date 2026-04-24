@@ -24,6 +24,76 @@ export function Spinner() {
   );
 }
 
+/** Fetches the URL and saves a file; falls back to opening or navigating if fetch fails (e.g. CORS). */
+export async function downloadUrlAsFile(url, filename) {
+  const name = String(filename || "download").trim() || "download";
+  try {
+    const r = await fetch(url, { credentials: "same-origin" });
+    if (!r.ok) throw new Error(r.statusText || "Download failed");
+    const blob = await r.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = name;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+  } catch {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+}
+
+export function suggestedFilenameFromUrl(url, fallback = "download") {
+  try {
+    const u = String(url || "").trim();
+    if (!u) return fallback;
+    const parsed = u.startsWith("http")
+      ? new URL(u)
+      : new URL(u, typeof window !== "undefined" ? window.location.origin : "http://localhost");
+    const seg = parsed.pathname.split("/").filter(Boolean).pop();
+    if (seg) return decodeURIComponent(seg);
+  } catch {}
+  return fallback;
+}
+
+/** JIRA-attachment style (uses .req-attach-dl) */
+export function InlineDownloadIconButton({ onClick, ariaLabel, disabled, className = "" }) {
+  return (
+    <button
+      type="button"
+      className={["req-attach-dl", className].filter(Boolean).join(" ")}
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+      </svg>
+    </button>
+  );
+}
+
 export function ThemeToggle({ theme, setTheme, layout = "inline", id }) {
   const inner = (
     <div id={id} className="theme-toggle" role="group" aria-label="Color theme">
@@ -94,6 +164,7 @@ export function PasteRequirementsPreview({ text }) {
 export function FloatingTooltip({ text, children, wrapClassName = "" }) {
   const wrapRef = useRef(null);
   const tooltipRef = useRef(null);
+  const lastPointerPos = useRef({ x: 0, y: 0 });
   const [open, setOpen] = useState(false);
   const [float, setFloat] = useState({
     top: 0,
@@ -102,6 +173,7 @@ export function FloatingTooltip({ text, children, wrapClassName = "" }) {
     below: false,
     visible: false,
   });
+  const close = useCallback(() => setOpen(false), []);
 
   const reposition = useCallback(() => {
     const wrap = wrapRef.current;
@@ -141,9 +213,6 @@ export function FloatingTooltip({ text, children, wrapClassName = "" }) {
 
   useEffect(() => {
     if (!open) return;
-    const close = () => {
-      setOpen(false);
-    };
     const onScrollClose = () => {
       close();
     };
@@ -166,6 +235,32 @@ export function FloatingTooltip({ text, children, wrapClassName = "" }) {
       window.removeEventListener("blur", close);
       document.removeEventListener("keydown", onKeyDown, true);
     };
+  }, [open, close]);
+
+  /** Tooltips render in a portal, so a missed mouseleave/leave can leave the panel open. */
+  useEffect(() => {
+    if (!open) return;
+    let raf = 0;
+    const onDocPointerMove = (e) => {
+      if (e.clientX == null || e.clientY == null) return;
+      lastPointerPos.current = { x: e.clientX, y: e.clientY };
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const w = wrapRef.current;
+        if (!w) return;
+        const { x, y } = lastPointerPos.current;
+        const under = document.elementFromPoint(x, y);
+        if (!under || !(w === under || w.contains(under))) {
+          setOpen(false);
+        }
+      });
+    };
+    document.addEventListener("pointermove", onDocPointerMove, true);
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      document.removeEventListener("pointermove", onDocPointerMove, true);
+    };
   }, [open]);
 
   const beginOpen = () => {
@@ -180,8 +275,23 @@ export function FloatingTooltip({ text, children, wrapClassName = "" }) {
     if (!String(text || "").trim()) return;
     beginOpen();
   };
-  const handleMouseLeave = () => {
-    setOpen(false);
+  /** Fires for bubbling child mouseout; skip when still moving to another part of the wrap. */
+  const handleOutRelated = (e) => {
+    const rel = e.relatedTarget;
+    if (rel == null) {
+      close();
+      return;
+    }
+    const w = wrapRef.current;
+    if (w == null) return;
+    if (rel instanceof Node) {
+      try {
+        if (w === rel || w.contains(rel)) return;
+      } catch {
+        /* cross-document */
+      }
+    }
+    close();
   };
   const handlePointerDownCapture = () => {
     setOpen(false);
@@ -201,7 +311,7 @@ export function FloatingTooltip({ text, children, wrapClassName = "" }) {
       child.props.onFocus?.(e);
     },
     onBlur: (e) => {
-      setOpen(false);
+      close();
       child.props.onBlur?.(e);
     },
   });
@@ -233,7 +343,11 @@ export function FloatingTooltip({ text, children, wrapClassName = "" }) {
       ref={wrapRef}
       className={wrapCls}
       onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
+      onMouseLeave={close}
+      onPointerLeave={close}
+      onPointerCancel={close}
+      onPointerOut={handleOutRelated}
+      onMouseOut={handleOutRelated}
       onPointerDownCapture={handlePointerDownCapture}
     >
       {merged}
