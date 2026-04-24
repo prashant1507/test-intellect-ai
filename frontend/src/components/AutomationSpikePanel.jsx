@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
   FieldInfo,
@@ -14,6 +14,7 @@ import {
   stepShotAccordionId,
 } from "./AutomationRunStepScreenshot";
 import { normalizeTagCsv } from "../utils/tagCsv";
+import { parseBddStepLines } from "../utils/bddStepLines";
 
 function suiteTagWithTestType(testType, tagInput) {
   return normalizeTagCsv(
@@ -73,6 +74,8 @@ export function AutomationSpikePanel({
   const [testType, setTestType] = useState("UI");
   const [saveTestTypeInvalid, setSaveTestTypeInvalid] = useState(false);
   const testTypeFirstRadioRef = useRef(null);
+
+  const bddStepLines = useMemo(() => parseBddStepLines(bdd), [bdd]);
 
   const bumpLists = () => {
     onListsChanged?.();
@@ -658,7 +661,7 @@ export function AutomationSpikePanel({
               </summary>
               <div className="automation-spike-analysis-panel">
                 {result.error ? (
-                  <p className="automation-spike-err" role="alert">
+                  <p className="automation-spike-err automation-spike-err--block" role="alert">
                     Error: {result.error}
                   </p>
                 ) : null}
@@ -667,16 +670,25 @@ export function AutomationSpikePanel({
                 ) : null}
                 {Array.isArray(result.steps) && result.steps.length > 0 ? (
                   <div className="automation-spike-analysis-steps">
-                    <p className="automation-spike-analysis-steps-label">Displayed Selectors</p>
+                    <p className="automation-spike-analysis-steps-label">
+                      BDD step &amp; browser action
+                    </p>
                     <ol className="automation-spike-steps">
                       {[...result.steps]
                         .sort(
                           (a, b) =>
                             Number(a?.step_index ?? 0) - Number(b?.step_index ?? 0),
                         )
-                        .map((s) => (
+                        .map((s) => {
+                          const bi = Number(s?.step_index ?? 0);
+                          const bddLine = bddStepLines[bi] ?? "";
+                          return (
                         <li key={s.step_index} className={s.pass ? "is-pass" : "is-fail"}>
-                          <code>{s.selector}</code> — {s.action}
+                          {bddLine ? (
+                            <div className="automation-spike-analysis-bdd-line">{bddLine}</div>
+                          ) : null}
+                          <div className="automation-spike-analysis-action-line">
+                            <code>{s.selector}</code> — {s.action}
                           {s.actual_text != null && s.actual_text !== "" ? (
                             <span className="automation-spike-actual">
                               {" "}
@@ -684,8 +696,12 @@ export function AutomationSpikePanel({
                             </span>
                           ) : null}
                           {s.err && !/^skipped \(previous step failed\)$/i.test(String(s.err).trim()) ? (
-                            <span className="automation-spike-err"> — {s.err}</span>
+                            <span className="automation-spike-err automation-spike-step-err-inline">
+                              {" "}
+                              — {s.err}
+                            </span>
                           ) : null}
+                          </div>
                           <div className="automation-spike-step-shot-wrap">
                             <AutomationRunStepScreenshot
                               runId={result?.run_id}
@@ -696,7 +712,8 @@ export function AutomationSpikePanel({
                             />
                           </div>
                         </li>
-                      ))}
+                          );
+                        })}
                     </ol>
                   </div>
                 ) : null}

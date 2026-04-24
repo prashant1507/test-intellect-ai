@@ -29,6 +29,7 @@ import {
   formatReportListAt,
   formatSuiteAnalysisAt,
 } from "../utils/format";
+import { parseBddStepLines as parseBddStepLinesForAnalysis } from "../utils/bddStepLines";
 
 const SAVED_LINKED_LIST_VISIBLE_ROWS = 4;
 const SAVED_SELECTORS_VISIBLE_ROWS = 2;
@@ -60,19 +61,6 @@ function buildEnvOptionsBody(envObj, patch) {
         ? patch.automation_parallel_execution
         : defPar,
   };
-}
-
-const BDD_ANALYSIS_STEP = /^(Given|When|Then|And)\b/i;
-const BDD_ANALYSIS_SKIP_HDR = /^(Feature|Scenario|Background)\b/i;
-
-function parseBddStepLinesForAnalysis(bdd) {
-  const out = [];
-  for (const line of String(bdd || "").split(/\r?\n/)) {
-    const s = line.trim();
-    if (!s || BDD_ANALYSIS_SKIP_HDR.test(s)) continue;
-    if (BDD_ANALYSIS_STEP.test(s)) out.push(s);
-  }
-  return out;
 }
 
 const SKIP_PREV_FAIL_ERR = /^skipped \(previous step failed\)$/i;
