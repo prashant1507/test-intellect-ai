@@ -24,7 +24,7 @@ function readStoredExtraPx(key) {
   return 0;
 }
 
-function ResizableScrollClip({ scroll, clipPx, className, children, storageKey }) {
+export function ResizableScrollClip({ scroll, clipPx, className, children, storageKey }) {
   const [extraPx, setExtraPx] = useState(() => readStoredExtraPx(storageKey));
   const [viewportCap, setViewportCap] = useState(viewportScrollCapPx);
 
@@ -99,7 +99,7 @@ function ResizableScrollClip({ scroll, clipPx, className, children, storageKey }
   );
 }
 
-function useScrollClipHeightPx(enabled, listRef, depsKey, visibleCount) {
+export function useScrollClipHeightPx(enabled, listRef, depsKey, visibleCount) {
   const [px, setPx] = useState(null);
   useLayoutEffect(() => {
     if (!enabled) {

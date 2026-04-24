@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 
 from ai_client import strip_test_case_diff_meta
 from key_norm import norm_issue_key
-from sqlite_util import open_memory_db
+from sqlite_util import opend_saved_history_db
 
 _WS = re.compile(r"\s+")
 _TEST_HASH_KEY = re.compile(r"^TEST-[0-9A-F]{10}$")
@@ -43,7 +43,7 @@ def _prev_bundle(stored_req: dict, test_cases_json: str) -> dict | None:
 
 
 def init_db() -> None:
-    with open_memory_db() as c:
+    with opend_saved_history_db() as c:
         c.execute(
             """CREATE TABLE IF NOT EXISTS ticket_memory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,7 +74,7 @@ def find_similar_memory(req: dict, threshold: float) -> tuple[str | None, dict |
     target = _norm_req_text(req)
     if len(target) < 12:
         return None, None
-    with open_memory_db() as c:
+    with opend_saved_history_db() as c:
         rows = c.execute(
             "SELECT jira_key, requirements_json, test_cases_json FROM ticket_memory"
         ).fetchall()
@@ -122,7 +122,7 @@ def find_jira_history_key_for_same_requirements(req: dict, *, exclude_key: str |
     if len(target) < 12:
         return None
     ex = norm_issue_key(exclude_key or "")
-    with open_memory_db() as c:
+    with opend_saved_history_db() as c:
         rows = c.execute(
             "SELECT jira_key, requirements_json FROM ticket_memory ORDER BY updated_at DESC"
         ).fetchall()
@@ -151,7 +151,7 @@ def find_latest_memory_by_title(req: dict) -> tuple[str | None, dict | None]:
     if len(t) < 4 or t == _DEFAULT_PASTE_TITLE_CF:
         return None, None
     candidates: list[tuple[str, str, dict]] = []
-    with open_memory_db() as c:
+    with opend_saved_history_db() as c:
         rows = c.execute(
             "SELECT jira_key, requirements_json, test_cases_json, updated_at FROM ticket_memory"
         ).fetchall()
@@ -176,7 +176,7 @@ def find_latest_memory_by_title(req: dict) -> tuple[str | None, dict | None]:
 
 def get_latest(key: str) -> dict | None:
     k = key.upper()
-    with open_memory_db() as c:
+    with opend_saved_history_db() as c:
         row = c.execute(
             "SELECT requirements_json, test_cases_json FROM ticket_memory WHERE jira_key=? ORDER BY id DESC LIMIT 1",
             (k,),
@@ -191,7 +191,7 @@ def get_latest(key: str) -> dict | None:
 
 
 def list_saved() -> list[dict]:
-    with open_memory_db() as c:
+    with opend_saved_history_db() as c:
         rows = c.execute(
             """
             SELECT jira_key, created_at, updated_at, requirements_json, test_cases_json
@@ -225,7 +225,7 @@ def save(jira_key: str, requirements: dict, test_cases: list) -> None:
     k, now = jira_key.upper(), datetime.now(timezone.utc).isoformat()
     tcs = list(test_cases) if isinstance(test_cases, list) else []
     rj, tj = json.dumps(requirements, ensure_ascii=False), json.dumps(tcs, ensure_ascii=False)
-    with open_memory_db() as c:
+    with opend_saved_history_db() as c:
         prev = c.execute(
             "SELECT id FROM ticket_memory WHERE jira_key=? ORDER BY id DESC LIMIT 1",
             (k,),

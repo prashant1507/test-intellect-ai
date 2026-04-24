@@ -11,8 +11,8 @@ def open_sqlite(filename: str):
     return c
 
 
-def open_memory_db():
-    return open_sqlite("memory.db")
+def opend_saved_history_db():
+    return open_sqlite("saved_history.db")
 
 
 def open_audit_db():

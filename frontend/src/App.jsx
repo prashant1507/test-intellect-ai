@@ -19,6 +19,8 @@ import { AgenticPipelineOptions } from "./components/AgenticPipelineOptions";
 import { MinMaxTestCaseFields } from "./components/MinMaxTestCaseFields";
 import { RequirementMockupsBlock } from "./components/RequirementMockupsBlock";
 import { TestCaseEditModal } from "./components/TestCaseEditModal";
+import { AutomationSpikePanel } from "./components/AutomationSpikePanel";
+import { AutomationSpikeSectionCards } from "./components/AutomationSpikeSectionCards";
 import {
   AUDIT_JIRA_USER_EMPTY,
   AUDIT_TICKET_EMPTY,
@@ -107,6 +109,11 @@ export default function App() {
   const [memoryAutomationSkelIdx, setMemoryAutomationSkelIdx] = useState(null);
   const [auditFilters, setAuditFilters] = useState({ user: "", ticket: "", action: "", jiraUser: "" });
   const [showMemoryUi, setShowMemoryUi] = useState(true);
+  const [showAutomationUi, setShowAutomationUi] = useState(true);
+  const [automationEnv, setAutomationEnv] = useState(null);
+  const [automationListRefresh, setAutomationListRefresh] = useState(0);
+  const [automationSpikeRunBusy, setAutomationSpikeRunBusy] = useState(false);
+  const [automationSuiteRunBusy, setAutomationSuiteRunBusy] = useState(false);
   const [showAuditUi, setShowAuditUi] = useState(true);
   const [bootPhase, setBootPhase] = useState("loading");
   const [bootError, setBootError] = useState("");
@@ -126,6 +133,13 @@ export default function App() {
   useEffect(() => {
     inputModeRef.current = inputMode;
   }, [inputMode]);
+
+  useEffect(() => {
+    if (!showAutomationUi && inputMode === "automation") {
+      inputModeRef.current = "jira";
+      setInputMode("jira");
+    }
+  }, [showAutomationUi, inputMode]);
 
   useEffect(() => {
     if (!memoryPanel) setMemoryAutomationSkelIdx(null);
@@ -1116,6 +1130,13 @@ export default function App() {
         setMock(!!c.mock);
         if (typeof c.show_memory_ui === "boolean") setShowMemoryUi(c.show_memory_ui);
         if (typeof c.show_audit_ui === "boolean") setShowAuditUi(c.show_audit_ui);
+        if (typeof c.show_automation_ui === "boolean") setShowAutomationUi(c.show_automation_ui);
+        try {
+          const er = await fetch("/api/automation/env").then((r) => (r.ok ? r.json() : null));
+          if (er && typeof er === "object") setAutomationEnv(er);
+        } catch {
+          setAutomationEnv(null);
+        }
         if (typeof c.keycloak_idle_timeout_minutes === "number") setIdleMinutes(c.keycloak_idle_timeout_minutes);
         if (c.use_keycloak) {
           setUseKeycloak(true);
@@ -2182,11 +2203,27 @@ export default function App() {
               >
                 Paste Requirements
               </button>
+              {showAutomationUi ? (
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={inputMode === "automation"}
+                  className={`mode-tab${inputMode === "automation" ? " active" : ""}`}
+                  onClick={() => {
+                    if (inputMode === "automation") return;
+                    inputModeRef.current = "automation";
+                    setInputMode("automation");
+                    resetWorkspaceOnInputModeChange();
+                  }}
+                >
+                  Auto Tests
+                </button>
+              ) : null}
             </div>
             <fieldset
-              disabled={generatingTestCases}
+              disabled={generatingTestCases && inputMode !== "automation"}
               className="form-card-fieldset"
-              aria-busy={generatingTestCases}
+              aria-busy={generatingTestCases && inputMode !== "automation"}
             >
             {inputMode === "paste" ? (
               <>
@@ -2282,6 +2319,17 @@ export default function App() {
                   roundsInputId="agenticRoundsPaste"
                 />
               </>
+            ) : inputMode === "automation" && showAutomationUi ? (
+              <AutomationSpikePanel
+                api={api}
+                onListsChanged={() => setAutomationListRefresh((n) => n + 1)}
+                suiteRunBusy={automationSuiteRunBusy}
+                onSpikeRunBusyChange={setAutomationSpikeRunBusy}
+                traceFileGeneration={
+                  automationEnv != null &&
+                  !!automationEnv.automation_trace_file_generation
+                }
+              />
             ) : (
               <>
             <div className="row cols-2 jira-form-split">
@@ -2398,7 +2446,7 @@ export default function App() {
                     aria-describedby="hint-ticket"
                   />
                   <span id="hint-ticket" className="sr-only">
-                    Requirement / Story ticket ID.
+                    Requirement / Story ticket.
                   </span>
                 </div>
                 <div>
@@ -2456,6 +2504,8 @@ export default function App() {
             </div>
               </>
             )}
+            {inputMode === "jira" || inputMode === "paste" ? (
+              <>
             <label className={`check check-save-memory${mock ? " check-disabled" : ""}`}>
               <input
                 type="checkbox"
@@ -2523,6 +2573,8 @@ export default function App() {
             {inputMode === "paste" && !canSubmitPaste ? (
               <p className="form-hint-warn">Paste requirement text to enable 'Generate Test Cases'.</p>
             ) : null}
+            </>
+            ) : null}
             {err ? (
               <div className="err" role="alert">
                 <strong>Error.</strong> {err}
@@ -2531,17 +2583,32 @@ export default function App() {
             </fieldset>
           </div>
 
-          {inputMode !== "paste" || showPasteRequirementsJiraCard ? (
+          {inputMode === "automation" && showAutomationUi ? (
+            <AutomationSpikeSectionCards
+              api={api}
+              env={automationEnv}
+              onAutomationEnv={setAutomationEnv}
+              listRefreshKey={automationListRefresh}
+              spikeRunBusy={automationSpikeRunBusy}
+              onSuiteRunBusyChange={setAutomationSuiteRunBusy}
+            />
+          ) : null}
+
+          {inputMode === "jira" || (inputMode === "paste" && showPasteRequirementsJiraCard) ? (
             <div className="card section-card section-requirements">
               <div className="head">
                 <div>
                   <h2>
-                    Requirements for{" "}
-                    {inputMode === "paste"
-                      ? pasteRequirementsHeadingKey || ""
-                      : key
-                        ? `${key}`
-                        : ""}
+                    {inputMode === "jira" && !String(key || "").trim()
+                      ? "Requirements"
+                      : (
+                          <>
+                            Requirements for{" "}
+                            {inputMode === "paste"
+                              ? pasteRequirementsHeadingKey || ""
+                              : String(key).trim()}
+                          </>
+                        )}
                   </h2>
                   {lastFetchAt ? (
                     <p className="last-run">
@@ -2630,7 +2697,7 @@ export default function App() {
             </div>
           ) : null}
 
-          {diff ? (
+          {inputMode !== "automation" && diff ? (
             <div className="card">
               <div className="head">
                 <h2>Requirements Diff</h2>
@@ -2648,10 +2715,11 @@ export default function App() {
             </div>
           ) : null}
 
+          {inputMode !== "automation" ? (
           <div className="card section-card section-test-cases">
             <div className="head">
               <div>
-                <h2>Test Cases</h2>
+                {inputMode !== "automation" ? <h2>Test Cases</h2> : null}
                 {lastGenerateAt ? <p className="last-run">Last Generated {formatTime(lastGenerateAt)}</p> : null}
               </div>
               <FloatingTooltip text="Copy test cases as Markdown">
@@ -2696,6 +2764,7 @@ export default function App() {
               onRequestDeleteTestCase={requestDeleteTestCase}
             />
           </div>
+          ) : null}
           </main>
         </div>
       </div>

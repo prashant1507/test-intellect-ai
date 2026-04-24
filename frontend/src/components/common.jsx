@@ -2,6 +2,7 @@ import {
   useState,
   useRef,
   useLayoutEffect,
+  useEffect,
   useCallback,
   Children,
   cloneElement,
@@ -133,12 +134,39 @@ export function FloatingTooltip({ text, children, wrapClassName = "" }) {
     };
     run();
     window.addEventListener("resize", run);
-    window.addEventListener("scroll", run, true);
     return () => {
       window.removeEventListener("resize", run);
-      window.removeEventListener("scroll", run, true);
     };
   }, [open, text, reposition]);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = () => {
+      setOpen(false);
+    };
+    const onScrollClose = () => {
+      close();
+    };
+    const onPointerDown = (e) => {
+      const el = e.target;
+      if (!(el instanceof Node)) return;
+      if (wrapRef.current?.contains(el)) return;
+      close();
+    };
+    const onKeyDown = (e) => {
+      if (e.key === "Escape") close();
+    };
+    window.addEventListener("scroll", onScrollClose, true);
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("blur", close);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("scroll", onScrollClose, true);
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("blur", close);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [open]);
 
   const beginOpen = () => {
     setOpen((wasOpen) => {
@@ -153,6 +181,9 @@ export function FloatingTooltip({ text, children, wrapClassName = "" }) {
     beginOpen();
   };
   const handleMouseLeave = () => {
+    setOpen(false);
+  };
+  const handlePointerDownCapture = () => {
     setOpen(false);
   };
 
@@ -198,7 +229,13 @@ export function FloatingTooltip({ text, children, wrapClassName = "" }) {
   const wrapCls = ["field-info-wrap", wrapClassName].filter(Boolean).join(" ");
 
   return (
-    <span ref={wrapRef} className={wrapCls} onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+    <span
+      ref={wrapRef}
+      className={wrapCls}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onPointerDownCapture={handlePointerDownCapture}
+    >
       {merged}
       {tooltip}
     </span>

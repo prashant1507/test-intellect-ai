@@ -7,6 +7,7 @@ import re
 from difflib import SequenceMatcher
 
 import requests
+from typing import Any
 
 from key_norm import norm_issue_key
 from settings import settings
@@ -916,3 +917,70 @@ async def generate_automation_skeleton(test_case: dict, language: str, framework
     msgs = [{"role": "system", "content": _AUTOMATION_SKELETON_SYS}, {"role": "user", "content": user}]
     raw = await asyncio.to_thread(_chat, base, model, msgs, 0.2)
     return _strip_code_fence(raw.strip())
+
+
+def llm_chat_completion(
+    system: str, user: str, *, temperature: float = 0.1, max_tokens: int = 12_000
+) -> str:
+    b = _llm_base()
+    if not b:
+        return ""
+    m = _llm_model()
+    return _chat(
+        b,
+        m,
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        temperature,
+        max_tokens=max_tokens,
+    )
+
+
+def parse_llm_json_object(raw: str) -> Any:
+    s = (raw or "").strip()
+    m = re.match(r"^```(?:json)?\s*([\s\S]*?)```\s*$", s, re.I)
+    if m:
+        s = m.group(1).strip()
+    if not s:
+        raise ValueError("empty")
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+    a, b = s.find("{"), s.rfind("}")
+    if 0 <= a < b:
+        return json.loads(s[a : b + 1])
+    a2, b2 = s.find("["), s.rfind("]")
+    if 0 <= a2 < b2:
+        return json.loads(s[a2 : b2 + 1])
+    raise ValueError("not valid json")
+
+
+def spike_post_run_analysis(
+    title: str, url: str, ok: bool, steps: list[dict], log_tail: str
+) -> str:
+    if settings.mock or not _llm_base():
+        return ""
+    try:
+        body = json.dumps(
+            {
+                "title": title,
+                "url": url,
+                "pass": ok,
+                "steps": steps[:200],
+            },
+            ensure_ascii=False,
+        )[:24_000]
+        sysm = (
+            "You are a senior QA engineer. Summarize the test run, root cause if failed, "
+            "and one next step. At most 6 short sentences. Plain text only."
+        )
+        u = f"Data:\n{body}\n\nLog tail:\n{log_tail[:8000]}"
+        return _chat(
+            _llm_base(),
+            _llm_model(),
+            [{"role": "system", "content": sysm}, {"role": "user", "content": u}],
+            0.15,
+            max_tokens=1200,
+        ).strip()
+    except Exception:  # noqa: BLE001
+        return ""

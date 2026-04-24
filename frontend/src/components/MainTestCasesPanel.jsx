@@ -94,7 +94,7 @@ export function MainTestCasesPanel({
                 </button>
               ))}
             </div>
-            {inputMode !== "paste" ? (
+            {inputMode === "jira" ? (
               <div className="filter-bar-sync-slot">
                 {!bulkJiraSync?.running ? (
                   <FloatingTooltip text="Add all to JIRA">
@@ -203,7 +203,7 @@ export function MainTestCasesPanel({
               const hasJiraLink =
                 !!pushedKey || !!String(tc.jira_issue_key || "").trim() || !!tc.jira_existing;
               const canDelete =
-                (inputMode === "jira" || inputMode === "paste") &&
+                (inputMode === "jira" || inputMode === "paste" || inputMode === "automation") &&
                 !mock &&
                 !genOrBulkBusy &&
                 !hasJiraLink;
