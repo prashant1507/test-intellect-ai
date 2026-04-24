@@ -1129,17 +1129,6 @@ button.automation-spike-run-artifact-dl.req-attach-dl {
   -webkit-overflow-scrolling: touch;
 }
 
-.automation-spike-analysis-text {
-  margin: 0;
-  min-width: 0;
-  font-size: 0.84rem;
-  line-height: 1.6;
-  color: var(--text);
-  white-space: pre-wrap;
-  word-break: break-word;
-  overflow-wrap: anywhere;
-}
-
 .automation-spike-analysis-steps-label {
   margin: 0 0 0.35rem;
   font-size: 0.78rem;
@@ -1178,6 +1167,87 @@ button.automation-spike-run-artifact-dl.req-attach-dl {
 
 .automation-spike-stack > .row:not(.cols-2):not(.cols-3) {
   gap: 0.35rem;
+}
+
+.automation-spike-field-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.automation-spike-auto-test-grid {
+  align-items: start;
+}
+
+.automation-spike-test-type-cell {
+  justify-content: center;
+}
+
+.automation-spike-test-type-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 1.1rem;
+  row-gap: 0.4rem;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.automation-spike-test-type-row .label-with-info {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--label);
+}
+
+.automation-spike-test-type-row--invalid {
+  outline: 1px solid var(--err);
+  border-radius: 6px;
+  outline-offset: 0;
+  padding: 0.2rem 0.35rem;
+  margin: -0.2rem -0.35rem;
+}
+
+.automation-spike-test-type-radios {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.6rem 0.9rem;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.automation-spike-test-type-radios label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--label);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.automation-spike-test-type-radios input {
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--link);
+}
+
+.automation-spike-test-type-radios input:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+@media (min-width: 640px) {
+  .automation-spike-stack .automation-spike-auto-test-grid {
+    align-items: stretch;
+  }
 }
 
 .automation-spike-run-one-dialog-scenario {
@@ -2585,6 +2655,7 @@ input.automation-spike-env-timeout-input::-webkit-inner-spin-button {
   color: var(--muted);
 }
 
+/* Bordered post-run / analysis prose: grow with content; parent (analysis panel or modal body) scrolls. */
 .automation-spike-suite-analysis-text {
   margin: 0;
   min-width: 0;
@@ -2594,10 +2665,9 @@ input.automation-spike-env-timeout-input::-webkit-inner-spin-button {
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
-  max-height: min(50vh, 24rem);
-  min-height: 5rem;
+  min-height: 3.5rem;
   overflow-x: auto;
-  overflow-y: auto;
+  overflow-y: visible;
   padding: 0.85rem 1rem;
   border: 1px solid var(--card-border);
   border-radius: 8px;
@@ -2605,13 +2675,6 @@ input.automation-spike-env-timeout-input::-webkit-inner-spin-button {
   font-size: 0.9rem;
   line-height: 1.58;
   color: var(--text);
-}
-
-/* Let post-run text flow; scroll the whole dialog body so nothing is clipped under the footer */
-.automation-spike-suite-analysis-modal .automation-spike-suite-analysis-text {
-  max-height: none;
-  min-height: 3.5rem;
-  overflow: visible;
 }
 
 .automation-spike-suite-analysis-modal .modal-dialog-tc-edit-body {
@@ -3700,8 +3763,13 @@ textarea.paste-requirements-textarea {
     grid-template-columns: 1fr 1fr;
   }
   .row.cols-3 {
-    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) minmax(0, 1.1fr);
   }
+}
+
+.automation-spike-stack .row.automation-spike-auto-test-grid {
+  column-gap: 1.15rem;
+  row-gap: 0.75rem;
 }
 
 .jira-form-col-stack {

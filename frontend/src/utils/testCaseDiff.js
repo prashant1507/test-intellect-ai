@@ -7,10 +7,6 @@ export function stripTestCaseDiffMeta(tc) {
   return out;
 }
 
-export function settleUpdatedRowAfterPersist(tc) {
-  return stripTestCaseDiffMeta(tc);
-}
-
 export function settleTestCaseAfterJiraPush(tc) {
   return { ...stripTestCaseDiffMeta(tc), change_status: "unchanged" };
 }
@@ -85,8 +81,4 @@ export function hasRenderableUpdatedDiff(tc) {
     stepsSnapshotDiffers(tc) ||
     textFieldDiffers(tc, "previous_expected_result", "expected_result")
   );
-}
-
-export function hasDiffSnapshots(tc) {
-  return hasRenderableUpdatedDiff(tc);
 }

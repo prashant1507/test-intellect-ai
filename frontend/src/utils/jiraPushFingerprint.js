@@ -4,7 +4,7 @@ function normalizeWs(s) {
   return String(s ?? "").trim().replace(/\s+/g, " ");
 }
 
-export function tcFingerprintCanonical(tc) {
+function tcFingerprintCanonical(tc) {
   if (!tc || typeof tc !== "object") return "\u0000";
   const d = normalizeWs(tc.description).toLowerCase();
   const steps = Array.isArray(tc.steps) ? tc.steps : [];
@@ -31,7 +31,7 @@ export function normDescForJira(tc) {
   return d || "__empty__";
 }
 
-export function normScenarioTitleForJira(tc) {
+function normScenarioTitleForJira(tc) {
   let s = String(tc?.description ?? "").trim();
   if (!s) return "__empty__";
   s = s.replace(/\s+/g, " ");

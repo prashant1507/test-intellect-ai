@@ -1,8 +1,5 @@
 import { isUnifiedGherkin } from "./testCase";
 
-export const fmtReq = (r) =>
-  r && `Title: ${r.title || ""}\n\nDescription:\n${r.description || ""}`;
-
 export function jiraWikiToMarkdown(s) {
   if (!s || typeof s !== "string") return "";
   const lines = s.replace(/\r\n/g, "\n").split("\n");
@@ -65,7 +62,7 @@ export function tcStatusSlug(raw) {
   return ["new", "updated", "unchanged"].includes(s) ? s : "new";
 }
 
-export function fmtScenarioLines(tc) {
+function fmtScenarioLines(tc) {
   if (!tc) return "";
   if (isUnifiedGherkin(tc)) return (tc.steps || []).join("\n");
   const parts = [];
@@ -172,7 +169,7 @@ export function normTicketId(v) {
 
 const PASTE_AUTO_MEMORY_KEY = /^TEST-[0-9A-F]{10}$/i;
 
-export function isPasteAutoMemoryKey(k) {
+function isPasteAutoMemoryKey(k) {
   return PASTE_AUTO_MEMORY_KEY.test(normTicketId(k));
 }
 

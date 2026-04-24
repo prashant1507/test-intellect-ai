@@ -6,7 +6,7 @@ import {
   suggestedFilenameFromUrl,
 } from "./common";
 
-export function resolveStepScreenshotUrl(runId, step) {
+function resolveStepScreenshotUrl(runId, step) {
   if (!step || typeof step !== "object") return null;
   if (step.screenshot_url) return step.screenshot_url;
   const p = step.screenshot_path;

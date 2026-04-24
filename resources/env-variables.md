@@ -26,16 +26,17 @@ apply).
 
 ## Application behavior
 
-| Variable                         | Default in example | Description                                                                                                                                 |
-|----------------------------------|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------|
-| `MOCK`                           | `false`            | If `true`, skips real Jira calls (fixture data), does not write audit logs, and does not persist memory on generate.                          |
-| `SHOW_MEMORY_UI`                 | `true`             | Exposed via `GET /config` so the frontend can show or hide the History / memory sidebar.                                                     |
-| `SHOW_AUDIT_UI`                  | `true`             | Exposed via `GET /config` so the frontend can show or hide the audit log UI.                                                                 |
-| `SHOW_JIRA_MODE_UI`              | `true`             | Exposed via `GET /config`. If `false`, the JIRA requirement mode tab is hidden.                                                            |
-| `SHOW_PASTE_REQUIREMENTS_MODE_UI` | `true`             | Exposed via `GET /config`. If `false`, the Paste Requirements mode tab is hidden.                                                          |
-| `SHOW_AUTO_TESTS_UI`             | `true`             | Exposed via `GET /config`. If `false`, the Auto Tests (BDD + Playwright) mode tab is hidden.                                                |
+| Variable                          | Default in example | Description                                                                                                          |
+|-----------------------------------|--------------------|----------------------------------------------------------------------------------------------------------------------|
+| `MOCK`                            | `false`            | If `true`, skips real Jira calls (fixture data), does not write audit logs, and does not persist memory on generate. |
+| `SHOW_MEMORY_UI`                  | `true`             | Exposed via `GET /config` so the frontend can show or hide the History / memory sidebar.                             |
+| `SHOW_AUDIT_UI`                   | `true`             | Exposed via `GET /config` so the frontend can show or hide the audit log UI.                                         |
+| `SHOW_JIRA_MODE_UI`               | `true`             | Exposed via `GET /config`. If `false`, the JIRA requirement mode tab is hidden.                                      |
+| `SHOW_PASTE_REQUIREMENTS_MODE_UI` | `true`             | Exposed via `GET /config`. If `false`, the Paste Requirements mode tab is hidden.                                    |
+| `SHOW_AUTO_TESTS_UI`              | `true`             | Exposed via `GET /config`. If `false`, the Auto Tests (BDD + Playwright) mode tab is hidden.                         |
 
-If all three are `false`, the server coerces **`SHOW_JIRA_MODE_UI`** back to `true` so at least one mode remains available.
+If all three are `false`, the server coerces **`SHOW_JIRA_MODE_UI`** back to `true` so at least one mode remains
+available.
 
 ---
 
@@ -49,14 +50,15 @@ Browser, headless mode, screenshots-on-pass, trace file generation, and the defa
 in `.env` for normal use; the Environment panel persists them in the database (with optional `settings.py` fallbacks
 when a key has never been saved).
 
-| Variable                        | Default in example | Description                                                                                                                                                                      |
-|---------------------------------|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `AUTOMATION_POST_ANALYSIS`      | `true`             | When `true`, run post-run LLM analysis on automation results. Not in the Environment panel.                                                                                 |
-| `AUTOMATION_WRITE_RUN_HTML`     | `true`             | Write per-run HTML reports under the reports directory.                                                                                                                          |
-| `AUTOMATION_RETENTION_DAYS`     | `20`               | On startup, prune data older than this many days: run DB rows, per-run artifacts, HTML reports, suite run history. `0` disables pruning.                                         |
-| `AUTOMATION_SPIKE_PRERUN`       | `false`            | If `true`, after the LLM builds a selector plan (non-cached path), run a Playwright locator pre-check and optional repair before step execution. If `false`, skip the pre-check. |
+| Variable                    | Default in example | Description                                                                                                                                                                      |
+|-----------------------------|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `AUTOMATION_POST_ANALYSIS`  | `true`             | When `true`, run post-run LLM analysis on automation results. Not in the Environment panel.                                                                                      |
+| `AUTOMATION_WRITE_RUN_HTML` | `true`             | Write per-run HTML reports under the reports directory.                                                                                                                          |
+| `AUTOMATION_RETENTION_DAYS` | `20`               | On startup, prune data older than this many days: run DB rows, per-run artifacts, HTML reports, suite run history. `0` disables pruning.                                         |
+| `AUTOMATION_SPIKE_PRERUN`   | `false`            | If `true`, after the LLM builds a selector plan (non-cached path), run a Playwright locator pre-check and optional repair before step execution. If `false`, skip the pre-check. |
 
-**Optional in `settings.py` only (not in `.env.example`):** `AUTOMATION_DEFAULT_TIMEOUT_MS` — deployment default for Playwright timeout before any Environment panel save (same key as the panel).
+**Optional in `settings.py` only (not in `.env.example`):** `AUTOMATION_DEFAULT_TIMEOUT_MS` — deployment default for
+Playwright timeout before any Environment panel save (same key as the panel).
 
 **Not in `.env.example` (defaults in `settings.py`):** `AUTOMATION_DB_PATH`, `AUTOMATION_ARTIFACTS_DIR`,
 `AUTOMATION_REPORTS_DIR` — paths for the selector store, run artifacts, and HTML reports.
@@ -102,33 +104,32 @@ when a key has never been saved).
 
 ## Backend mapping (reference)
 
-| `.env` name                           | `settings` attribute                  |
-|---------------------------------------|---------------------------------------|
-| `JIRA_*`                              | `jira_*`                              |
-| `MOCK`                                | `mock`                                |
-| `SHOW_MEMORY_UI`                      | `show_memory_ui`                      |
-| `SHOW_AUDIT_UI`                       | `show_audit_ui`                       |
-| `SHOW_JIRA_MODE_UI`                   | `show_jira_mode_ui`                   |
-| `SHOW_PASTE_REQUIREMENTS_MODE_UI`     | `show_paste_requirements_mode_ui`     |
-| `SHOW_AUTO_TESTS_UI`                  | `show_auto_tests_ui`                  |
-| `AUTOMATION_POST_ANALYSIS`            | `automation_post_analysis`            |
+| `.env` name                                                | `settings` attribute                       |
+|------------------------------------------------------------|--------------------------------------------|
+| `JIRA_*`                                                   | `jira_*`                                   |
+| `MOCK`                                                     | `mock`                                     |
+| `SHOW_MEMORY_UI`                                           | `show_memory_ui`                           |
+| `SHOW_AUDIT_UI`                                            | `show_audit_ui`                            |
+| `SHOW_JIRA_MODE_UI`                                        | `show_jira_mode_ui`                        |
+| `SHOW_PASTE_REQUIREMENTS_MODE_UI`                          | `show_paste_requirements_mode_ui`          |
+| `SHOW_AUTO_TESTS_UI`                                       | `show_auto_tests_ui`                       |
+| `AUTOMATION_POST_ANALYSIS`                                 | `automation_post_analysis`                 |
 | `AUTOMATION_DEFAULT_TIMEOUT_MS` (optional, not in example) | `automation_default_timeout_ms` (fallback) |
-| `AUTOMATION_WRITE_RUN_HTML`           | `automation_write_run_html`           |
-| `AUTOMATION_RETENTION_DAYS`           | `automation_retention_days`           |
-| `AUTOMATION_SPIKE_PRERUN`             | `automation_spike_prerun`             |
-| `USE_KEYCLOAK`                        | `use_keycloak`                        |
-| `KEYCLOAK_*`                          | `keycloak_*`                          |
-| `LLM_URL`                             | `llm_url`                             |
-| `LLM_MODEL`                           | `llm_model`                           |
-| `LLM_ACCESS_TOKEN`                    | `llm_access_token`                    |
-| `LLM_REQUIREMENT_IMAGES_ENABLED`      | `llm_requirement_images_enabled`      |
-| `LLM_REQUIREMENT_IMAGES_MAX_COUNT`    | `llm_requirement_images_max_count`    |
-| `LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB` | `llm_requirement_images_max_total_mb` |
-| `MEMORY_SIMILARITY_THRESHOLD`         | `memory_similarity_threshold`         |
-| `PASTE_MODE_PRIORITIES`               | `paste_mode_priorities`               |
+| `AUTOMATION_WRITE_RUN_HTML`                                | `automation_write_run_html`                |
+| `AUTOMATION_RETENTION_DAYS`                                | `automation_retention_days`                |
+| `AUTOMATION_SPIKE_PRERUN`                                  | `automation_spike_prerun`                  |
+| `USE_KEYCLOAK`                                             | `use_keycloak`                             |
+| `KEYCLOAK_*`                                               | `keycloak_*`                               |
+| `LLM_URL`                                                  | `llm_url`                                  |
+| `LLM_MODEL`                                                | `llm_model`                                |
+| `LLM_ACCESS_TOKEN`                                         | `llm_access_token`                         |
+| `LLM_REQUIREMENT_IMAGES_ENABLED`                           | `llm_requirement_images_enabled`           |
+| `LLM_REQUIREMENT_IMAGES_MAX_COUNT`                         | `llm_requirement_images_max_count`         |
+| `LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB`                      | `llm_requirement_images_max_total_mb`      |
+| `MEMORY_SIMILARITY_THRESHOLD`                              | `memory_similarity_threshold`              |
+| `PASTE_MODE_PRIORITIES`                                    | `paste_mode_priorities`                    |
 
-`DOCKER_LLM_URL` has no entry in `settings.py`; it is documentation-only unless your compose or scripts substitute it
-into `LLM_URL`.
+`DOCKER_LLM_URL` has no entry in `settings.py`; it is documentation-only unless your compose or scripts substitute it into `LLM_URL`.
 
 ---
 
@@ -141,5 +142,6 @@ container can reach an LLM on the host; `LLM_MODEL` matches `.env.example`. `USE
 `KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID`, and `KEYCLOAK_INTERNAL_URL` are set for Keycloak-in-Docker testing and differ
 from `.env.example` (which uses `USE_KEYCLOAK=false` for local API-only runs).
 
-`SHOW_JIRA_MODE_UI`, `SHOW_PASTE_REQUIREMENTS_MODE_UI`, `SHOW_AUTO_TESTS_UI`, and the `AUTOMATION_*` keys are **not** set in the sample `docker-compose.yml`; the image uses
+`SHOW_JIRA_MODE_UI`, `SHOW_PASTE_REQUIREMENTS_MODE_UI`, `SHOW_AUTO_TESTS_UI`, and the `AUTOMATION_*` keys are **not**
+set in the sample `docker-compose.yml`; the image uses
 Pydantic defaults from `settings.py` for those.

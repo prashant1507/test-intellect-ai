@@ -15,6 +15,12 @@ import {
 } from "./AutomationRunStepScreenshot";
 import { normalizeTagCsv } from "../utils/tagCsv";
 
+function suiteTagWithTestType(testType, tagInput) {
+  return normalizeTagCsv(
+    [testType, tagInput].filter((s) => String(s || "").trim()).join(", "),
+  );
+}
+
 function spikeRunStatusDisplay(status) {
   const s = String(status || "").toLowerCase();
   if (s === "completed") return { label: "Pass", mod: "pass" };
@@ -60,6 +66,9 @@ export function AutomationSpikePanel({
   const bddTextareaRef = useRef(null);
   const saveSuiteSuccessFlashRef = useRef(null);
   const [saveSuiteSuccessFlash, setSaveSuiteSuccessFlash] = useState(false);
+  const [testType, setTestType] = useState("");
+  const [saveTestTypeInvalid, setSaveTestTypeInvalid] = useState(false);
+  const testTypeFirstRadioRef = useRef(null);
 
   const bumpLists = () => {
     onListsChanged?.();
@@ -158,16 +167,20 @@ export function AutomationSpikePanel({
     setSaveSuiteInfo("");
     setSaveScenarioInvalid(false);
     setSaveBddInvalid(false);
+    setSaveTestTypeInvalid(false);
     const titleT = title.trim();
     const jiraT = jiraId.trim();
     const okTitle = Boolean(titleT);
     const okBdd = Boolean(bdd.trim());
-    if (!okTitle || !okBdd) {
+    const okType = testType === "UI" || testType === "API";
+    if (!okTitle || !okBdd || !okType) {
       if (!okTitle) setSaveScenarioInvalid(true);
       if (!okBdd) setSaveBddInvalid(true);
+      if (!okType) setSaveTestTypeInvalid(true);
       requestAnimationFrame(() => {
         if (!okTitle) scenarioInputRef.current?.focus();
-        else bddTextareaRef.current?.focus();
+        else if (!okBdd) bddTextareaRef.current?.focus();
+        else if (!okType) testTypeFirstRadioRef.current?.focus();
       });
       return;
     }
@@ -205,7 +218,7 @@ export function AutomationSpikePanel({
         bdd,
         url: "",
         jira_id: jiraT,
-        tag: normalizeTagCsv(tag),
+        tag: suiteTagWithTestType(testType, tag),
       });
       bumpLists();
       if (saveSuiteSuccessFlashRef.current) {
@@ -239,49 +252,60 @@ export function AutomationSpikePanel({
 
   return (
     <div className="automation-spike-stack" aria-label="Auto Tests (BDD + Playwright)">
-      <div className="row cols-2">
-        <div>
-          <label htmlFor="automation-spike-jira-id" className="label-with-info">
-            <span>JIRA ID (Optional)</span>
-            <FieldInfo text="Issue key from JIRA." />
-          </label>
-          <input
-            id="automation-spike-jira-id"
-            value={jiraId}
-            onChange={(e) => setJiraId(e.target.value)}
-            disabled={formLocked}
-            autoComplete="off"
-            aria-describedby="automation-spike-jira-id-hint"
-          />
-          <span id="automation-spike-jira-id-hint" className="sr-only">
-            Issue key from JIRA.
+      <div className="row cols-3 automation-spike-auto-test-grid">
+        <div className="automation-spike-field-col automation-spike-test-type-cell">
+          <div
+            className={`automation-spike-test-type-row${
+              saveTestTypeInvalid ? " automation-spike-test-type-row--invalid" : ""
+            }`}
+          >
+            <div className="label-with-info" id="automation-spike-test-type-label">
+              <span>Test Type</span>
+              <FieldInfo text="Saved as a tag (UI or API) with your other tags." />
+            </div>
+            <div
+              className="automation-spike-test-type-radios"
+              role="radiogroup"
+              aria-labelledby="automation-spike-test-type-label"
+              aria-invalid={saveTestTypeInvalid || undefined}
+              aria-describedby="automation-spike-test-type-hint"
+            >
+              <label>
+                <input
+                  ref={testTypeFirstRadioRef}
+                  type="radio"
+                  name="automation-spike-test-type"
+                  value="UI"
+                  checked={testType === "UI"}
+                  onChange={() => {
+                    setTestType("UI");
+                    setSaveTestTypeInvalid(false);
+                  }}
+                  disabled={formLocked}
+                />
+                UI
+              </label>
+              <label>
+                <input
+                  type="radio"
+                  name="automation-spike-test-type"
+                  value="API"
+                  checked={testType === "API"}
+                  onChange={() => {
+                    setTestType("API");
+                    setSaveTestTypeInvalid(false);
+                  }}
+                  disabled={formLocked}
+                />
+                API
+              </label>
+            </div>
+          </div>
+          <span id="automation-spike-test-type-hint" className="sr-only">
+            Choose UI or API. Required when saving to suite.
           </span>
         </div>
-        <div>
-          <label htmlFor="automation-spike-scenario" className="label-with-info">
-            <span>Scenario</span>
-            <FieldInfo text="Scenario Name." />
-          </label>
-          <input
-            id="automation-spike-scenario"
-            ref={scenarioInputRef}
-            value={title}
-            onChange={(e) => {
-              setTitle(e.target.value);
-              if (saveScenarioInvalid) setSaveScenarioInvalid(false);
-            }}
-            className={saveScenarioInvalid ? "form-field--invalid" : undefined}
-            aria-invalid={saveScenarioInvalid ? true : undefined}
-            disabled={formLocked}
-            aria-describedby="automation-spike-scenario-hint"
-          />
-          <span id="automation-spike-scenario-hint" className="sr-only">
-            Scenario Name
-          </span>
-        </div>
-      </div>
-      <div className="row cols-2">
-        <div>
+        <div className="automation-spike-field-col">
           <label htmlFor="automation-spike-url" className="label-with-info">
             <span>URL</span>
             <FieldInfo text="Application URL. Use a full URL (e.g. https://example.com)." />
@@ -304,10 +328,10 @@ export function AutomationSpikePanel({
             Application URL. Use a full URL (e.g. https://example.com).
           </span>
         </div>
-        <div>
+        <div className="automation-spike-field-col">
           <label htmlFor="automation-spike-tag" className="label-with-info">
             <span>Tag (Optional)</span>
-            <FieldInfo text="Comma-separated (e.g. Smoke, Regression, Login)." />
+            <FieldInfo text="Comma-separated (e.g. Smoke, Regression, Login). Test Type is added when you save to suite." />
           </label>
           <input
             id="automation-spike-tag"
@@ -318,7 +342,48 @@ export function AutomationSpikePanel({
             aria-describedby="automation-spike-tag-hint"
           />
           <span id="automation-spike-tag-hint" className="sr-only">
-            Optional comma-separated tags. Each tag appears separately in HTML reports By Tag.
+            Optional comma-separated tags. Test type is added when saving to the suite.
+          </span>
+        </div>
+      </div>
+      <div className="row cols-2 automation-spike-auto-test-grid">
+        <div className="automation-spike-field-col">
+          <label htmlFor="automation-spike-jira-id" className="label-with-info">
+            <span>JIRA ID (Optional)</span>
+            <FieldInfo text="Issue key from JIRA." />
+          </label>
+          <input
+            id="automation-spike-jira-id"
+            value={jiraId}
+            onChange={(e) => setJiraId(e.target.value)}
+            disabled={formLocked}
+            autoComplete="off"
+            aria-describedby="automation-spike-jira-id-hint"
+          />
+          <span id="automation-spike-jira-id-hint" className="sr-only">
+            Issue key from JIRA.
+          </span>
+        </div>
+        <div className="automation-spike-field-col">
+          <label htmlFor="automation-spike-scenario" className="label-with-info">
+            <span>Scenario</span>
+            <FieldInfo text="Scenario name." />
+          </label>
+          <input
+            id="automation-spike-scenario"
+            ref={scenarioInputRef}
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              if (saveScenarioInvalid) setSaveScenarioInvalid(false);
+            }}
+            className={saveScenarioInvalid ? "form-field--invalid" : undefined}
+            aria-invalid={saveScenarioInvalid ? true : undefined}
+            disabled={formLocked}
+            aria-describedby="automation-spike-scenario-hint"
+          />
+          <span id="automation-spike-scenario-hint" className="sr-only">
+            Scenario name
           </span>
         </div>
       </div>
@@ -530,7 +595,7 @@ export function AutomationSpikePanel({
               </summary>
               <div className="automation-spike-analysis-panel">
                 {result.analysis ? (
-                  <p className="automation-spike-analysis-text">{result.analysis}</p>
+                  <p className="automation-spike-suite-analysis-text">{result.analysis}</p>
                 ) : null}
                 {Array.isArray(result.steps) && result.steps.length > 0 ? (
                   <div className="automation-spike-analysis-steps">

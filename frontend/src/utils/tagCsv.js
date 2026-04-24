@@ -1,4 +1,4 @@
-export function normalizeTagName(s) {
+function normalizeTagName(s) {
   return String(s ?? "")
     .replace(/\s+/g, " ")
     .trim();
@@ -17,7 +17,7 @@ export function normalizeTagCsv(s) {
   return parseTagCsv(s).join(", ");
 }
 
-export function parseJiraKeyCsv(raw) {
+function parseJiraKeyCsv(raw) {
   if (raw == null || !String(raw).trim()) return [];
   return String(raw)
     .split(",")
