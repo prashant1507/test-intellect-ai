@@ -46,6 +46,12 @@ router = APIRouter(prefix="/automation", tags=["automation"])
 _UUID_36 = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z"
 )
+_CASE_ID = re.compile(r"^[\w.-]{1,200}$")
+_RE_PER_RUN_HTML = re.compile(r"^[0-9a-fA-F-]{10,200}\.html$")
+_RE_SUITE_PREFIX = re.compile(r"^suite_[0-9a-fA-F-]{10,200}\.html$")
+_RE_SUITE_UUID_HTML = re.compile(
+    r"^[0-9a-fA-F-]{8}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{12}\.html$"
+)
 
 
 def _parse_run_id(s: str) -> str:
@@ -53,6 +59,19 @@ def _parse_run_id(s: str) -> str:
     if not t or not _UUID_36.match(t):
         raise HTTPException(status_code=400, detail="invalid run id")
     return t
+
+
+def _parse_suite_case_id(case_id: str) -> str:
+    t = (case_id or "").strip()
+    if not t or not _CASE_ID.match(t):
+        raise HTTPException(status_code=400, detail="invalid case id")
+    return t
+
+
+def _html_report_file_response(path: Path) -> FileResponse:
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    return FileResponse(path, media_type="text/html; charset=utf-8")
 
 
 def _run_detail(row: dict, steps: list) -> dict[str, Any]:
@@ -280,9 +299,7 @@ def automation_suite_list() -> dict[str, Any]:
 
 @router.get("/suite/{case_id}/run-history")
 def automation_suite_case_run_history(case_id: str) -> dict[str, Any]:
-    t = (case_id or "").strip()
-    if not t or not re.match(r"^[\w.-]{1,200}$", t):
-        raise HTTPException(status_code=400, detail="invalid case id")
+    t = _parse_suite_case_id(case_id)
     if get_suite_case(t) is None:
         raise HTTPException(status_code=404, detail="not found")
     return {"rows": list_suite_case_run_history(t)}
@@ -308,9 +325,7 @@ def automation_suite_add(body: SuiteCaseIn) -> dict[str, str]:
 
 @router.delete("/suite/{case_id}")
 def automation_suite_delete(case_id: str) -> dict[str, str]:
-    t = (case_id or "").strip()
-    if not t or not re.match(r"^[\w.-]{1,200}$", t):
-        raise HTTPException(status_code=400, detail="invalid case id")
+    t = _parse_suite_case_id(case_id)
     if not delete_suite_case(t):
         raise HTTPException(status_code=404, detail="not found")
     return {"ok": "true"}
@@ -365,24 +380,15 @@ async def automation_suite_run(body: SuiteRunInF) -> dict[str, Any]:
 @router.get("/reports/{name}")
 def automation_run_report_file(name: str) -> FileResponse:
     n = (name or "").strip()
-    if not re.match(r"^[0-9a-fA-F-]{10,200}\.html$", n):
+    if not _RE_PER_RUN_HTML.match(n):
         raise HTTPException(status_code=400, detail="invalid report name")
-    p = Path(settings.automation_reports_dir) / n
-    if not p.is_file():
-        raise HTTPException(status_code=404, detail="not found")
-    return FileResponse(p, media_type="text/html; charset=utf-8")
+    return _html_report_file_response(Path(settings.automation_reports_dir) / n)
 
 
 _MAX_SUITE_REPORTS_LIST = 2000
 
 @router.get("/suite-reports-recent")
 def automation_suite_reports_recent() -> dict[str, Any]:
-    """HTML reports under ``automation_reports_dir``, newest first.
-
-    When :env:`AUTOMATION_RETENTION_DAYS` > 0, only files modified after the cutoff
-    (now minus that many days) are included. Listing is capped at
-    :data:`_MAX_SUITE_REPORTS_LIST` for API safety, not by retention day count.
-    """
     rep = Path(settings.automation_reports_dir)
     days = int(getattr(settings, "automation_retention_days", 20) or 0)
     now = datetime.now(timezone.utc)
@@ -426,12 +432,6 @@ def automation_suite_reports_recent() -> dict[str, Any]:
 @router.get("/suite-reports/{name}")
 def automation_suite_report_file(name: str) -> FileResponse:
     n = (name or "").strip()
-    if not re.match(r"^suite_[0-9a-fA-F-]{10,200}\.html$", n) and not re.match(
-        r"^[0-9a-fA-F-]{8}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{4}-[0-9a-fA-F-]{12}\.html$",
-        n,
-    ):
+    if not (_RE_SUITE_PREFIX.match(n) or _RE_SUITE_UUID_HTML.match(n)):
         raise HTTPException(status_code=400, detail="invalid report name")
-    p = Path(settings.automation_reports_dir) / n
-    if not p.is_file():
-        raise HTTPException(status_code=404, detail="not found")
-    return FileResponse(p, media_type="text/html; charset=utf-8")
+    return _html_report_file_response(Path(settings.automation_reports_dir) / n)

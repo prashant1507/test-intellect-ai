@@ -126,6 +126,36 @@ export function formatTime(iso) {
   }
 }
 
+function _parseIso(iso) {
+  if (iso == null || !String(iso).trim()) return null;
+  const d = new Date(String(iso));
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export function formatSuiteAnalysisAt(iso) {
+  const d = _parseIso(iso);
+  if (!d) return "";
+  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+export function formatHistoryDate(iso) {
+  const d = _parseIso(iso);
+  if (!d) return "—";
+  return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+}
+
+export function formatHistoryTime(iso) {
+  const d = _parseIso(iso);
+  if (!d) return "—";
+  return d.toLocaleTimeString(undefined, { timeStyle: "short" });
+}
+
+export function formatReportListAt(iso) {
+  const d = _parseIso(iso);
+  if (!d) return "—";
+  return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+}
+
 export function readTheme() {
   try {
     const t = localStorage.getItem("theme");

@@ -22,12 +22,6 @@ from .store import (
 )
 
 
-def suite_report_path() -> Path:
-    p = Path(settings.automation_reports_dir)
-    p.mkdir(parents=True, exist_ok=True)
-    return p / f"suite_{uuid.uuid4()}.html"
-
-
 def _apply_optional_suite_filters(
     cases: list[dict[str, Any]],
     *,

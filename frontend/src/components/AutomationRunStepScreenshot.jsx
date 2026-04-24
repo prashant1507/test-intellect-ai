@@ -30,7 +30,6 @@ function shouldOpenShotDetailsByDefault(step) {
   return false;
 }
 
-/** Stable id for accordion "one screenshot open at a time" within a run. */
 export function stepShotAccordionId(runId, step, indexFallback) {
   const r = String(runId ?? "none");
   if (step && step.step_index !== undefined && step.step_index !== null) {
@@ -39,7 +38,6 @@ export function stepShotAccordionId(runId, step, indexFallback) {
   return `${r}-i${String(indexFallback)}`;
 }
 
-/** First step (by step_index) that is a failed run with a screenshot, for default expand. */
 export function getFirstFailingStepShotAccordionId(runId, steps) {
   if (runId == null || !Array.isArray(steps) || steps.length === 0) return null;
   const sorted = [...steps].sort(

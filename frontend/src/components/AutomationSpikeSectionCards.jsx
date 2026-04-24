@@ -22,6 +22,12 @@ import {
 } from "./AutomationRunStepScreenshot";
 import { ResizableScrollClip, useScrollClipHeightPx } from "./LinkedJiraLists";
 import { normalizeJiraKeyCsv, normalizeTagCsv, parseTagCsv } from "../utils/tagCsv";
+import {
+  formatHistoryDate,
+  formatHistoryTime,
+  formatReportListAt,
+  formatSuiteAnalysisAt,
+} from "../utils/format";
 
 const SAVED_LINKED_LIST_VISIBLE_ROWS = 4;
 const SAVED_SELECTORS_VISIBLE_ROWS = 2;
@@ -53,34 +59,6 @@ function buildEnvOptionsBody(envObj, patch) {
         ? patch.automation_parallel_execution
         : defPar,
   };
-}
-
-function formatSuiteAnalysisAt(iso) {
-  if (iso == null || !String(iso).trim()) return "";
-  const d = new Date(String(iso));
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-}
-
-function formatHistoryDate(iso) {
-  if (iso == null || !String(iso).trim()) return "—";
-  const d = new Date(String(iso));
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString(undefined, { dateStyle: "medium" });
-}
-
-function formatHistoryTime(iso) {
-  if (iso == null || !String(iso).trim()) return "—";
-  const d = new Date(String(iso));
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleTimeString(undefined, { timeStyle: "short" });
-}
-
-function formatReportListAt(iso) {
-  if (iso == null || !String(iso).trim()) return "—";
-  const d = new Date(String(iso));
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
 }
 
 const BDD_ANALYSIS_STEP = /^(Given|When|Then|And)\b/i;

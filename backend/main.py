@@ -308,7 +308,6 @@ class ConfigResponse(BaseModel):
     llm_requirement_images_enabled: bool = False
     llm_requirement_images_max_count: int = 5
     llm_requirement_images_max_total_mb: int = 200
-    # Same first-run / DB-backed values as GET /api/automation/env (automation.prefs).
     automation_browser: str = "chromium"
     automation_headless: bool = True
     automation_screenshot_on_pass: bool = False

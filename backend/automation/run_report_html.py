@@ -14,13 +14,11 @@ from settings import settings
 from .bdd import parse_bdd_step_lines
 from .tag_csv import parse_tag_tokens
 
-# Caps for self-contained (data: URL) HTML so files stay shareable but not unbounded.
 _MAX_SHOT_EMBED_BYTES = 12 * 1024 * 1024
 _MAX_TRACE_EMBED_BYTES = 15 * 1024 * 1024
 
 _SKIP_PREV = re.compile(r"^skipped \(previous step failed\)$", re.I)
 
-# Same structure as `BDD_HEADER_RE` / `BDD_STEP_RE` in AutomationSpikeSectionCards (View Test Case).
 _BDD_HEADER_RE = re.compile(
     r"^(Feature|Rule|Background|Scenario(?:\s+Outline)?|Examples?)\s*:\s*(.*)$",
     re.I,

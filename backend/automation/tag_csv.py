@@ -1,10 +1,7 @@
-"""Comma-separated tag lists: parse tokens and normalize stored form."""
-
 from __future__ import annotations
 
 
 def _normalize_one_tag_segment(p: str) -> str:
-    """Trim and collapse internal runs of whitespace in one CSV segment."""
     t = " ".join(str(p).split())
     return t
 

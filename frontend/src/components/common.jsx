@@ -24,7 +24,6 @@ export function Spinner() {
   );
 }
 
-/** Fetches the URL and saves a file; falls back to opening or navigating if fetch fails (e.g. CORS). */
 export async function downloadUrlAsFile(url, filename) {
   const name = String(filename || "download").trim() || "download";
   try {
@@ -65,7 +64,6 @@ export function suggestedFilenameFromUrl(url, fallback = "download") {
   return fallback;
 }
 
-/** JIRA-attachment style (uses .req-attach-dl) */
 export function InlineDownloadIconButton({ onClick, ariaLabel, disabled, className = "" }) {
   return (
     <button
@@ -237,7 +235,6 @@ export function FloatingTooltip({ text, children, wrapClassName = "" }) {
     };
   }, [open, close]);
 
-  /** Tooltips render in a portal, so a missed mouseleave/leave can leave the panel open. */
   useEffect(() => {
     if (!open) return;
     let raf = 0;
@@ -275,7 +272,6 @@ export function FloatingTooltip({ text, children, wrapClassName = "" }) {
     if (!String(text || "").trim()) return;
     beginOpen();
   };
-  /** Fires for bubbling child mouseout; skip when still moving to another part of the wrap. */
   const handleOutRelated = (e) => {
     const rel = e.relatedTarget;
     if (rel == null) {
@@ -287,9 +283,7 @@ export function FloatingTooltip({ text, children, wrapClassName = "" }) {
     if (rel instanceof Node) {
       try {
         if (w === rel || w.contains(rel)) return;
-      } catch {
-        /* cross-document */
-      }
+      } catch {}
     }
     close();
   };
