@@ -3,14 +3,18 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { fmtReqMarkdown, fmtTestsMarkdown, jiraWikiToMarkdown } from "../utils/format";
 import { resolvePushedJiraKey } from "../utils/jiraPushFingerprint";
-import { Copy, FloatingTooltip, Spinner, markdownGfmComponents } from "./common";
+import {
+  AutoTestRunIconButton,
+  Copy,
+  FloatingTooltip,
+  Spinner,
+  markdownGfmComponents,
+} from "./common";
 import { AutomationSkeletonIconButton } from "./AutomationSkeletonModal";
 import { JiraTestPushButton } from "./JiraTestPushButton";
 import { TestCaseBody } from "./TestCaseBody";
 import { TestCaseSummaryBadges } from "./TestCaseSummaryBadges";
 import { testCaseToSpikeBdd } from "../utils/testCase";
-
-const mdLinkProps = (props) => <a {...props} target="_blank" rel="noopener noreferrer" />;
 
 function MemoryRequirementsView({ requirements }) {
   const r = requirements;
@@ -82,9 +86,7 @@ function MemoryTestCasesView({
                 <JiraTestPushButton displayMode="linkOnly" pushedKey={pushedKey} jiraBaseUrl={jiraUrl} />
                 {showAutoTestRunButton ? (
                   <FloatingTooltip text="Fill Auto test from this case and open Auto test">
-                    <button
-                      type="button"
-                      className="tc-edit-icon-btn"
+                    <AutoTestRunIconButton
                       disabled={automationSkeletonDisabled}
                       onClick={(e) => {
                         e.stopPropagation();
@@ -96,19 +98,7 @@ function MemoryTestCasesView({
                           requirementTicketId: String(memoryTicketId || "").trim(),
                         });
                       }}
-                      aria-label="Run in Auto test"
-                    >
-                      <svg
-                        width="18"
-                        height="18"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        stroke="none"
-                        aria-hidden
-                      >
-                        <polygon points="7 4 7 20 20 12 7 4" />
-                      </svg>
-                    </button>
+                    />
                   </FloatingTooltip>
                 ) : null}
                 <AutomationSkeletonIconButton

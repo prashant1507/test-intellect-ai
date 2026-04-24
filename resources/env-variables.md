@@ -1,147 +1,113 @@
-# Environment variables (`.env.example`)
+# Environment variables (aligns with `.env.example`)
 
-Copy `.env.example` to `.env` in the project root. The backend loads it via `backend/settings.py` (Pydantic Settings).
-Variable names are case-insensitive for most keys; use the names below to match the example file.
+Copy `.env.example` to `.env` in the **repository root** (one file for backend and UI defaults from `GET /api/config`).
 
-Boolean values accept `true` / `false`, `1` / `0`, `yes` / `no`, `on` / `off` (string forms are coerced where validators
-apply).
+**Loading:** `backend/settings.py` (Pydantic BaseSettings) reads the root `.env`. Unknown variable names are ignored.
+Env keys use UPPER_SNAKE; in code they map to the same names in `lower_snake` (e.g. `SHOW_MEMORY_UI` →
+`show_memory_ui`).
 
----
+**Booleans:** `true` / `false`, `1` / `0`, `yes` / `no`, `on` / `off` (where validated).
 
-## JIRA
-
-| Variable                          | Default in example          | Description                                                                                                                                                                                                                                                                  |
-|-----------------------------------|-----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `JIRA_URL`                        | *(empty)*                   | Base URL of your Jira site (e.g. `https://your-domain.atlassian.net`). Required for live Jira API calls when `MOCK` is false.                                                                                                                                                |
-| `JIRA_USERNAME`                   | *(empty)*                   | Jira user email or username for Basic auth.                                                                                                                                                                                                                                  |
-| `JIRA_PASSWORD`                   | *(empty)*                   | Jira API token or password (prefer API tokens for Atlassian Cloud).                                                                                                                                                                                                          |
-| `JIRA_TEST_PROJECT_KEY`           | *(empty)*                   | Project key where new test issues are created (e.g. `QA`).                                                                                                                                                                                                                   |
-| `JIRA_TEST_ISSUE_TYPE`            | `Test`                      | Issue type name for created/linked test issues.                                                                                                                                                                                                                              |
-| `JIRA_TEST_LINK_TYPE`             | `Relates`                   | Link type name used when linking tests to the requirement.                                                                                                                                                                                                                   |
-| `JIRA_LINK_INWARD_IS_REQUIREMENT` | `true`                      | Directional semantics for issue links: treat the inward side as the requirement when resolving links.                                                                                                                                                                        |
-| `JIRA_VERIFY_SSL`                 | `false`                     | If `true`, verify TLS certificates for Jira HTTPS requests. Set `false` only for dev/self-signed.                                                                                                                                                                            |
-| `JIRA_LINKED_WORK_ISSUE_TYPES`    | `Story,Improvement,Feature` | Comma-separated issue type names. Linked issues of these types (plus the requirement’s own type) are listed under **Linked Issues** in the Requirements section. Issues of `JIRA_TEST_ISSUE_TYPE` appear under linked tests, not here. Not passed to the LLM for generation. |
+**Order and example values** below follow `.env.example` exactly. Anything configurable only in `settings.py` (and not
+in `.env.example`) is not listed—see `backend/settings.py` (e.g. default automation DB paths, timeout fallback).
 
 ---
 
-## Application behavior
+## UI Settings
 
-| Variable                          | Default in example | Description                                                                                                          |
-|-----------------------------------|--------------------|----------------------------------------------------------------------------------------------------------------------|
-| `MOCK`                            | `false`            | If `true`, skips real Jira calls (fixture data), does not write audit logs, and does not persist memory on generate. |
-| `SHOW_MEMORY_UI`                  | `true`             | Exposed via `GET /config` so the frontend can show or hide the History / memory sidebar.                             |
-| `SHOW_AUDIT_UI`                   | `true`             | Exposed via `GET /config` so the frontend can show or hide the audit log UI.                                         |
-| `SHOW_JIRA_MODE_UI`               | `true`             | Exposed via `GET /config`. If `false`, the JIRA requirement mode tab is hidden.                                      |
-| `SHOW_PASTE_REQUIREMENTS_MODE_UI` | `true`             | Exposed via `GET /config`. If `false`, the Paste Requirements mode tab is hidden.                                    |
-| `SHOW_AUTO_TESTS_UI`              | `true`             | Exposed via `GET /config`. If `false`, the Auto Tests (BDD + Playwright) mode tab is hidden.                         |
+| Variable                          | Example | Description                                                                       |
+|-----------------------------------|---------|-----------------------------------------------------------------------------------|
+| `SHOW_MEMORY_UI`                  | `true`  | Exposed via `GET /api/config`: show or hide **History** (saved memory) UI.        |
+| `SHOW_AUDIT_UI`                   | `true`  | Exposed via `GET /api/config`: show or hide **Audit** UI.                         |
+| `SHOW_JIRA_MODE_UI`               | `true`  | Exposed via `GET /api/config`: show or hide the **JIRA** requirement mode tab.    |
+| `SHOW_PASTE_REQUIREMENTS_MODE_UI` | `true`  | Exposed via `GET /api/config`: show or hide **Paste Requirements** mode.          |
+| `SHOW_AUTO_TESTS_UI`              | `true`  | Exposed via `GET /api/config`: show or hide **Auto Tests** (BDD/Playwright) mode. |
 
-If all three are `false`, the server coerces **`SHOW_JIRA_MODE_UI`** back to `true` so at least one mode remains
-available.
-
----
-
-## Automation (BDD + Playwright, `/api/automation/*`)
-
-The LLM is used to map BDD steps to selectors when the selector cache has no entry.
-
-`AUTOMATION_POST_ANALYSIS` is set only in `.env` (and `settings`); it is not configured in the **Environment** panel.
-
-Browser, headless mode, screenshots-on-pass, trace file generation, and the default Playwright timeout (ms) are not set
-in `.env` for normal use; the Environment panel persists them in the database (with optional `settings.py` fallbacks
-when a key has never been saved).
-
-| Variable                    | Default in example | Description                                                                                                                                                                      |
-|-----------------------------|--------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `AUTOMATION_POST_ANALYSIS`  | `true`             | When `true`, run post-run LLM analysis on automation results. Not in the Environment panel.                                                                                      |
-| `AUTOMATION_WRITE_RUN_HTML` | `true`             | Write per-run HTML reports under the reports directory.                                                                                                                          |
-| `AUTOMATION_RETENTION_DAYS` | `20`               | On startup, prune data older than this many days: run DB rows, per-run artifacts, HTML reports, suite run history. `0` disables pruning.                                         |
-| `AUTOMATION_SPIKE_PRERUN`   | `false`            | If `true`, after the LLM builds a selector plan (non-cached path), run a Playwright locator pre-check and optional repair before step execution. If `false`, skip the pre-check. |
-
-**Optional in `settings.py` only (not in `.env.example`):** `AUTOMATION_DEFAULT_TIMEOUT_MS` — deployment default for
-Playwright timeout before any Environment panel save (same key as the panel).
-
-**Not in `.env.example` (defaults in `settings.py`):** `AUTOMATION_DB_PATH`, `AUTOMATION_ARTIFACTS_DIR`,
-`AUTOMATION_REPORTS_DIR` — paths for the selector store, run artifacts, and HTML reports.
+If all three of `SHOW_JIRA_MODE_UI`, `SHOW_PASTE_REQUIREMENTS_MODE_UI`, and `SHOW_AUTO_TESTS_UI` are off, the server
+sets `SHOW_JIRA_MODE_UI` back to `true` so at least one mode stays available.
 
 ---
 
-## Keycloak (OIDC)
+## JIRA Settings
 
-| Variable                        | Default in example | Description                                                                                                                                                                          |
-|---------------------------------|--------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `USE_KEYCLOAK`                  | `false`            | Enable Keycloak/OpenID Connect authentication for the API.                                                                                                                           |
-| `KEYCLOAK_URL`                  | *(empty)*          | Public Keycloak base URL (browser redirects, issuer).                                                                                                                                |
-| `KEYCLOAK_REALM`                | *(empty)*          | Realm name.                                                                                                                                                                          |
-| `KEYCLOAK_CLIENT_ID`            | *(empty)*          | OIDC client id.                                                                                                                                                                      |
-| `KEYCLOAK_CLIENT_SECRET`        | *(empty)*          | Client secret (if required by the client type).                                                                                                                                      |
-| `KEYCLOAK_IDLE_TIMEOUT_MINUTES` | `60`               | Session idle timeout used by the app configuration (minutes).                                                                                                                        |
-| `KEYCLOAK_INTERNAL_URL`         | *(empty)*          | Optional base URL for server-side JWKS/token validation when it differs from `KEYCLOAK_URL` (e.g. Docker network hostname). Leave empty for local dev when JWKS uses `KEYCLOAK_URL`. |
-
----
-
-## LLM (OpenAI-compatible)
-
-| Variable                              | Default in example         | Description                                                                                                                                                                                                                                                                 |
-|---------------------------------------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `LLM_URL`                             | `http://127.0.0.1:1234/v1` | Base URL for OpenAI-compatible chat completions (must include `/v1` if your server expects it). Local LM Studio / similar, or cloud API base.                                                                                                                               |
-| `LLM_MODEL`                           | `qwen/qwen3-vl-30b`        | Model id passed to the provider (vision-capable if using requirement images).                                                                                                                                                                                               |
-| `LLM_ACCESS_TOKEN`                    | *(empty)*                  | Bearer token for cloud APIs. Leave empty for local servers with no auth.                                                                                                                                                                                                    |
-| `LLM_REQUIREMENT_IMAGES_ENABLED`      | `false`                    | When `true`, the UI can attach PNG/JPEG/GIF/WebP images and PDF mockups (uploads and selected JIRA ticket attachments). Images are sent as vision inputs; PDFs are sent as chat `file` parts (OpenAI-style). Requires a model/server that supports those modalities.        |
-| `LLM_REQUIREMENT_IMAGES_MAX_COUNT`    | `5`                        | Maximum number of files combined (uploaded files + selected ticket attachments) per generate request.                                                                                                                                                                       |
-| `LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB` | `200`                      | Maximum combined size of all attachments in MB (binary megabytes, 1024² bytes per MB).                                                                                                                                                                                      |
-| `DOCKER_LLM_URL`                      | *(empty)*                  | **Not read by the backend.** Reserved for Docker/Compose or deployment docs: set the URL the **container** should use to reach the host LLM (e.g. `http://host.docker.internal:1234/v1`). The sample `docker-compose.yml` sets `LLM_URL` directly in `environment` instead. |
+| Variable                          | Example                     | Description                                                                   |
+|-----------------------------------|-----------------------------|-------------------------------------------------------------------------------|
+| `JIRA_URL`                        | *(empty)*                   | Jira site base URL (e.g. `https://your-domain.atlassian.net`).                |
+| `JIRA_USERNAME`                   | *(empty)*                   | Jira user (often email) for API auth.                                         |
+| `JIRA_PASSWORD`                   | *(empty)*                   | API token or password (Atlassian Cloud: prefer API token).                    |
+| `JIRA_TEST_PROJECT_KEY`           | *(empty)*                   | Project key for creating test issues (e.g. `QA`).                             |
+| `JIRA_TEST_ISSUE_TYPE`            | `Test`                      | Issue type name for test issues.                                              |
+| `JIRA_TEST_LINK_TYPE`             | `Relates`                   | Link type name when linking tests to the requirement.                         |
+| `JIRA_LINK_INWARD_IS_REQUIREMENT` | `true`                      | Whether the inward end of the link is treated as the requirement.             |
+| `JIRA_VERIFY_SSL`                 | `false`                     | If `true`, verify TLS for Jira HTTPS. Use `false` only for self-signed / dev. |
+| `JIRA_LINKED_WORK_ISSUE_TYPES`    | `Story,Improvement,Feature` | Comma-separated types for **Linked work**-style lists in the UI.              |
 
 ---
 
-## Memory and priorities
+## Mock Mode
 
-| Variable                      | Default in example                     | Description                                                                                                                                              |
-|-------------------------------|----------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `MEMORY_SIMILARITY_THRESHOLD` | `0.92`                                 | When the exact memory key is missing, match saved entries by similar title+description. `0` disables fuzzy matching; typical range about `0.88`–`0.95`.  |
-| `PASTE_MODE_PRIORITIES`       | `'Highest, High, Medium, Low, Lowest'` | Comma-separated priority labels for paste mode and as fallback when Jira priority names are not fetched. Maps to settings field `paste_mode_priorities`. |
-
----
-
-## Backend mapping (reference)
-
-| `.env` name                                                | `settings` attribute                       |
-|------------------------------------------------------------|--------------------------------------------|
-| `JIRA_*`                                                   | `jira_*`                                   |
-| `MOCK`                                                     | `mock`                                     |
-| `SHOW_MEMORY_UI`                                           | `show_memory_ui`                           |
-| `SHOW_AUDIT_UI`                                            | `show_audit_ui`                            |
-| `SHOW_JIRA_MODE_UI`                                        | `show_jira_mode_ui`                        |
-| `SHOW_PASTE_REQUIREMENTS_MODE_UI`                          | `show_paste_requirements_mode_ui`          |
-| `SHOW_AUTO_TESTS_UI`                                       | `show_auto_tests_ui`                       |
-| `AUTOMATION_POST_ANALYSIS`                                 | `automation_post_analysis`                 |
-| `AUTOMATION_DEFAULT_TIMEOUT_MS` (optional, not in example) | `automation_default_timeout_ms` (fallback) |
-| `AUTOMATION_WRITE_RUN_HTML`                                | `automation_write_run_html`                |
-| `AUTOMATION_RETENTION_DAYS`                                | `automation_retention_days`                |
-| `AUTOMATION_SPIKE_PRERUN`                                  | `automation_spike_prerun`                  |
-| `USE_KEYCLOAK`                                             | `use_keycloak`                             |
-| `KEYCLOAK_*`                                               | `keycloak_*`                               |
-| `LLM_URL`                                                  | `llm_url`                                  |
-| `LLM_MODEL`                                                | `llm_model`                                |
-| `LLM_ACCESS_TOKEN`                                         | `llm_access_token`                         |
-| `LLM_REQUIREMENT_IMAGES_ENABLED`                           | `llm_requirement_images_enabled`           |
-| `LLM_REQUIREMENT_IMAGES_MAX_COUNT`                         | `llm_requirement_images_max_count`         |
-| `LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB`                      | `llm_requirement_images_max_total_mb`      |
-| `MEMORY_SIMILARITY_THRESHOLD`                              | `memory_similarity_threshold`              |
-| `PASTE_MODE_PRIORITIES`                                    | `paste_mode_priorities`                    |
-
-`DOCKER_LLM_URL` has no entry in `settings.py`; it is documentation-only unless your compose or scripts substitute it into `LLM_URL`.
+| Variable | Example | Description                                                                                |
+|----------|---------|--------------------------------------------------------------------------------------------|
+| `MOCK`   | `false` | `true`: no real Jira HTTP; fixture text; no audit on generate; no memory save on generate. |
 
 ---
 
-## Docker Compose (`docker-compose.yml`)
+## Auto Tests Settings
 
-The sample service does **not** load the project `.env` file; it sets `environment` inline. Defaults align with
-`.env.example` for `JIRA_*` (including `JIRA_LINKED_WORK_ISSUE_TYPES`), `LLM_REQUIREMENT_IMAGES_*`,
-`MEMORY_SIMILARITY_THRESHOLD`, and `PASTE_MODE_PRIORITIES`. `LLM_URL` is `http://host.docker.internal:1234/v1` so the
-container can reach an LLM on the host; `LLM_MODEL` matches `.env.example`. `USE_KEYCLOAK`, `KEYCLOAK_URL`,
-`KEYCLOAK_REALM`, `KEYCLOAK_CLIENT_ID`, and `KEYCLOAK_INTERNAL_URL` are set for Keycloak-in-Docker testing and differ
-from `.env.example` (which uses `USE_KEYCLOAK=false` for local API-only runs).
+| Variable                    | Example | Description                                                                                         |
+|-----------------------------|---------|-----------------------------------------------------------------------------------------------------|
+| `AUTOMATION_POST_ANALYSIS`  | `true`  | If `true`, run post-run LLM analysis on automation results.                                         |
+| `AUTOMATION_WRITE_RUN_HTML` | `true`  | Write per-run HTML reports under the reports directory.                                             |
+| `AUTOMATION_RETENTION_DAYS` | `20`    | Prune data older than this many days (runs, artifacts, reports, history). `0` disables.             |
+| `AUTOMATION_SPIKE_PRERUN`   | `false` | If `true`, run Playwright locator pre-check (and optional repair) after a non-cached selector plan. |
 
-`SHOW_JIRA_MODE_UI`, `SHOW_PASTE_REQUIREMENTS_MODE_UI`, `SHOW_AUTO_TESTS_UI`, and the `AUTOMATION_*` keys are **not**
-set in the sample `docker-compose.yml`; the image uses
-Pydantic defaults from `settings.py` for those.
+---
+
+## Keycloak Settings
+
+| Variable                        | Example   | Description                                                                                                                |
+|---------------------------------|-----------|----------------------------------------------------------------------------------------------------------------------------|
+| `USE_KEYCLOAK`                  | `false`   | Enable Keycloak / OIDC for the app.                                                                                        |
+| `KEYCLOAK_URL`                  | *(empty)* | Public Keycloak base URL.                                                                                                  |
+| `KEYCLOAK_REALM`                | *(empty)* | Realm.                                                                                                                     |
+| `KEYCLOAK_CLIENT_ID`            | *(empty)* | OIDC client id.                                                                                                            |
+| `KEYCLOAK_CLIENT_SECRET`        | *(empty)* | Client secret (if the client type requires it).                                                                            |
+| `KEYCLOAK_IDLE_TIMEOUT_MINUTES` | `60`      | Idle timeout (minutes) exposed to the UI.                                                                                  |
+| `KEYCLOAK_INTERNAL_URL`         | *(empty)* | For token/JWKS from the server when it differs from `KEYCLOAK_URL` (e.g. Docker). Empty uses `KEYCLOAK_URL` for local API. |
+
+---
+
+## LLM Settings (OpenAI-compatible)
+
+| Variable           | Example                    | Description                                                                                                                   |
+|--------------------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------|
+| `LLM_URL`          | `http://127.0.0.1:1234/v1` | OpenAI-compatible API base; must include `/v1` if your server expects that path.                                              |
+| `LLM_MODEL`        | `qwen/qwen3-vl-30b`        | Model id. Use a **vision** model if you enable requirement images.                                                            |
+| `LLM_ACCESS_TOKEN` | *(empty)*                  | Bearer token for cloud APIs; leave empty for local servers without auth.                                                      |
+| `DOCKER_LLM_URL`   | *(empty)*                  | **Not read by the backend** (`settings` ignores it). For compose/docs: value you might map into `LLM_URL` inside a container. |
+
+---
+
+## Requirement mockups / screenshots (LLM)
+
+| Variable                              | Example | Description                                                                                |
+|---------------------------------------|---------|--------------------------------------------------------------------------------------------|
+| `LLM_REQUIREMENT_IMAGES_ENABLED`      | `false` | Enable sending image attachments to the model (OpenAI-style vision: PNG, JPEG, GIF, WebP). |
+| `LLM_REQUIREMENT_IMAGES_MAX_COUNT`    | `5`     | Max number of image files per request.                                                     |
+| `LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB` | `300`   | Max combined size of those images in MB.                                                   |
+
+---
+
+## Memory
+
+| Variable                      | Example | Description                                                                                               |
+|-------------------------------|---------|-----------------------------------------------------------------------------------------------------------|
+| `MEMORY_SIMILARITY_THRESHOLD` | `0.92`  | If no exact memory key, match saved rows by similar title+description. `0` = off; try e.g. `0.88`–`0.95`. |
+
+---
+
+## Priorities
+
+| Variable                | Example                                | Description                                                                                |
+|-------------------------|----------------------------------------|--------------------------------------------------------------------------------------------|
+| `PASTE_MODE_PRIORITIES` | `'Highest, High, Medium, Low, Lowest'` | Comma-separated priority labels for **paste** mode (and fallbacks as implemented in code). |

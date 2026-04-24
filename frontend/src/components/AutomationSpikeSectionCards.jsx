@@ -9,6 +9,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import {
+  AutoTestRunIconButton,
   FieldInfo,
   FloatingTooltip,
   InlineDownloadIconButton,
@@ -465,29 +466,12 @@ function SuiteCaseRow({ c, runDisabled, onView, onRun, onAnalysis, onHistory, on
           </button>
         </FloatingTooltip>
         <FloatingTooltip text="Run this saved case">
-          <button
-            type="button"
-            className={[
-              "tc-edit-icon-btn",
-              runColor && `automation-spike-run-by-status--${runColor}`,
-            ]
-              .filter(Boolean)
-              .join(" ")}
+          <AutoTestRunIconButton
+            className={runColor ? `automation-spike-run-by-status--${runColor}` : ""}
             onClick={() => onRun(c)}
             disabled={runDisabled}
-            aria-label="Run this saved case"
-          >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="currentColor"
-              stroke="none"
-              aria-hidden
-            >
-              <polygon points="7 4 7 20 20 12 7 4" />
-            </svg>
-          </button>
+            ariaLabel="Run this saved case"
+          />
         </FloatingTooltip>
         <FloatingTooltip text="View run analysis. This shows analysis for the last run only.">
           <button

@@ -242,7 +242,7 @@ def run_suite_sequential(
         body = render_batch_report_html(report_id, batch_cases)
     else:
         body = (
-            f"<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"/>"
+            "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"/>"
             '<title>Report</title></head><body><p>No cases in this run.</p></body></html>'
         )
     p.write_text(body, encoding="utf-8")

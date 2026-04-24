@@ -373,16 +373,16 @@ def _case_nav_data_status(c: dict[str, Any]) -> str:
 
 def _html_report_nav_status_filter() -> str:
     return (
-        f'<div class="report-nav-filter">'
-        f'<label class="report-nav-filter-label" for="reportStatusSelect">Status</label>'
-        f'<select class="report-nav-filter-select" id="reportStatusSelect" '
-        f'aria-label="Filter test cases by status">'
-        f'<option value="all" selected>All</option>'
-        f'<option value="pass">Pass</option>'
-        f'<option value="skipped">Skipped</option>'
-        f'<option value="aborted">Aborted</option>'
-        f'<option value="fail">Fail</option>'
-        f"</select></div>"
+        '<div class="report-nav-filter">'
+        '<label class="report-nav-filter-label" for="reportStatusSelect">Status</label>'
+        '<select class="report-nav-filter-select" id="reportStatusSelect" '
+        'aria-label="Filter test cases by status">'
+        '<option value="all" selected>All</option>'
+        '<option value="pass">Pass</option>'
+        '<option value="skipped">Skipped</option>'
+        '<option value="aborted">Aborted</option>'
+        '<option value="fail">Fail</option>'
+        "</select></div>"
     )
 
 
@@ -415,17 +415,17 @@ def _tag_filter_choices(
 
 def _html_report_tag_filter(unique_tags: list[str], include_untagged: bool) -> str:
     opts: list[str] = [
-        f'<div class="report-nav-filter">',
-        f'<label class="report-nav-filter-label" for="reportTagSelect">Tag</label>',
-        f'<select class="report-nav-filter-select" id="reportTagSelect" '
-        f'aria-label="Filter test cases by tag">',
-        f'<option value="all" selected>All</option>',
+        '<div class="report-nav-filter">',
+        '<label class="report-nav-filter-label" for="reportTagSelect">Tag</label>',
+        '<select class="report-nav-filter-select" id="reportTagSelect" '
+        'aria-label="Filter test cases by tag">',
+        '<option value="all" selected>All</option>',
     ]
     for t in unique_tags:
         opts.append(f'<option value="{_e(t)}">{_e(t)}</option>')
     if include_untagged:
         opts.append('<option value="__untagged__">No tag</option>')
-    opts.append(f"</select></div>")
+    opts.append("</select></div>")
     return "".join(opts)
 
 
@@ -486,13 +486,13 @@ def _format_trace_block(
 
 def _format_trace_too_large_block() -> str:
     return (
-        f'<section class="report-trace-outer" aria-label="Playwright trace file">'
-        f'<div class="trace-banner trace-banner--subtle">'
-        f'<div class="trace-banner-label">Playwright Trace File</div>'
-        f'<p class="trace-size-note">A trace was recorded but is not embedded in this HTML '
-        f"because the file is larger than the in-report limit. Open this report from the app "
-        f"or copy <code>trace.zip</code> from the run folder if you need it.</p>"
-        f"</div></section>"
+        '<section class="report-trace-outer" aria-label="Playwright trace file">'
+        '<div class="trace-banner trace-banner--subtle">'
+        '<div class="trace-banner-label">Playwright Trace File</div>'
+        '<p class="trace-size-note">A trace was recorded but is not embedded in this HTML '
+        "because the file is larger than the in-report limit. Open this report from the app "
+        "or copy <code>trace.zip</code> from the run folder if you need it.</p>"
+        "</div></section>"
     )
 
 
@@ -533,18 +533,18 @@ def _html_section_case_dashboard(ok: bool) -> str:
 
 def _html_hero_landing_single() -> str:
     return (
-        f'<div class="report-landing-hero">'
-        f'<h1 class="report-landing-title">Dashboard</h1>'
-        f"</div>"
+        '<div class="report-landing-hero">'
+        '<h1 class="report-landing-title">Dashboard</h1>'
+        "</div>"
     )
 
 
 def _html_hero_landing_suite() -> str:
     return (
-        f'<div class="report-landing-hero">'
-        f'<p class="report-landing-kicker">Suite Run</p>'
-        f'<h1 class="report-landing-title">Dashboard</h1>'
-        f"</div>"
+        '<div class="report-landing-hero">'
+        '<p class="report-landing-kicker">Suite Run</p>'
+        '<h1 class="report-landing-title">Dashboard</h1>'
+        "</div>"
     )
 
 

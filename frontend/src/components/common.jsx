@@ -92,6 +92,22 @@ export function InlineDownloadIconButton({ onClick, ariaLabel, disabled, classNa
   );
 }
 
+export function AutoTestRunIconButton({ onClick, disabled, ariaLabel = "Run in Auto test", className = "" }) {
+  return (
+    <button
+      type="button"
+      className={["tc-edit-icon-btn", className].filter(Boolean).join(" ")}
+      disabled={disabled}
+      onClick={onClick}
+      aria-label={ariaLabel}
+    >
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden>
+        <polygon points="7 4 7 20 20 12 7 4" />
+      </svg>
+    </button>
+  );
+}
+
 export function ThemeToggle({ theme, setTheme, layout = "inline", id }) {
   const inner = (
     <div id={id} className="theme-toggle" role="group" aria-label="Color theme">

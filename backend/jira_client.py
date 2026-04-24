@@ -183,7 +183,7 @@ def _desc(fields: dict) -> str:
 def _mock_issue(issue_key: str) -> dict[str, str]:
     k = norm_issue_key(issue_key)
     title = f"Login Page Implementation | {k}"
-    desc = f"""
+    desc = """
 Develop a secure and user-friendly login page that allows registered users to access the application using their credentials. The page should follow UI/UX guidelines and ensure proper validation, authentication, and error handling.
 
 User Story:

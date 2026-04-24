@@ -1,5 +1,5 @@
 import { AutomationSkeletonIconButton } from "./AutomationSkeletonModal";
-import { Copy, FloatingTooltip, Spinner } from "./common";
+import { AutoTestRunIconButton, Copy, FloatingTooltip, Spinner } from "./common";
 import { JiraTestPushButton } from "./JiraTestPushButton";
 import { TestCaseBody } from "./TestCaseBody";
 import { TestCaseSummaryBadges } from "./TestCaseSummaryBadges";
@@ -258,9 +258,7 @@ export function MainTestCasesPanel({
                       {showAutoTestRunButton &&
                       (inputMode === "jira" || inputMode === "paste") ? (
                         <FloatingTooltip text="Fill Auto test from this case and open Auto test">
-                          <button
-                            type="button"
-                            className="tc-edit-icon-btn"
+                          <AutoTestRunIconButton
                             disabled={genOrBulkBusy}
                             onClick={(e) => {
                               e.stopPropagation();
@@ -272,19 +270,7 @@ export function MainTestCasesPanel({
                                 bdd: testCaseToSpikeBdd(tc),
                               });
                             }}
-                            aria-label="Run in Auto test"
-                          >
-                            <svg
-                              width="18"
-                              height="18"
-                              viewBox="0 0 24 24"
-                              fill="currentColor"
-                              stroke="none"
-                              aria-hidden
-                            >
-                              <polygon points="7 4 7 20 20 12 7 4" />
-                            </svg>
-                          </button>
+                          />
                         </FloatingTooltip>
                       ) : null}
                       <AutomationSkeletonIconButton
