@@ -183,7 +183,7 @@ export function AutomationSkeletonModal({ tc, jiraBaseUrl, api, onClose, onAnnou
         ) : null}
         <div className="head automation-skel-code-head">
           <div>
-            <h3 className="automation-skel-code-heading">Generated code</h3>
+            <h3 className="automation-skel-code-heading">Generated Code</h3>
           </div>
           <FloatingTooltip text="Copy Code">
             <Copy text={code} label="Copy Code" onAnnounce={onAnnounce} omitTitle />

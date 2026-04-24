@@ -629,9 +629,13 @@ export function AutomationSpikePanel({
               ) : null}
             </div>
           ) : null}
-          {result.error ? <p className="automation-spike-err">Error: {result.error}</p> : null}
-          {result.analysis || (Array.isArray(result.steps) && result.steps.length > 0) ? (
-            <details className="automation-spike-analysis">
+          {result.error ||
+          result.analysis ||
+          (Array.isArray(result.steps) && result.steps.length > 0) ? (
+            <details
+              className="automation-spike-analysis"
+              defaultOpen={Boolean(result.error)}
+            >
               <summary className="automation-spike-analysis-summary">
                 <svg
                   className="automation-spike-analysis-chevron"
@@ -653,6 +657,11 @@ export function AutomationSpikePanel({
                 <span className="automation-spike-analysis-summary-hint">Summary &amp; Selectors</span>
               </summary>
               <div className="automation-spike-analysis-panel">
+                {result.error ? (
+                  <p className="automation-spike-err" role="alert">
+                    Error: {result.error}
+                  </p>
+                ) : null}
                 {result.analysis ? (
                   <p className="automation-spike-suite-analysis-text">{result.analysis}</p>
                 ) : null}

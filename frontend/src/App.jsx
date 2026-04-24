@@ -1428,24 +1428,21 @@ export default function App() {
     const desc = pasteText.trim();
     if (!desc) return;
     setErr("");
+    const ve = validateReqImages();
+    if (ve) {
+      setErr(ve);
+      return;
+    }
     setHistoryJiraTicketId("");
     generationInFlightRef.current = true;
-    setBusy(useAgenticGen ? "/generate-from-paste-agentic" : "/generate-from-paste");
-    setReq(null);
+    setReq({ title: pasteTitle.trim(), description: desc });
     setTests(null);
     setDiff(null);
     setHadPriorMemory(false);
     setMemoryMatch(null);
+    setBusy(useAgenticGen ? "/generate-from-paste-agentic" : "/generate-from-paste");
     setAnnounce("Generating test cases…");
     try {
-      const ve = validateReqImages();
-      if (ve) {
-        setErr(ve);
-        setAnnounce("");
-        generationInFlightRef.current = false;
-        setBusy(null);
-        return;
-      }
       const pastePath = useAgenticGen ? "/generate-from-paste-agentic" : "/generate-from-paste";
       const pastePayload = {
         title: pasteTitle.trim(),
@@ -1608,7 +1605,9 @@ export default function App() {
   const diffShown = diffLong && !diffExpanded ? `${diff.slice(0, 600)}…` : diff;
 
   const loadingRequirements =
-    busy === "/fetch-ticket" || (isJiraGenBusy(busy) && !req) || isPasteGenBusy(busy);
+    busy === "/fetch-ticket" ||
+    (isJiraGenBusy(busy) && !req) ||
+    (isPasteGenBusy(busy) && !req);
   const loadingTestCases = (isJiraGenBusy(busy) && !!req) || isPasteGenBusy(busy);
   const generatingTestCases = isAnyGenBusy(busy);
   const genOrBulkBusy = generatingTestCases || bulkJiraSync?.running;
@@ -1623,9 +1622,11 @@ export default function App() {
 
   const showPasteRequirementsJiraCard = useMemo(() => {
     if (inputMode !== "paste") return false;
-    if (!isLikelyJiraIssueKey(pasteRequirementsHeadingKey)) return false;
-    return !!req || loadingRequirements;
-  }, [inputMode, pasteRequirementsHeadingKey, req, loadingRequirements]);
+    if (isLikelyJiraIssueKey(pasteRequirementsHeadingKey)) {
+      return !!req || loadingRequirements;
+    }
+    return !!req || isPasteGenBusy(busy) || loadingRequirements;
+  }, [inputMode, pasteRequirementsHeadingKey, req, loadingRequirements, busy]);
 
   const jiraPushConfigIncomplete =
     !jiraUrl.trim() ||
@@ -2695,7 +2696,9 @@ export default function App() {
                           <>
                             Requirements for{" "}
                             {inputMode === "paste"
-                              ? pasteRequirementsHeadingKey || ""
+                              ? pasteRequirementsHeadingKey ||
+                                String(pasteTitle || "").trim() ||
+                                "Pasted requirements"
                               : String(key).trim()}
                           </>
                         )}

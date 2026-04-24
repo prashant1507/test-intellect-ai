@@ -3176,7 +3176,7 @@ button.automation-spike-iconbtn:disabled {
   overflow: auto;
   border: 1px solid var(--card-border);
   border-radius: 8px;
-  background: var(--secondary-bg);
+  background: transparent;
 }
 
 .automation-skel-pre {
