@@ -75,6 +75,15 @@ flowchart LR
 - Button to delete test case from 'Generate Test Cases' result
   - Delete button will be available for test cases without any JIRA ID
 
+### Auto Test Execution
+- Auto Test: BDD steps run in a real browser (Playwright). 
+- Saved Suite: Store cases; Run all; optional tag/JIRA filters; optional parallel runs. 
+- Environment: Browser, headless, timeout, trace, screenshots-on-pass, parallelism. 
+- Output: Status, steps, screenshots, optional post-run analysis. 
+- Reports: Suite batch report for full/filtered runs; single runs can have their own report (per your settings). 
+- Cleanup: Retention can prune old runs, files, and history.
+- Parallel execution support
+
 ### History & Comparison
 - SQLite keeps the latest requirements and generated tests per ticket (when saving is enabled).
 - **Similar Ticket Matching:** If there is no exact-saved row for a key, optional **similar title + description** matching via **`MEMORY_SIMILARITY_THRESHOLD`** in `.env` (`0` = off; try ~`0.88`–`0.95`).
@@ -222,9 +231,12 @@ Other routes and request schemas: see **`backend/main.py`**.
 
 ## Notes
 
-- **Mock Mode:** No audit writes from generate; no history saves from generate. Audit user column is empty without Keycloak.
-- **JIRA Test Project:** After generating tests, configuring the test project and using **+** can pull priorities from JIRA depending on setup.
+- **Mock Mode:** No audit writes from generate; no history saves from generate. Audit user column is empty without Keycloak
+- **JIRA Test Project:** After generating tests, configuring the test project and using **+** can pull priorities from JIRA depending on setup
 - Make sure to use model that supports vision in order to use feature to pass mockups to LLM
+- Analysis for each test case will have details of last execution only if executed from 'Saved Suite'
+- Green dot will appear for currently running test case
+- View Report will show report from 'Start Test' as well
 
 ---
 
