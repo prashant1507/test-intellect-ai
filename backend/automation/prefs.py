@@ -55,3 +55,15 @@ def get_effective_automation_default_timeout_ms() -> int:
     except ValueError:
         return int(settings.automation_default_timeout_ms)
     return min(max(n, 1000), 600_000)
+
+
+def get_effective_automation_parallel_execution() -> int:
+    """Saved suite: max concurrent cases (1–4). Default 1 (sequential)."""
+    raw = get_automation_kv("parallel_execution")
+    if raw is None or not str(raw).strip():
+        return min(max(int(settings.automation_parallel_execution), 1), 4)
+    try:
+        n = int(str(raw).strip())
+    except ValueError:
+        return min(max(int(settings.automation_parallel_execution), 1), 4)
+    return min(max(n, 1), 4)

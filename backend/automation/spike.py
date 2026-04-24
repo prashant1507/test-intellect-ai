@@ -403,7 +403,9 @@ def _llm_build_steps(
         "assert_contains for visible error text. "
         "To assert an input is empty, use assert_value with value exactly \"\". "
         "assert_placeholder is ONLY for the HTML placeholder attribute (hint text), not the current field value. "
-        "Error messages with exact copy: assert_contains with text= required substring, e.g. text=Required. "
+        "Error messages with exact copy: use assert_visible or assert_contains on a locator (e.g. text=Required or .oxd-input-group__message), "
+        "when the BDD line says the message should appear or be visible. Never use assert_hidden for a message that must be shown. "
+        "Use assert_hidden only when the BDD line says the message should not appear, or there is no error (e.g. 'And no error message' below a field). "
         "For XPath, prefer normalize-space(.)= over text()=. Never use CSS ::placeholder in selectors. JSON only."
     )
     num = "\n".join(f"  {i}. {line}" for i, line in enumerate(bdd_lines))
@@ -544,9 +546,62 @@ def _llm_repair_after_runtime_fail(
     return None
 
 
+def _bdd_line_implies_message_hidden(line: str) -> bool:
+    s = (line or "").strip()
+    if re.search(r"(?i)^\s*(given|when|then|and)\s+no\s+", s):
+        return True
+    if re.search(
+        r"(?i)\bshould\s+not\s+(appear|be\s+visible|be\s+displayed|show|display)\b",
+        s,
+    ) or re.search(r"(?i)\bno\s+error\s+message\b", s):
+        return True
+    if re.search(r"(?i)\bmust\s+not\s+appear\b", s):
+        return True
+    return False
+
+
+def _bdd_line_implies_message_visible(line: str) -> bool:
+    s = (line or "").strip()
+    if _bdd_line_implies_message_hidden(s):
+        return False
+    if re.search(r"(?i)(should|must)\s+appear\b", s):
+        return True
+    if re.search(r"(?i)should\s+be\s+visible\b", s):
+        return True
+    if re.search(
+        r"(?i)(validation\s+error\s+message|error\s+message|message).{0,120}displaying",
+        s,
+    ):
+        return True
+    return bool(re.search(r"(?i)should\s+be\s+displayed\s+below", s))
+
+
+def _fix_assert_visibility_from_bdd(
+    bdd_lines: list[str], spec: list[dict[str, Any]], log: list[str] | None
+) -> None:
+    for i, st in enumerate(spec):
+        if i >= len(bdd_lines):
+            break
+        line = bdd_lines[i] or ""
+        a = _normalize_spike_action(str(st.get("action") or "click"), log)
+        if a not in ("assert_hidden", "assert_visible"):
+            continue
+        if _bdd_line_implies_message_hidden(line) and a == "assert_visible":
+            st["action"] = "assert_hidden"
+            if log is not None:
+                _l(log, f"step {i}: BDD implies hidden -> assert_hidden")
+        elif not _bdd_line_implies_message_hidden(
+            line
+        ) and a == "assert_hidden" and _bdd_line_implies_message_visible(line):
+            st["action"] = "assert_visible"
+            if log is not None:
+                _l(log, f"step {i}: BDD implies visible/appear -> assert_visible")
+
+
 def _merge_to_run_steps(
     bdd_lines: list[str], spec: list[dict[str, Any]], source: str, log: list[str]
 ) -> list[dict[str, Any]]:
+    _fix_assert_visibility_from_bdd(bdd_lines, spec, log)
     out: list[dict[str, Any]] = []
     for i, bline in enumerate(bdd_lines):
         st: dict[str, Any] = spec[i] if i < len(spec) else {}
@@ -839,6 +894,8 @@ def _execute_spike_sync(
     html_dom: str | None = None,
     jira_id: str = "",
     tag: str = "",
+    *,
+    write_run_html: bool = True,
 ) -> dict[str, Any]:
     bdd_lines = parse_bdd_step_lines(bdd)
     _l(log, f"Parsed BDD: {len(bdd_lines)} line(s).")
@@ -927,21 +984,25 @@ def _execute_spike_sync(
     trace_href_htm = (
         f"{base_artifacts}/trace.zip" if (run_dir / "trace.zip").is_file() else None
     )
-    report_url = _write_run_html(
-        run_id,
-        title,
-        bdd,
-        u,
-        ok,
-        rel_steps,
-        log,
-        analysis=analysis,
-        trace_href=trace_href_htm,
-        jira_id=jira_id,
-        tag=tag,
-    )
-    if report_url:
-        summary["report_url"] = report_url
+    report_url: str | None
+    if write_run_html:
+        report_url = _write_run_html(
+            run_id,
+            title,
+            bdd,
+            u,
+            ok,
+            rel_steps,
+            log,
+            analysis=analysis,
+            trace_href=trace_href_htm,
+            jira_id=jira_id,
+            tag=tag,
+        )
+        if report_url:
+            summary["report_url"] = report_url
+    else:
+        report_url = None
     update_run(
         run_id,
         status="completed" if ok else "failed",
@@ -975,6 +1036,8 @@ def run_automation_spike(
     html_dom: str | None = None,
     jira_id: str = "",
     tag: str = "",
+    *,
+    write_run_html: bool = True,
 ) -> dict[str, Any]:
     log: list[str] = []
     u = (url or "").strip()
@@ -987,7 +1050,15 @@ def run_automation_spike(
     )
     try:
         return _execute_spike_sync(
-            run_id, title, bdd, u, log, html_dom=html_dom, jira_id=jira_id, tag=tag
+            run_id,
+            title,
+            bdd,
+            u,
+            log,
+            html_dom=html_dom,
+            jira_id=jira_id,
+            tag=tag,
+            write_run_html=write_run_html,
         )
     except SpikeUserError as e:
         setattr(e, "run_id", run_id)
@@ -1025,7 +1096,16 @@ async def run_automation_spike_async(
     html_dom: str | None = None,
     jira_id: str = "",
     tag: str = "",
+    *,
+    write_run_html: bool = True,
 ) -> dict[str, Any]:
     return await asyncio.to_thread(
-        run_automation_spike, title, bdd, url, html_dom, jira_id, tag
+        run_automation_spike,
+        title,
+        bdd,
+        url,
+        html_dom,
+        jira_id,
+        tag,
+        write_run_html=write_run_html,
     )

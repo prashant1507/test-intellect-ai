@@ -21,7 +21,7 @@ import {
   stepShotAccordionId,
 } from "./AutomationRunStepScreenshot";
 import { ResizableScrollClip, useScrollClipHeightPx } from "./LinkedJiraLists";
-import { parseTagCsv } from "../utils/tagCsv";
+import { normalizeJiraKeyCsv, normalizeTagCsv, parseTagCsv } from "../utils/tagCsv";
 
 const SAVED_LINKED_LIST_VISIBLE_ROWS = 4;
 const SAVED_SELECTORS_VISIBLE_ROWS = 2;
@@ -33,6 +33,11 @@ function buildEnvOptionsBody(envObj, patch) {
     !Number.isNaN(envObj.automation_default_timeout_ms)
       ? envObj.automation_default_timeout_ms
       : 30_000;
+  const defPar = (() => {
+    const p = envObj.automation_parallel_execution;
+    if (typeof p === "number" && p >= 1 && p <= 4) return p;
+    return 1;
+  })();
   return {
     automation_headless: patch.automation_headless ?? !!envObj.automation_headless,
     automation_screenshot_on_pass:
@@ -41,6 +46,12 @@ function buildEnvOptionsBody(envObj, patch) {
       patch.automation_trace_file_generation ??
       !!envObj.automation_trace_file_generation,
     automation_default_timeout_ms: patch.automation_default_timeout_ms ?? defTo,
+    automation_parallel_execution:
+      typeof patch.automation_parallel_execution === "number" &&
+      patch.automation_parallel_execution >= 1 &&
+      patch.automation_parallel_execution <= 4
+        ? patch.automation_parallel_execution
+        : defPar,
   };
 }
 
@@ -439,7 +450,7 @@ function SuiteCaseRow({ c, runDisabled, onView, onRun, onAnalysis, onHistory, on
   const hasSuiteAnalysis = Boolean(String(c.last_suite_analysis ?? "").trim());
   const runColor = lastRunStatusToClassSuffix(c.last_suite_run_status);
   return (
-    <li>
+    <li data-suite-case-id={c.id != null && String(c.id).trim() ? String(c.id) : undefined}>
       <span className="automation-spike-suite-title">
         {isRunningInSuite ? (
           <span
@@ -601,6 +612,12 @@ export function AutomationSpikeSectionCards({
   const [suiteRunDialogOpen, setSuiteRunDialogOpen] = useState(false);
   const [suiteRunUrlDraft, setSuiteRunUrlDraft] = useState("");
   const [suiteRunUrlInvalid, setSuiteRunUrlInvalid] = useState(false);
+  const [suiteRunFilterSelectedTags, setSuiteRunFilterSelectedTags] = useState([]);
+  const [suiteRunFilterTagInput, setSuiteRunFilterTagInput] = useState("");
+  const [suiteRunFilterTagSuggestOpen, setSuiteRunFilterTagSuggestOpen] = useState(false);
+  const [suiteRunFilterSelectedJiras, setSuiteRunFilterSelectedJiras] = useState([]);
+  const [suiteRunFilterJiraInput, setSuiteRunFilterJiraInput] = useState("");
+  const [suiteRunFilterJiraSuggestOpen, setSuiteRunFilterJiraSuggestOpen] = useState(false);
   const [suiteBddViewCase, setSuiteBddViewCase] = useState(null);
   const [suiteAnalysisViewCase, setSuiteAnalysisViewCase] = useState(null);
   const [suiteAnalysisRunDetail, setSuiteAnalysisRunDetail] = useState(null);
@@ -612,7 +629,7 @@ export function AutomationSpikeSectionCards({
   const [suiteRunOneCase, setSuiteRunOneCase] = useState(null);
   const [suiteRunOneUrlDraft, setSuiteRunOneUrlDraft] = useState("");
   const [suiteRunOneUrlInvalid, setSuiteRunOneUrlInvalid] = useState(false);
-  const [suiteRunningCaseId, setSuiteRunningCaseId] = useState(null);
+  const [suiteRunningCaseIds, setSuiteRunningCaseIds] = useState([]);
   const [suiteDeleteCase, setSuiteDeleteCase] = useState(null);
   const [suiteReportsRecentOpen, setSuiteReportsRecentOpen] = useState(() => {
     try {
@@ -629,6 +646,84 @@ export function AutomationSpikeSectionCards({
   const [envOptionsSaving, setEnvOptionsSaving] = useState(false);
   const [automationTimeoutDraft, setAutomationTimeoutDraft] = useState(null);
   const [envOptionsErr, setEnvOptionsErr] = useState("");
+
+  const suiteTagFilterOptions = useMemo(() => {
+    const s = new Set();
+    for (const c of suiteCases) {
+      parseTagCsv(c?.tag).forEach((t) => s.add(t));
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }, [suiteCases]);
+
+  const suiteJiraFilterOptions = useMemo(() => {
+    const s = new Set();
+    for (const c of suiteCases) {
+      const j = String(c?.jira_id || "").trim();
+      if (j) s.add(j);
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }, [suiteCases]);
+
+  const suiteTagRunFilterSuggestions = useMemo(() => {
+    const picked = new Set(suiteRunFilterSelectedTags);
+    const q = suiteRunFilterTagInput.trim().toLowerCase();
+    return suiteTagFilterOptions.filter(
+      (t) => !picked.has(t) && (q === "" || t.toLowerCase().includes(q)),
+    );
+  }, [suiteTagFilterOptions, suiteRunFilterSelectedTags, suiteRunFilterTagInput]);
+
+  const suiteJiraRunFilterSuggestions = useMemo(() => {
+    const picked = new Set(suiteRunFilterSelectedJiras);
+    const q = suiteRunFilterJiraInput.trim().toLowerCase();
+    return suiteJiraFilterOptions.filter(
+      (k) => !picked.has(k) && (q === "" || k.toLowerCase().includes(q)),
+    );
+  }, [suiteJiraFilterOptions, suiteRunFilterSelectedJiras, suiteRunFilterJiraInput]);
+
+  useEffect(() => {
+    const ts = new Set(suiteTagFilterOptions);
+    setSuiteRunFilterSelectedTags((p) => p.filter((x) => ts.has(x)));
+  }, [suiteTagFilterOptions]);
+
+  useEffect(() => {
+    const js = new Set(suiteJiraFilterOptions);
+    setSuiteRunFilterSelectedJiras((p) => p.filter((x) => js.has(x)));
+  }, [suiteJiraFilterOptions]);
+
+  const addSuiteRunFilterTag = useCallback(
+    (t) => {
+      if (!t) return;
+      setSuiteRunFilterSelectedTags((prev) => {
+        if (prev.includes(t)) return prev;
+        if (!suiteTagFilterOptions.includes(t)) return prev;
+        return [...prev, t].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      });
+      setSuiteRunFilterTagInput("");
+    },
+    [suiteTagFilterOptions],
+  );
+
+  const removeSuiteRunFilterTag = useCallback((t) => {
+    setSuiteRunFilterSelectedTags((prev) => prev.filter((x) => x !== t));
+  }, []);
+
+  const addSuiteRunFilterJira = useCallback(
+    (k) => {
+      if (!k) return;
+      setSuiteRunFilterSelectedJiras((prev) => {
+        if (prev.includes(k)) return prev;
+        if (!suiteJiraFilterOptions.includes(k)) return prev;
+        return [...prev, k].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      });
+      setSuiteRunFilterJiraInput("");
+    },
+    [suiteJiraFilterOptions],
+  );
+
+  const removeSuiteRunFilterJira = useCallback((k) => {
+    setSuiteRunFilterSelectedJiras((prev) => prev.filter((x) => x !== k));
+  }, []);
+
   useEffect(() => {
     try {
       if (suiteReportsRecentOpen) localStorage.setItem(SUITE_REPORTS_RECENT_LS_KEY, "1");
@@ -636,9 +731,24 @@ export function AutomationSpikeSectionCards({
     } catch {}
   }, [suiteReportsRecentOpen]);
   const suiteRunUrlInputRef = useRef(null);
+  const suiteRunFilterTagComboRef = useRef(null);
+  const suiteRunFilterJiraComboRef = useRef(null);
   const suiteRunOneUrlInputRef = useRef(null);
   const suiteReportsRecentDialogRef = useRef(null);
   const suiteDeleteCaseDialogRef = useRef(null);
+
+  useEffect(() => {
+    const onDoc = (e) => {
+      if (!suiteRunFilterTagComboRef.current || !suiteRunFilterTagComboRef.current.contains(e.target)) {
+        setSuiteRunFilterTagSuggestOpen(false);
+      }
+      if (!suiteRunFilterJiraComboRef.current || !suiteRunFilterJiraComboRef.current.contains(e.target)) {
+        setSuiteRunFilterJiraSuggestOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
 
   const suiteListRef = useRef(null);
   const suiteKeyForClip = useMemo(
@@ -741,7 +851,7 @@ export function AutomationSpikeSectionCards({
 
   useEffect(() => {
     if (!suiteBusy) {
-      setSuiteRunningCaseId(null);
+      setSuiteRunningCaseIds([]);
       return undefined;
     }
     let cancelled = false;
@@ -749,10 +859,17 @@ export function AutomationSpikeSectionCards({
       try {
         const d = await api("/automation/suite-run-status");
         if (cancelled) return;
-        const id = d?.current_case_id;
-        setSuiteRunningCaseId(id != null && String(id).trim() ? String(id).trim() : null);
+        const raw = d?.current_case_ids;
+        let ids = [];
+        if (Array.isArray(raw) && raw.length) {
+          ids = raw.map((x) => String(x).trim()).filter(Boolean);
+        } else {
+          const one = d?.current_case_id;
+          if (one != null && String(one).trim()) ids = [String(one).trim()];
+        }
+        setSuiteRunningCaseIds(ids);
       } catch {
-        if (!cancelled) setSuiteRunningCaseId(null);
+        if (!cancelled) setSuiteRunningCaseIds([]);
       }
     };
     void tick();
@@ -760,9 +877,35 @@ export function AutomationSpikeSectionCards({
     return () => {
       cancelled = true;
       window.clearInterval(interval);
-      setSuiteRunningCaseId(null);
+      setSuiteRunningCaseIds([]);
     };
   }, [suiteBusy, api]);
+
+  const suiteScrollRunningCaseId = useMemo(() => {
+    if (!suiteRunningCaseIds.length || !suiteCases.length) return null;
+    const want = new Set(suiteRunningCaseIds.map(String));
+    const first = suiteCases.find((c) => want.has(String(c.id)));
+    return first != null && String(first.id).trim() ? String(first.id) : suiteRunningCaseIds[0] ?? null;
+  }, [suiteRunningCaseIds, suiteCases]);
+
+  useEffect(() => {
+    if (!suiteScrollRunningCaseId || !suiteListRef.current) return undefined;
+    const want = String(suiteScrollRunningCaseId);
+    const id = requestAnimationFrame(() => {
+      const root = suiteListRef.current;
+      if (!root) return;
+      for (const li of root.querySelectorAll("li[data-suite-case-id]")) {
+        if (li.getAttribute("data-suite-case-id") === want) {
+          const smooth =
+            typeof window !== "undefined" &&
+            !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+          li.scrollIntoView({ block: "nearest", behavior: smooth ? "smooth" : "auto" });
+          break;
+        }
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [suiteScrollRunningCaseId]);
 
   useEffect(() => {
     return () => {
@@ -1235,6 +1378,10 @@ export function AutomationSpikeSectionCards({
       const out = await api("/automation/suite-run", "POST", {
         case_ids: null,
         default_url: defaultUrl,
+        use_tag_filter: suiteRunFilterSelectedTags.length > 0,
+        filter_tags: normalizeTagCsv(suiteRunFilterSelectedTags.join(",")),
+        use_jira_filter: suiteRunFilterSelectedJiras.length > 0,
+        filter_jira_ids: normalizeJiraKeyCsv(suiteRunFilterSelectedJiras.join(",")),
       });
       setLastSuiteReport(out);
       await refreshLists();
@@ -1452,6 +1599,51 @@ export function AutomationSpikeSectionCards({
                 ))}
                 <span
                   className="automation-spike-env-grid-label"
+                  id="automation-env-opt-parallel"
+                >
+                  <span className="label-with-info">
+                    <span>Parallel Execution</span>
+                    <FieldInfo text="Number of parallel tests to be executed in the saved suite (Run all). 1 = one at a time." />
+                  </span>
+                </span>
+                <div className="automation-spike-env-grid-control">
+                  <div
+                    className="automation-spike-browser-radios automation-spike-parallel-radios"
+                    role="radiogroup"
+                    aria-labelledby="automation-env-opt-parallel"
+                  >
+                    {[1, 2, 3, 4].map((n) => {
+                      const cur =
+                        typeof env.automation_parallel_execution === "number" &&
+                        env.automation_parallel_execution >= 1 &&
+                        env.automation_parallel_execution <= 4
+                          ? env.automation_parallel_execution
+                          : 1;
+                      return (
+                        <label key={n} className="automation-spike-browser-radio">
+                          <input
+                            type="radio"
+                            name="automation-spike-parallel"
+                            value={String(n)}
+                            checked={cur === n}
+                            onChange={() =>
+                              void onEnvOptionsChange({ automation_parallel_execution: n })
+                            }
+                            disabled={
+                              browserSaving ||
+                              envOptionsSaving ||
+                              suiteBusy ||
+                              spikeRunBusy
+                            }
+                          />
+                          <span>{n}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                <span
+                  className="automation-spike-env-grid-label"
                   id="automation-env-opt-timeout"
                 >
                   <span className="label-with-info">
@@ -1510,11 +1702,6 @@ export function AutomationSpikeSectionCards({
                     {browserErr}
                   </p>
                 ) : null}
-                {envOptionsSaving ? (
-                  <div className="automation-spike-env-grid-foot automation-spike-env-options-saving">
-                    <Spinner /> <span className="automation-spike-muted">Saving…</span>
-                  </div>
-                ) : null}
                 {envOptionsErr ? (
                   <p
                     className="automation-spike-err automation-spike-env-grid-alert automation-spike-env-options-err"
@@ -1556,18 +1743,302 @@ export function AutomationSpikeSectionCards({
             )}
           </p>
         ) : null}
-        {suiteErr ? <p className="automation-spike-err">{suiteErr}</p> : null}
-        <div className="automation-spike-suite-actions">
-          <div className="automation-spike-suite-actions-lead">
-            {lastSuiteReport?.report_url ? (
+        <div className="automation-spike-saved-suite-toolbar">
+          {suiteCases.length > 0 ? (
+          <details className="automation-saved-suite-run-filters">
+            <summary className="automation-saved-suite-run-filters-summary">
+              <span className="automation-saved-suite-run-filters-chevron" aria-hidden>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </span>
+              <span className="automation-saved-suite-run-filters-title">
+                Run Filter
+                <span className="automation-saved-suite-run-filters-hint">(Optional)</span>
+              </span>
+            </summary>
+            <div className="automation-saved-suite-run-filters-body">
+            <div className="automation-saved-suite-run-filters-field">
+              <div className="automation-saved-suite-run-filters-field-head">
+                <span className="automation-saved-suite-run-filters-k">
+                  Tag <span className="automation-saved-suite-run-filters-hint">(Optional)</span>
+                </span>
+                <span className="label-with-info automation-saved-suite-run-filters-or-with-info">
+                  <span className="automation-saved-suite-run-filters-pill">OR match</span>
+                  <FieldInfo text="A test runs if it has at least one of these tags (OR)." />
+                </span>
+              </div>
+              {suiteTagFilterOptions.length === 0 ? (
+                <p className="automation-saved-suite-run-filters-empty automation-spike-muted">
+                  No tags in saved suite yet. Add tags on saved cases in Auto Tests, then return here.
+                </p>
+              ) : (
+                <div className="automation-saved-suite-run-filters-tag-combo" ref={suiteRunFilterTagComboRef}>
+                  <div className="automation-saved-suite-run-filters-tag-box" role="group" aria-label="Choose tags from saved suite">
+                    {suiteRunFilterSelectedTags.map((t) => (
+                      <span key={t} className="automation-saved-suite-run-filters-tag-chip" title={t}>
+                        <span className="automation-saved-suite-run-filters-tag-chip-text">{t}</span>
+                        <button
+                          type="button"
+                          className="automation-saved-suite-run-filters-tag-chip-x"
+                          aria-label={`Remove tag ${t}`}
+                          onClick={() => removeSuiteRunFilterTag(t)}
+                        >
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden
+                          >
+                            <path d="M18 6L6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </span>
+                    ))}
+                    <input
+                      id="automation-suite-run-filter-tag-input"
+                      type="text"
+                      className="automation-saved-suite-run-filters-tag-typeahead"
+                      value={suiteRunFilterTagInput}
+                      onChange={(e) => {
+                        setSuiteRunFilterTagInput(e.target.value);
+                        setSuiteRunFilterTagSuggestOpen(true);
+                      }}
+                      onFocus={() => setSuiteRunFilterTagSuggestOpen(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setSuiteRunFilterTagSuggestOpen(false);
+                          e.stopPropagation();
+                        } else if (e.key === "Enter" && suiteTagRunFilterSuggestions.length > 0) {
+                          e.preventDefault();
+                          addSuiteRunFilterTag(suiteTagRunFilterSuggestions[0]);
+                        } else if (
+                          e.key === "Backspace" &&
+                          !suiteRunFilterTagInput &&
+                          suiteRunFilterSelectedTags.length > 0
+                        ) {
+                          removeSuiteRunFilterTag(
+                            suiteRunFilterSelectedTags[suiteRunFilterSelectedTags.length - 1],
+                          );
+                        }
+                      }}
+                      placeholder="Type to find tags…"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      aria-label="Search and add tags"
+                      aria-expanded={suiteRunFilterTagSuggestOpen && suiteRunFilterTagInput.trim() !== ""}
+                      aria-controls="automation-suite-run-tag-suggest"
+                      aria-autocomplete="list"
+                    />
+                  </div>
+                  {suiteRunFilterTagSuggestOpen && suiteRunFilterTagInput.trim() !== "" ? (
+                    <div
+                      id="automation-suite-run-tag-suggest"
+                      className="automation-saved-suite-run-filters-tag-suggest"
+                      role="listbox"
+                      aria-label="Tag suggestions"
+                    >
+                      {suiteTagRunFilterSuggestions.length > 0 ? (
+                        suiteTagRunFilterSuggestions.map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            role="option"
+                            className="automation-saved-suite-run-filters-tag-suggest-item"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              addSuiteRunFilterTag(t);
+                            }}
+                          >
+                            {t}
+                          </button>
+                        ))
+                      ) : (
+                        <div className="automation-saved-suite-run-filters-tag-suggest-empty" role="status">
+                          No matching tags.
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+            <div className="automation-saved-suite-run-filters-field">
+              <div className="automation-saved-suite-run-filters-field-head">
+                <span className="automation-saved-suite-run-filters-k">
+                  JIRA ID <span className="automation-saved-suite-run-filters-hint">(Optional)</span>
+                </span>
+                <span className="label-with-info automation-saved-suite-run-filters-or-with-info">
+                  <span className="automation-saved-suite-run-filters-pill">OR match</span>
+                  <FieldInfo text="A test runs if its JIRA key matches one of these (OR)." />
+                </span>
+              </div>
+              {suiteJiraFilterOptions.length === 0 ? (
+                <p className="automation-saved-suite-run-filters-empty automation-spike-muted">
+                  No JIRA IDs in saved suite yet. Add a JIRA ID on saved cases, then return here.
+                </p>
+              ) : (
+                <div className="automation-saved-suite-run-filters-tag-combo" ref={suiteRunFilterJiraComboRef}>
+                  <div className="automation-saved-suite-run-filters-tag-box" role="group" aria-label="Choose JIRA issue keys from saved suite">
+                    {suiteRunFilterSelectedJiras.map((k) => (
+                      <span key={k} className="automation-saved-suite-run-filters-tag-chip" title={k}>
+                        <span className="automation-saved-suite-run-filters-tag-chip-text">{k}</span>
+                        <button
+                          type="button"
+                          className="automation-saved-suite-run-filters-tag-chip-x"
+                          aria-label={`Remove JIRA key ${k}`}
+                          onClick={() => removeSuiteRunFilterJira(k)}
+                        >
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden
+                          >
+                            <path d="M18 6L6 18M6 6l12 12" />
+                          </svg>
+                        </button>
+                      </span>
+                    ))}
+                    <input
+                      id="automation-suite-run-filter-jira-input"
+                      type="text"
+                      className="automation-saved-suite-run-filters-tag-typeahead"
+                      value={suiteRunFilterJiraInput}
+                      onChange={(e) => {
+                        setSuiteRunFilterJiraInput(e.target.value);
+                        setSuiteRunFilterJiraSuggestOpen(true);
+                      }}
+                      onFocus={() => setSuiteRunFilterJiraSuggestOpen(true)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Escape") {
+                          setSuiteRunFilterJiraSuggestOpen(false);
+                          e.stopPropagation();
+                        } else if (e.key === "Enter" && suiteJiraRunFilterSuggestions.length > 0) {
+                          e.preventDefault();
+                          addSuiteRunFilterJira(suiteJiraRunFilterSuggestions[0]);
+                        } else if (
+                          e.key === "Backspace" &&
+                          !suiteRunFilterJiraInput &&
+                          suiteRunFilterSelectedJiras.length > 0
+                        ) {
+                          removeSuiteRunFilterJira(
+                            suiteRunFilterSelectedJiras[suiteRunFilterSelectedJiras.length - 1],
+                          );
+                        }
+                      }}
+                      placeholder="Type to find JIRA keys…"
+                      autoComplete="off"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      aria-label="Search and add JIRA issue keys"
+                      aria-expanded={suiteRunFilterJiraSuggestOpen && suiteRunFilterJiraInput.trim() !== ""}
+                      aria-controls="automation-suite-run-jira-suggest"
+                      aria-autocomplete="list"
+                    />
+                  </div>
+                  {suiteRunFilterJiraSuggestOpen && suiteRunFilterJiraInput.trim() !== "" ? (
+                    <div
+                      id="automation-suite-run-jira-suggest"
+                      className="automation-saved-suite-run-filters-tag-suggest"
+                      role="listbox"
+                      aria-label="JIRA key suggestions"
+                    >
+                      {suiteJiraRunFilterSuggestions.length > 0 ? (
+                        suiteJiraRunFilterSuggestions.map((j) => (
+                          <button
+                            key={j}
+                            type="button"
+                            role="option"
+                            className="automation-saved-suite-run-filters-tag-suggest-item"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              addSuiteRunFilterJira(j);
+                            }}
+                          >
+                            {j}
+                          </button>
+                        ))
+                      ) : (
+                        <div className="automation-saved-suite-run-filters-tag-suggest-empty" role="status">
+                          No matching JIRA keys.
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </div>
+            </div>
+          </details>
+          ) : null}
+          <div className="automation-spike-suite-actions">
+            <div className="automation-spike-suite-actions-lead">
+            {suiteCases.length > 0 ? (
               <>
-                <FloatingTooltip text="Open report">
-                  <a
-                    href={lastSuiteReport.report_url}
-                    className="automation-spike-suite-report-icon-link"
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label="Open auto test report"
+                {lastSuiteReport?.report_url ? (
+                  <>
+                    <FloatingTooltip text="Open report">
+                      <a
+                        href={lastSuiteReport.report_url}
+                        className="automation-spike-suite-report-icon-link"
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label="Open auto test report"
+                      >
+                        <svg
+                          width="20"
+                          height="20"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          aria-hidden
+                        >
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <path d="M14 2v6h6" />
+                          <path d="M16 13H8" />
+                          <path d="M16 17H8" />
+                          <path d="M10 9H8" />
+                        </svg>
+                      </a>
+                    </FloatingTooltip>
+                    <FloatingTooltip text="Download report">
+                      <span className="automation-spike-suite-report-dl-wrap">
+                        <InlineDownloadIconButton
+                          className="automation-spike-suite-report-dl"
+                          ariaLabel="Download report"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            void downloadUrlAsFile(
+                              lastSuiteReport.report_url,
+                              suggestedFilenameFromUrl(lastSuiteReport.report_url, "report.html"),
+                            );
+                          }}
+                        />
+                      </span>
+                    </FloatingTooltip>
+                  </>
+                ) : null}
+                <FloatingTooltip text="View saved test reports">
+                  <button
+                    type="button"
+                    className="automation-spike-suite-recent-reports-icon-btn"
+                    onClick={() => void openSuiteReportsRecent()}
+                    aria-label="View recent suite run reports"
                   >
                     <svg
                       width="20"
@@ -1580,87 +2051,46 @@ export function AutomationSpikeSectionCards({
                       strokeLinejoin="round"
                       aria-hidden
                     >
-                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                      <path d="M14 2v6h6" />
-                      <path d="M16 13H8" />
-                      <path d="M16 17H8" />
-                      <path d="M10 9H8" />
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <line x1="7" y1="8" x2="16" y2="8" />
+                      <line x1="7" y1="12" x2="16" y2="12" />
+                      <line x1="7" y1="16" x2="13" y2="16" />
                     </svg>
-                  </a>
+                  </button>
                 </FloatingTooltip>
-                <FloatingTooltip text="Download report">
-                  <span className="automation-spike-suite-report-dl-wrap">
-                    <InlineDownloadIconButton
-                      className="automation-spike-suite-report-dl"
-                      ariaLabel="Download report"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        void downloadUrlAsFile(
-                          lastSuiteReport.report_url,
-                          suggestedFilenameFromUrl(lastSuiteReport.report_url, "report.html"),
-                        );
-                      }}
-                    />
-                  </span>
+                <FloatingTooltip
+                  text={
+                    suiteBusy
+                      ? "Running suite…"
+                      : "Run all tests in the saved suite, in order"
+                  }
+                >
+                  <button
+                    type="button"
+                    className="primary automation-spike-suite-run-all-icon"
+                    onClick={openRunAllDialog}
+                    disabled={suiteBusy || suiteCases.length === 0 || spikeRunBusy}
+                    aria-busy={suiteBusy || undefined}
+                    aria-label={suiteBusy ? "Running suite…" : "Run all tests in the saved suite"}
+                  >
+                    {suiteBusy ? (
+                      <Spinner />
+                    ) : (
+                      <svg
+                        width="20"
+                        height="20"
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        aria-hidden
+                      >
+                        <path d="M3 5.5h7v2.25H3V5.5zm0 5.25h5.25V13H3v-2.25zm0 5.25H11v2.25H3V16z" />
+                        <path d="M14.5 4.5v15L24 12l-9.5-7.5z" />
+                      </svg>
+                    )}
+                  </button>
                 </FloatingTooltip>
               </>
             ) : null}
-            <FloatingTooltip text="View saved auto test reports">
-              <button
-                type="button"
-                className="automation-spike-suite-recent-reports-icon-btn"
-                onClick={() => void openSuiteReportsRecent()}
-                aria-label="View recent suite run reports"
-              >
-                <svg
-                  width="20"
-                  height="20"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <rect x="3" y="3" width="18" height="18" rx="2" />
-                  <line x1="7" y1="8" x2="16" y2="8" />
-                  <line x1="7" y1="12" x2="16" y2="12" />
-                  <line x1="7" y1="16" x2="13" y2="16" />
-                </svg>
-              </button>
-            </FloatingTooltip>
-            <FloatingTooltip
-              text={
-                suiteBusy
-                  ? "Running suite…"
-                  : "Run all tests in the saved suite, in order"
-              }
-            >
-              <button
-                type="button"
-                className="primary automation-spike-suite-run-all-icon"
-                onClick={openRunAllDialog}
-                disabled={suiteBusy || suiteCases.length === 0 || spikeRunBusy}
-                aria-busy={suiteBusy || undefined}
-                aria-label={suiteBusy ? "Running suite…" : "Run all tests in the saved suite"}
-              >
-                {suiteBusy ? (
-                  <Spinner />
-                ) : (
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    aria-hidden
-                  >
-                    <path d="M3 5.5h7v2.25H3V5.5zm0 5.25h5.25V13H3v-2.25zm0 5.25H11v2.25H3V16z" />
-                    <path d="M14.5 4.5v15L24 12l-9.5-7.5z" />
-                  </svg>
-                )}
-              </button>
-            </FloatingTooltip>
             {suiteBusy ? (
               <>
                 <FloatingTooltip text="Stop the current test now. The suite will continue with the next case.">
@@ -1724,8 +2154,10 @@ export function AutomationSpikeSectionCards({
                 </FloatingTooltip>
               </>
             ) : null}
+            </div>
           </div>
         </div>
+        {suiteErr ? <p className="automation-spike-err">{suiteErr}</p> : null}
         {suiteCases.length === 0 ? (
           <p className="automation-spike-muted">No saved cases yet. Use &quot;Save to Suite&quot; in the form above to add a new test.</p>
         ) : (
@@ -1746,7 +2178,8 @@ export function AutomationSpikeSectionCards({
                     key={`suite-${i}-${String(c.id)}`}
                     c={c}
                     isRunningInSuite={Boolean(
-                      suiteRunningCaseId && String(c.id) === String(suiteRunningCaseId),
+                      suiteRunningCaseIds.length > 0 &&
+                        suiteRunningCaseIds.some((id) => String(c.id) === String(id)),
                     )}
                     runDisabled={suiteBusy || spikeRunBusy}
                     onView={openSuiteBddView}

@@ -17,6 +17,13 @@ def parse_tag_tokens(s: str | None) -> list[str]:
     ]
 
 
+def parse_jira_key_tokens(
+    s: str | None, *, max_keys: int = 80, max_key_len: int = 200
+) -> list[str]:
+    out = [p.strip() for p in str(s or "").split(",") if p.strip()][:max_keys]
+    return [p[:max_key_len] for p in out]
+
+
 def normalize_tag_csv(s: str | None, *, max_len: int = 200) -> str:
     parts = parse_tag_tokens(s)
     if not parts:

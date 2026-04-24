@@ -58,6 +58,8 @@ export function AutomationSpikePanel({
   const scenarioInputRef = useRef(null);
   const urlInputRef = useRef(null);
   const bddTextareaRef = useRef(null);
+  const saveSuiteSuccessFlashRef = useRef(null);
+  const [saveSuiteSuccessFlash, setSaveSuiteSuccessFlash] = useState(false);
 
   const bumpLists = () => {
     onListsChanged?.();
@@ -81,6 +83,15 @@ export function AutomationSpikePanel({
       onSpikeRunBusyChange?.(false);
     };
   }, [onSpikeRunBusyChange]);
+
+  useEffect(() => {
+    return () => {
+      if (saveSuiteSuccessFlashRef.current) {
+        clearTimeout(saveSuiteSuccessFlashRef.current);
+        saveSuiteSuccessFlashRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const rid = result?.run_id;
@@ -197,6 +208,14 @@ export function AutomationSpikePanel({
         tag: normalizeTagCsv(tag),
       });
       bumpLists();
+      if (saveSuiteSuccessFlashRef.current) {
+        clearTimeout(saveSuiteSuccessFlashRef.current);
+      }
+      setSaveSuiteSuccessFlash(true);
+      saveSuiteSuccessFlashRef.current = setTimeout(() => {
+        setSaveSuiteSuccessFlash(false);
+        saveSuiteSuccessFlashRef.current = null;
+      }, 500);
     } catch (e) {
       const m = e?.message || String(e);
       if (m.includes("already exists")) setSaveSuiteInfo(m);
@@ -353,7 +372,16 @@ export function AutomationSpikePanel({
             {stopInProgress ? "In progress…" : "Stop Test"}
           </button>
         ) : null}
-        <button type="button" className="secondary" onClick={saveToSuite} disabled={formLocked}>
+        <button
+          type="button"
+          className={
+            saveSuiteSuccessFlash
+              ? "secondary automation-spike-save-suite--success"
+              : "secondary"
+          }
+          onClick={saveToSuite}
+          disabled={formLocked}
+        >
           Save to Suite
         </button>
       </div>

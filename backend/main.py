@@ -58,6 +58,7 @@ from automation.prefs import (
     get_effective_automation_browser,
     get_effective_automation_default_timeout_ms,
     get_effective_automation_headless,
+    get_effective_automation_parallel_execution,
     get_effective_automation_post_analysis,
     get_effective_automation_screenshot_on_pass,
     get_effective_automation_trace_file_generation,
@@ -314,6 +315,7 @@ class ConfigResponse(BaseModel):
     automation_trace_file_generation: bool = False
     automation_post_analysis: bool = True
     automation_default_timeout_ms: int = 30_000
+    automation_parallel_execution: int = 1
     automation_retention_days: int = 20
 
 
@@ -828,6 +830,7 @@ def get_config():
         automation_trace_file_generation=get_effective_automation_trace_file_generation(),
         automation_post_analysis=get_effective_automation_post_analysis(),
         automation_default_timeout_ms=get_effective_automation_default_timeout_ms(),
+        automation_parallel_execution=get_effective_automation_parallel_execution(),
         automation_retention_days=s.automation_retention_days,
     )
 

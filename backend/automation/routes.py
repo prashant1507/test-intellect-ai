@@ -21,6 +21,7 @@ from .prefs import (
     get_effective_automation_browser,
     get_effective_automation_default_timeout_ms,
     get_effective_automation_headless,
+    get_effective_automation_parallel_execution,
     get_effective_automation_post_analysis,
     get_effective_automation_screenshot_on_pass,
     get_effective_automation_trace_file_generation,
@@ -135,6 +136,7 @@ class AutomationEnvOptionsIn(BaseModel):
     automation_screenshot_on_pass: bool
     automation_trace_file_generation: bool
     automation_default_timeout_ms: int = Field(..., ge=1000, le=600_000)
+    automation_parallel_execution: int = Field(1, ge=1, le=4)
 
 
 def _automation_env_payload() -> dict[str, Any]:
@@ -145,6 +147,7 @@ def _automation_env_payload() -> dict[str, Any]:
         "automation_trace_file_generation": get_effective_automation_trace_file_generation(),
         "automation_post_analysis": get_effective_automation_post_analysis(),
         "automation_default_timeout_ms": get_effective_automation_default_timeout_ms(),
+        "automation_parallel_execution": get_effective_automation_parallel_execution(),
     }
 
 
@@ -165,6 +168,7 @@ def automation_set_env_options(body: AutomationEnvOptionsIn) -> dict[str, Any]:
     set_automation_kv("screenshot_on_pass", "1" if body.automation_screenshot_on_pass else "0")
     set_automation_kv("trace_file_generation", "1" if body.automation_trace_file_generation else "0")
     set_automation_kv("default_timeout_ms", str(int(body.automation_default_timeout_ms)))
+    set_automation_kv("parallel_execution", str(int(body.automation_parallel_execution)))
     return _automation_env_payload()
 
 
@@ -314,20 +318,46 @@ def automation_suite_delete(case_id: str) -> dict[str, str]:
 
 class SuiteRunInF(BaseModel):
     case_ids: list[str] | None = None
-    default_url: str = Field(default="")
+    default_url: str = Field(default="", max_length=4000)
+    use_tag_filter: bool = False
+    filter_tags: str = Field(default="", max_length=200)
+    use_jira_filter: bool = False
+    filter_jira_ids: str = Field(default="", max_length=800)
+
+    @field_validator("filter_tags", mode="before")
+    @classmethod
+    def _strip_filter_tags_csv(cls, v: object) -> str:
+        return (str(v) if v is not None else "").strip()[:200]
+
+    @field_validator("filter_jira_ids", mode="before")
+    @classmethod
+    def _strip_filter_jira_csv(cls, v: object) -> str:
+        return (str(v) if v is not None else "").strip()[:800]
 
 
 @router.get("/suite-run-status")
 def automation_suite_run_status() -> dict[str, Any]:
-    return {"current_case_id": suite_state.get_running_case()}
+    ids = suite_state.get_running_case_ids()
+    return {
+        "current_case_id": ids[0] if ids else None,
+        "current_case_ids": ids,
+    }
 
 
 @router.post("/suite-run")
 async def automation_suite_run(body: SuiteRunInF) -> dict[str, Any]:
     du = (body.default_url or "").strip()[:4000]
+    ft = (body.filter_tags or "").strip()[:200]
+    fj = (body.filter_jira_ids or "").strip()[:800]
     return await asyncio.to_thread(
         lambda: run_suite_sequential(
-            body.case_ids, default_url=du, clear_cancel=True
+            body.case_ids,
+            default_url=du,
+            clear_cancel=True,
+            use_tag_filter=body.use_tag_filter,
+            filter_tags=ft,
+            use_jira_filter=body.use_jira_filter,
+            filter_jira_ids=fj,
         )
     )
 

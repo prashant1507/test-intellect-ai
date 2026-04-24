@@ -30,3 +30,24 @@ export function parseTagCsv(raw) {
 export function normalizeTagCsv(s) {
   return parseTagCsv(s).join(", ");
 }
+
+/**
+ * Comma-separated JIRA keys; trim each segment (OR match when filtering).
+ * @param {string|null|undefined} raw
+ * @returns {string[]}
+ */
+export function parseJiraKeyCsv(raw) {
+  if (raw == null || !String(raw).trim()) return [];
+  return String(raw)
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+/**
+ * @param {string|null|undefined} s
+ * @returns {string}
+ */
+export function normalizeJiraKeyCsv(s) {
+  return parseJiraKeyCsv(s).join(", ");
+}

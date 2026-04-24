@@ -727,7 +727,7 @@ def _build_case_content_html(
   <dl class="report-meta">
     <dt>Date &amp; time</dt><dd class="report-datetime">{report_dt}</dd>
     <dt>JIRA ID</dt><dd class="report-jira">{jira_e}</dd>
-    <dt>TAG</dt><dd class="report-jira">{tag_e}</dd>
+    <dt>Tags</dt><dd class="report-jira">{tag_e}</dd>
     <dt>URL</dt><dd><a class="report-url" href="{u}">{u}</a></dd>
     <dt>Run ID</dt><dd><code class="report-id">{_e(run_id)}</code></dd>
   </dl>

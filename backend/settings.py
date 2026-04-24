@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     automation_post_analysis: bool = True
     automation_write_run_html: bool = True
     automation_default_timeout_ms: int = 30_000
+    automation_parallel_execution: int = 1
     automation_db_path: str = "data/automation/selectors.db"
     automation_artifacts_dir: str = "data/automation/runs"
     automation_reports_dir: str = "data/automation/reports"
@@ -124,6 +125,11 @@ class Settings(BaseSettings):
     def _automation_timeout(cls, v: object) -> int:
         n = int(v or 30_000)
         return min(max(n, 1000), 600_000)
+    @field_validator("automation_parallel_execution", mode="before")
+    @classmethod
+    def _automation_parallel(cls, v: object) -> int:
+        n = int(v or 1)
+        return min(max(n, 1), 4)
     @field_validator("automation_retention_days", mode="before")
     @classmethod
     def _automation_retention_days(cls, v: object) -> int:

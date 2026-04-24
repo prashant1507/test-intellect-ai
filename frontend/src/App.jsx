@@ -187,6 +187,8 @@ export default function App() {
     setPasteTitle("");
     setPasteMemoryKey("");
     setTicketId("");
+    setPassword("");
+    setShowPw(false);
     setLastGenerateAt(null);
     setReqFetchMeta({ hadSavedMemory: false });
     setHadPriorMemory(false);
@@ -1178,11 +1180,6 @@ export default function App() {
     if (bootPhase !== "ready" || (useKeycloak && !oidcUser)) return;
     syncLists();
   }, [bootPhase, useKeycloak, oidcUser, syncLists]);
-
-  useEffect(() => {
-    setReqImageFiles([]);
-    setSelectedReqAttachmentIds(new Set());
-  }, [inputMode]);
 
   useEffect(() => {
     const ids = new Set(
@@ -2211,9 +2208,10 @@ export default function App() {
                     className={`mode-tab${inputMode === "jira" ? " active" : ""}`}
                     onClick={() => {
                       if (inputMode === "jira") return;
+                      const prev = inputMode;
                       inputModeRef.current = "jira";
                       setInputMode("jira");
-                      resetWorkspaceOnInputModeChange();
+                      if (prev === "paste") resetWorkspaceOnInputModeChange();
                     }}
                   >
                     JIRA
@@ -2227,9 +2225,10 @@ export default function App() {
                     className={`mode-tab${inputMode === "paste" ? " active" : ""}`}
                     onClick={() => {
                       if (inputMode === "paste") return;
+                      const prev = inputMode;
                       inputModeRef.current = "paste";
                       setInputMode("paste");
-                      resetWorkspaceOnInputModeChange();
+                      if (prev === "jira") resetWorkspaceOnInputModeChange();
                     }}
                   >
                     Paste Requirements
@@ -2245,7 +2244,6 @@ export default function App() {
                       if (inputMode === "automation") return;
                       inputModeRef.current = "automation";
                       setInputMode("automation");
-                      resetWorkspaceOnInputModeChange();
                     }}
                   >
                     Auto Tests
@@ -2262,8 +2260,12 @@ export default function App() {
               className="form-card-fieldset"
               aria-busy={generatingTestCases && inputMode !== "automation"}
             >
-            {inputMode === "paste" ? (
-              <>
+            {showPasteModeUi ? (
+              <div
+                className="paste-requirements-shell"
+                hidden={inputMode !== "paste"}
+                aria-hidden={inputMode !== "paste"}
+              >
                 <div className="row cols-2">
                   <div>
                     <label htmlFor="pasteTitle" className="label-with-info">
@@ -2355,20 +2357,30 @@ export default function App() {
                   onMaxRoundsChange={setAgenticMaxRounds}
                   roundsInputId="agenticRoundsPaste"
                 />
-              </>
-            ) : inputMode === "automation" && showAutoTestsUi ? (
-              <AutomationSpikePanel
-                api={api}
-                onListsChanged={() => setAutomationListRefresh((n) => n + 1)}
-                suiteRunBusy={automationSuiteRunBusy}
-                onSpikeRunBusyChange={setAutomationSpikeRunBusy}
-                traceFileGeneration={
-                  automationEnv != null &&
-                  !!automationEnv.automation_trace_file_generation
-                }
-              />
-            ) : (
-              <>
+              </div>
+            ) : null}
+            {showAutoTestsUi ? (
+              <div
+                hidden={inputMode !== "automation"}
+                aria-hidden={inputMode !== "automation"}
+              >
+                <AutomationSpikePanel
+                  api={api}
+                  onListsChanged={() => setAutomationListRefresh((n) => n + 1)}
+                  suiteRunBusy={automationSuiteRunBusy}
+                  onSpikeRunBusyChange={setAutomationSpikeRunBusy}
+                  traceFileGeneration={
+                    automationEnv != null &&
+                    !!automationEnv.automation_trace_file_generation
+                  }
+                />
+              </div>
+            ) : null}
+            {showJiraModeUi ? (
+              <div
+                hidden={inputMode !== "jira"}
+                aria-hidden={inputMode !== "jira"}
+              >
             <div className="row cols-2 jira-form-split">
               <div className="jira-form-col-stack">
                 <div>
@@ -2539,8 +2551,8 @@ export default function App() {
                 </div>
               </div>
             </div>
-              </>
-            )}
+              </div>
+            ) : null}
             {inputMode === "jira" || inputMode === "paste" ? (
               <>
             <label className={`check check-save-memory${mock ? " check-disabled" : ""}`}>
@@ -2620,18 +2632,24 @@ export default function App() {
             </fieldset>
           </div>
 
-          {inputMode === "automation" && showAutoTestsUi ? (
-            <AutomationSpikeSectionCards
-              api={api}
-              env={automationEnv}
-              onAutomationEnv={setAutomationEnv}
-              listRefreshKey={automationListRefresh}
-              spikeRunBusy={automationSpikeRunBusy}
-              onSuiteRunBusyChange={setAutomationSuiteRunBusy}
-              automationRetentionDays={automationRetentionDays}
-              auditModalOpen={auditModalOpen}
-              onDismissAudit={() => setAuditModalOpen(false)}
-            />
+          {showAutoTestsUi ? (
+            <div
+              className="automation-spike-section-cards-shell"
+              hidden={inputMode !== "automation"}
+              aria-hidden={inputMode !== "automation"}
+            >
+              <AutomationSpikeSectionCards
+                api={api}
+                env={automationEnv}
+                onAutomationEnv={setAutomationEnv}
+                listRefreshKey={automationListRefresh}
+                spikeRunBusy={automationSpikeRunBusy}
+                onSuiteRunBusyChange={setAutomationSuiteRunBusy}
+                automationRetentionDays={automationRetentionDays}
+                auditModalOpen={auditModalOpen}
+                onDismissAudit={() => setAuditModalOpen(false)}
+              />
+            </div>
           ) : null}
 
           {inputMode === "jira" || (inputMode === "paste" && showPasteRequirementsJiraCard) ? (
