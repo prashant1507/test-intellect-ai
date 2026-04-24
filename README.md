@@ -238,6 +238,7 @@ Other routes and request schemas: see **`backend/main.py`**.
 - Green dot will appear for currently running test case
 - View Report will show report from 'Start Test' as well
 - 'Run Test Case' button will be enabled when `SHOW_AUTO_TESTS_UI=true`
+- System will keep automation artifacts for last 20 days
 
 ---
 
