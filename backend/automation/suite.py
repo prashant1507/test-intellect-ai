@@ -14,6 +14,16 @@ from .prefs import get_effective_automation_parallel_execution
 from .run_report_html import render_batch_report_html
 from .spike import run_automation_spike
 from .tag_csv import parse_jira_key_tokens, parse_tag_tokens
+
+
+def _spike_type_for_suite_case(c: dict[str, Any]) -> str:
+    st = str(c.get("spike_type") or "").strip().lower()
+    if st in ("ui", "api"):
+        return st
+    toks = parse_tag_tokens(str(c.get("tag") or ""))
+    if toks and toks[0].lower() == "api":
+        return "api"
+    return "ui"
 from .store import (
     append_suite_case_run_history,
     list_suite_cases,
@@ -80,6 +90,7 @@ def _run_one_suite_case(
                 tag=str(c.get("tag") or ""),
                 requirement_ticket_id=str(c.get("requirement_ticket_id") or ""),
                 write_run_html=False,
+                spike_type=_spike_type_for_suite_case(c),
             )
             st = "PASS" if r.get("status") == "completed" else "FAIL"
             rid = r.get("run_id", "")

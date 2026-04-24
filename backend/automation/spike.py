@@ -643,6 +643,13 @@ def _dom_fingerprint_snip(s: str | None) -> str:
     return f"dom:{h}"
 
 
+def _fingerprint_extras(spike_type: str, html_dom: str | None) -> str:
+    st = (spike_type or "ui").lower()
+    if st == "api":
+        return "api"
+    return _dom_fingerprint_snip(html_dom)
+
+
 def _run_spike_one_browser(
     run_id: str,
     title: str,
@@ -888,6 +895,112 @@ def _write_run_html(
     return f"/api/automation/reports/{p.name}"
 
 
+def _execute_spike_finalize(
+    run_id: str,
+    title: str,
+    bdd: str,
+    u: str,
+    final: list[dict[str, Any]],
+    log: list[str],
+    jira_id: str,
+    tag: str,
+    requirement_ticket_id: str,
+    write_run_html: bool,
+    used_cache: bool,
+    fp: str,
+    upsert_cache_on_ok: bool,
+) -> dict[str, Any]:
+    art = Path(settings.automation_artifacts_dir)
+    ok = all(x.get("pass") for x in final)
+    analysis = ""
+    if get_effective_automation_post_analysis() and _llm_base_ok():
+        analysis = spike_post_run_analysis(
+            title, u, ok, [dict(s) for s in final], "\n".join(log[-500:])
+        )
+    for x in final:
+        sp = x.get("screenshot_path")
+        if sp and not (art / sp).is_file():
+            x["screenshot_path"] = None
+    rel_steps: list[dict[str, Any]] = []
+    for x in final:
+        p = x.get("screenshot_path")
+        rec: dict[str, Any] = {
+            "step_index": x["step_index"],
+            "step_text": x["step_text"],
+            "selector": x["selector"],
+            "action": x["action"],
+            "value": x.get("value"),
+            "pass": x.get("pass", False),
+            "err": x.get("err"),
+            "source": x.get("source"),
+            "screenshot_path": p,
+        }
+        if x.get("actual_text") is not None:
+            rec["actual_text"] = x["actual_text"]
+        rel_steps.append(rec)
+    replace_run_steps(run_id, rel_steps)
+    run_dir = art / run_id
+    trace_rel = f"{run_id}/trace.zip"
+    summary = {
+        "steps": rel_steps,
+        "ok": ok,
+        "url": u,
+        "debug_logs": list(log),
+        "analysis": analysis,
+    }
+    err_msg = None if ok else next(
+        (s.get("err") for s in rel_steps if s.get("err")), "failed"
+    )
+    base_artifacts = f"/api/automation/artifacts/{run_id}"
+    trace_href_htm = (
+        f"{base_artifacts}/trace.zip" if (run_dir / "trace.zip").is_file() else None
+    )
+    report_url: str | None
+    if write_run_html:
+        report_url = _write_run_html(
+            run_id,
+            title,
+            bdd,
+            u,
+            ok,
+            rel_steps,
+            log,
+            analysis=analysis,
+            trace_href=trace_href_htm,
+            jira_id=jira_id,
+            tag=tag,
+            requirement_ticket_id=requirement_ticket_id,
+        )
+        if report_url:
+            summary["report_url"] = report_url
+    else:
+        report_url = None
+    update_run(
+        run_id,
+        status="completed" if ok else "failed",
+        error=err_msg,
+        trace_path=trace_rel if (run_dir / "trace.zip").is_file() else None,
+        summary=summary,
+        used_cache=used_cache,
+    )
+    if ok and upsert_cache_on_ok:
+        upsert_selector_cache(fp, list(rel_steps))
+    base = f"/api/automation/artifacts/{run_id}"
+    return {
+        "run_id": run_id,
+        "fingerprint": fp,
+        "used_cache": used_cache,
+        "status": "completed" if ok else "failed",
+        "error": err_msg,
+        "trace_stored": (run_dir / "trace.zip").is_file(),
+        "trace_url": f"{base}/trace.zip" if (run_dir / "trace.zip").is_file() else None,
+        "report_url": report_url,
+        "analysis": analysis,
+        "steps": rel_steps,
+        "debug_logs": list(log),
+    }
+
+
 def _execute_spike_sync(
     run_id: str,
     title: str,
@@ -900,7 +1013,11 @@ def _execute_spike_sync(
     *,
     requirement_ticket_id: str = "",
     write_run_html: bool = True,
+    spike_type: str = "ui",
 ) -> dict[str, Any]:
+    st = (spike_type or "ui").lower()
+    if st not in ("ui", "api"):
+        st = "ui"
     bdd_lines = parse_bdd_step_lines(bdd)
     _l(log, f"Parsed BDD: {len(bdd_lines)} line(s).")
     try:
@@ -912,6 +1029,41 @@ def _execute_spike_sync(
     if not bdd_lines:
         raise SpikeUserError("BDD is empty (no steps).", logs=log)
     u = (url or "").strip()
+    if st == "api":
+        if not u:
+            raise SpikeUserError(
+                "API base URL is required (e.g. https://api.example.com).", logs=log
+            )
+        if not re.match(r"^https?://", u, re.I):
+            raise SpikeUserError(
+                "API base URL must start with http:// or https://", logs=log
+            )
+        _raise_if_spike_cancelled(log)
+        if not _llm_base_ok():
+            raise SpikeUserError(
+                "LLM_URL is not set; cannot run API BDD (LLM plans each step).", logs=log
+            )
+        fp = compute_fingerprint(title, bdd, u, "api")
+        _l(log, f"API fingerprint: {fp[:16]}…")
+        from . import api_spike
+
+        _l(log, "Running API BDD: LLM plan + HTTP client.")
+        final = api_spike.run_api_bdd(run_id, title, bdd, u, log)
+        return _execute_spike_finalize(
+            run_id,
+            title,
+            bdd,
+            u,
+            final,
+            log,
+            jira_id,
+            tag,
+            requirement_ticket_id,
+            write_run_html,
+            used_cache=False,
+            fp=fp,
+            upsert_cache_on_ok=False,
+        )
     if not u:
         raise SpikeUserError(
             "Page URL is required. The service loads the page and uses its DOM for selector generation.",
@@ -945,93 +1097,21 @@ def _execute_spike_sync(
         log=log,
         html_dom=html_dom,
     )
-    art = Path(settings.automation_artifacts_dir)
-    ok = all(x.get("pass") for x in final)
-    analysis = ""
-    if get_effective_automation_post_analysis() and _llm_base_ok():
-        analysis = spike_post_run_analysis(
-            title, u, ok, [dict(s) for s in final], "\n".join(log[-500:])
-        )
-    for x in final:
-        sp = x.get("screenshot_path")
-        if sp and not (art / sp).is_file():
-            x["screenshot_path"] = None
-    rel_steps = []
-    for x in final:
-        p = x.get("screenshot_path")
-        rec: dict[str, Any] = {
-            "step_index": x["step_index"],
-            "step_text": x["step_text"],
-            "selector": x["selector"],
-            "action": x["action"],
-            "value": x.get("value"),
-            "pass": x.get("pass", False),
-            "err": x.get("err"),
-            "source": x.get("source"),
-            "screenshot_path": p,
-        }
-        if x.get("actual_text") is not None:
-            rec["actual_text"] = x["actual_text"]
-        rel_steps.append(rec)
-    replace_run_steps(run_id, rel_steps)
-    run_dir = art / run_id
-    trace_rel = f"{run_id}/trace.zip"
-    summary = {
-        "steps": rel_steps,
-        "ok": ok,
-        "url": u,
-        "debug_logs": list(log),
-        "analysis": analysis,
-    }
-    err_msg = None if ok else next((s.get("err") for s in rel_steps if s.get("err")), "failed")
-    base_artifacts = f"/api/automation/artifacts/{run_id}"
-    trace_href_htm = (
-        f"{base_artifacts}/trace.zip" if (run_dir / "trace.zip").is_file() else None
-    )
-    report_url: str | None
-    if write_run_html:
-        report_url = _write_run_html(
-            run_id,
-            title,
-            bdd,
-            u,
-            ok,
-            rel_steps,
-            log,
-            analysis=analysis,
-            trace_href=trace_href_htm,
-            jira_id=jira_id,
-            tag=tag,
-            requirement_ticket_id=requirement_ticket_id,
-        )
-        if report_url:
-            summary["report_url"] = report_url
-    else:
-        report_url = None
-    update_run(
+    return _execute_spike_finalize(
         run_id,
-        status="completed" if ok else "failed",
-        error=err_msg,
-        trace_path=trace_rel if (run_dir / "trace.zip").is_file() else None,
-        summary=summary,
+        title,
+        bdd,
+        u,
+        final,
+        log,
+        jira_id,
+        tag,
+        requirement_ticket_id,
+        write_run_html,
         used_cache=used_cache,
+        fp=fp,
+        upsert_cache_on_ok=True,
     )
-    if ok:
-        upsert_selector_cache(fp, list(rel_steps))
-    base = f"/api/automation/artifacts/{run_id}"
-    return {
-        "run_id": run_id,
-        "fingerprint": fp,
-        "used_cache": used_cache,
-        "status": "completed" if ok else "failed",
-        "error": err_msg,
-        "trace_stored": (run_dir / "trace.zip").is_file(),
-        "trace_url": f"{base}/trace.zip" if (run_dir / "trace.zip").is_file() else None,
-        "report_url": report_url,
-        "analysis": analysis,
-        "steps": rel_steps,
-        "debug_logs": list(log),
-    }
 
 
 def run_automation_spike(
@@ -1044,15 +1124,22 @@ def run_automation_spike(
     *,
     requirement_ticket_id: str = "",
     write_run_html: bool = True,
+    spike_type: str = "ui",
 ) -> dict[str, Any]:
     log: list[str] = []
     u = (url or "").strip()
     run_id = str(uuid.uuid4())
-    _l(log, f"run_id={run_id} title={title!r} url={u!r}")
+    st = (spike_type or "ui").lower()
+    if st not in ("ui", "api"):
+        st = "ui"
+    _l(
+        log,
+        f"run_id={run_id} title={title!r} url={u!r} spike_type={st!r}",
+    )
     begin_run(
         run_id,
         (title or "").strip() or "Untitled",
-        compute_fingerprint(title, bdd, u, _dom_fingerprint_snip(html_dom)),
+        compute_fingerprint(title, bdd, u, _fingerprint_extras(st, html_dom)),
     )
     try:
         return _execute_spike_sync(
@@ -1066,6 +1153,7 @@ def run_automation_spike(
             tag=tag,
             requirement_ticket_id=requirement_ticket_id,
             write_run_html=write_run_html,
+            spike_type=st,
         )
     except SpikeUserError as e:
         setattr(e, "run_id", run_id)
@@ -1106,6 +1194,7 @@ async def run_automation_spike_async(
     *,
     requirement_ticket_id: str = "",
     write_run_html: bool = True,
+    spike_type: str = "ui",
 ) -> dict[str, Any]:
     return await asyncio.to_thread(
         run_automation_spike,
@@ -1117,4 +1206,5 @@ async def run_automation_spike_async(
         tag,
         requirement_ticket_id=requirement_ticket_id,
         write_run_html=write_run_html,
+        spike_type=spike_type,
     )

@@ -117,6 +117,22 @@ export function AutomationSpikePanel({
     );
     setJiraId(String(prefillFromCase.jiraId ?? "").trim());
     setBdd(String(prefillFromCase.bdd ?? ""));
+    const stRaw = String(
+      prefillFromCase.spike_type ?? prefillFromCase.spikeType ?? "",
+    )
+      .trim()
+      .toLowerCase();
+    if (stRaw === "api") setTestType("API");
+    else if (stRaw === "ui") setTestType("UI");
+    else {
+      const tagCsv = String(prefillFromCase.tag ?? "");
+      const first = tagCsv
+        .split(",")
+        .map((s) => s.trim().toLowerCase())
+        .find((s) => s.length);
+      if (first === "api") setTestType("API");
+      else if (first === "ui") setTestType("UI");
+    }
     setSaveScenarioInvalid(false);
     setSaveBddInvalid(false);
     setStartScenarioInvalid(false);
@@ -180,6 +196,7 @@ export function AutomationSpikePanel({
       jira_id: jiraId.trim(),
       requirement_ticket_id: requirementTicketId.trim(),
       tag: normalizeTagCsv(tag),
+      spike_type: testType === "API" ? "api" : "ui",
     };
     try {
       const out = await api("/automation/spike-run", "POST", body);
@@ -251,6 +268,7 @@ export function AutomationSpikePanel({
         jira_id: jiraT,
         requirement_ticket_id: reqT,
         tag: suiteTagWithTestType(testType, tag),
+        spike_type: testType === "API" ? "api" : "ui",
       });
       bumpLists();
       if (saveSuiteSuccessFlashRef.current) {
@@ -340,7 +358,13 @@ export function AutomationSpikePanel({
         <div className="automation-spike-field-col">
           <label htmlFor="automation-spike-url" className="label-with-info">
             <span>URL</span>
-            <FieldInfo text="Application URL. Use a full URL (e.g. https://example.com)." />
+            <FieldInfo
+              text={
+                testType === "API"
+                  ? "API base URL (e.g. https://api.example.com). BDD uses paths like /auth relative to this."
+                  : "Application URL. Use a full URL (e.g. https://example.com)."
+              }
+            />
           </label>
           <input
             id="automation-spike-url"
@@ -357,7 +381,9 @@ export function AutomationSpikePanel({
             aria-describedby="automation-spike-url-hint"
           />
           <span id="automation-spike-url-hint" className="sr-only">
-            Application URL. Use a full URL (e.g. https://example.com).
+            {testType === "API"
+              ? "API base URL. BDD request paths are relative to this."
+              : "Application URL. Use a full URL (e.g. https://example.com)."}
           </span>
         </div>
         <div className="automation-spike-field-col">

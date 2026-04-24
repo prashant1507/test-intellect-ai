@@ -112,7 +112,11 @@ def _run_detail(row: dict, steps: list) -> dict[str, Any]:
 class SpikeRunIn(BaseModel):
     title: str = Field(default="Spike", max_length=500)
     bdd: str = Field(..., min_length=1, description="BDD line(s)")
-    url: str = Field(..., min_length=1, description="Page URL to open in Playwright")
+    url: str = Field(..., min_length=1, description="UI: page URL. API: base URL (https://...).")
+    spike_type: str = Field(
+        default="ui",
+        description='Run mode: "ui" (Playwright) or "api" (HTTP + LLM)',
+    )
     html_dom: str | None = Field(default=None, max_length=2_000_000)
     jira_id: str = Field(default="", max_length=200)
     requirement_ticket_id: str = Field(default="", max_length=200)
@@ -210,6 +214,9 @@ def automation_cancel_fn(body: CancelInF) -> dict[str, object]:
 async def automation_spike_run(body: SpikeRunIn) -> dict[str, Any]:
     cancel.clear_for_isolated_spike_run()
     try:
+        st = (body.spike_type or "ui").strip().lower()
+        if st not in ("ui", "api"):
+            st = "ui"
         return await run_automation_spike_async(
             (body.title or "").strip() or "Untitled",
             body.bdd,
@@ -218,6 +225,7 @@ async def automation_spike_run(body: SpikeRunIn) -> dict[str, Any]:
             body.jira_id,
             body.tag,
             requirement_ticket_id=body.requirement_ticket_id,
+            spike_type=st,
         )
     except SpikeUserError as e:
         d = e.logs
@@ -287,6 +295,10 @@ class SuiteCaseIn(BaseModel):
     jira_id: str = Field(default="", max_length=200)
     requirement_ticket_id: str = Field(default="", max_length=200)
     tag: str = Field(default="", max_length=200)
+    spike_type: str = Field(
+        default="ui",
+        description='Stored run mode: "ui" (browser) or "api" (HTTP only)',
+    )
 
     @field_validator("jira_id", mode="before")
     @classmethod
@@ -303,6 +315,12 @@ class SuiteCaseIn(BaseModel):
     @classmethod
     def _suite_tag_strip(cls, v: object) -> str:
         return normalize_tag_csv(str(v) if v is not None else "")
+
+    @field_validator("spike_type", mode="before")
+    @classmethod
+    def _suite_spike_type(cls, v: object) -> str:
+        s = (str(v) if v is not None else "ui").strip().lower()
+        return s if s in ("ui", "api") else "ui"
 
 
 @router.get("/suite")
@@ -333,6 +351,7 @@ def automation_suite_add(body: SuiteCaseIn) -> dict[str, str]:
         jira_id=body.jira_id,
         tag=body.tag,
         requirement_ticket_id=body.requirement_ticket_id,
+        spike_type=body.spike_type,
     )
     return {"id": cid, "ok": "true"}
 

@@ -117,6 +117,10 @@ def init_automation_db() -> None:
                 c.execute(
                     "ALTER TABLE automation_suite_cases ADD COLUMN requirement_ticket_id TEXT"
                 )
+            if "spike_type" not in cols:
+                c.execute(
+                    "ALTER TABLE automation_suite_cases ADD COLUMN spike_type TEXT"
+                )
         c.commit()
     finally:
         c.close()
@@ -370,11 +374,15 @@ def add_suite_case(
     tag: str = "",
     requirement_ticket_id: str = "",
     case_id: str | None = None,
+    spike_type: str = "ui",
 ) -> str:
     cid = (case_id or str(uuid.uuid4())).strip() or str(uuid.uuid4())
     jira = (jira_id or "").strip() or None
     ta = normalize_tag_csv(tag) or None
     reqt = (requirement_ticket_id or "").strip() or None
+    stp = (spike_type or "ui").strip().lower()
+    if stp not in ("ui", "api"):
+        stp = "ui"
     c = _connect()
     try:
         mx = c.execute(
@@ -383,8 +391,8 @@ def add_suite_case(
         c.execute(
             """
             INSERT INTO automation_suite_cases
-              (id, created_at, sort_order, title, bdd, url, html_dom, jira_id, tag, requirement_ticket_id)
-            VALUES (?,?,?,?,?,?,?,?,?,?)
+              (id, created_at, sort_order, title, bdd, url, html_dom, jira_id, tag, requirement_ticket_id, spike_type)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
                 cid,
@@ -397,6 +405,7 @@ def add_suite_case(
                 jira,
                 ta,
                 reqt,
+                stp,
             ),
         )
         c.commit()
