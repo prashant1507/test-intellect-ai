@@ -37,18 +37,24 @@ Optionally:
 
 ---
 
+### Product Sample Images
+
+[Sample Automation Test Report](resources/Sample-Automation-Report.html)
+
+---
+
 ### Architecture
 
 ```mermaid
 flowchart LR
-  UI["React UI"] -->|/api| API["FastAPI main.py"]
+  UI["React UI"] -->|api| API["FastAPI main"]
   API --> JIRA["jira_client"]
   API --> LLM["ai_client"]
   API --> AG["agentic"]
   API --> IMG["requirement images"]
-  API --> MEM["memory_store (SQLite)"]
-  API --> AUD["audit_store (SQLite)"]
-  API --> AT["automation (Playwright)"]
+  API --> MEM["memory_store SQLite"]
+  API --> AUD["audit_store SQLite"]
+  API --> AT["automation Playwright"]
   API --> KC["keycloak_auth"]
   AG -.->|uses| LLM
 ```

@@ -85,9 +85,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.0.0]
 
 ### Added
-- Added additional mode for 'Auto Test'
-- User can run newley generated test case
+- Added additional mode for 'Auto Tests'
+- The user can run the newly generated test case
 
 ### Changed
 - Minor Improvements
 - Minor bug fixes
+
+---
+## [2.0.1]
+
+### Changed
+- Improved HTML reporting

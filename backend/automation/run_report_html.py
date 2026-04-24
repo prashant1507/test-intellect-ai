@@ -354,6 +354,14 @@ def _all_steps_skipped(steps: list) -> bool:
     return True
 
 
+def _single_case_pass_fail_skip(ok: bool, steps: list) -> tuple[int, int, int]:
+    if ok:
+        return (1, 0, 0)
+    if _all_steps_skipped(steps):
+        return (0, 0, 1)
+    return (0, 1, 0)
+
+
 def _case_nav_data_status(c: dict[str, Any]) -> str:
     raw = c.get("case_status") or c.get("result") or ""
     u = str(raw).strip().upper()
@@ -496,6 +504,67 @@ def _format_trace_too_large_block() -> str:
     )
 
 
+def _html_extent_topbar(*, copy_id: str = "", copy_label: str = "Copy id") -> str:
+    dt = _e(_format_report_datetime())
+    cap = (copy_id or "").strip()
+    if cap:
+        cap_e = _e(cap)
+        copy_ico = (
+            '<svg class="report-extent-copy-ico" xmlns="http://www.w3.org/2000/svg" width="16" height="16" '
+            'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+            'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+            '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>'
+            "<path d=\"M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1\"/>"
+            "</svg>"
+        )
+        copy_btn = (
+            f'<div class="report-extent-ids">'
+            f'<code class="report-extent-id" title="{cap_e}">{cap_e}</code> '
+            f'<button type="button" class="report-extent-copy" data-report-copy="{cap_e}" '
+            f'aria-label="{_e(copy_label)}" title="{_e(copy_label)}">{copy_ico}</button>'
+            f"</div>"
+        )
+    else:
+        copy_btn = ""
+    return (
+        '<header class="report-extent-topbar" role="banner">'
+        '<div class="report-extent-brand">'
+        '<span class="report-extent-mark" aria-hidden="true"></span>'
+        "<div>"
+        '<span class="report-extent-title">Test Intellect AI</span>'
+        '<span class="report-extent-sub">Automation test report</span>'
+        "</div>"
+        "</div>"
+        f'<div class="report-extent-meta">'
+        f'<p class="report-extent-when">Generated {dt}</p>'
+        f"{copy_btn}"
+        f"</div>"
+        "</header>"
+    )
+
+
+def _html_extent_donut(passed: int, failed: int, skipped: int = 0) -> str:
+    p = max(0, int(passed))
+    f = max(0, int(failed))
+    sk = max(0, int(skipped))
+    total = p + f + sk
+    if total <= 0:
+        return ""
+    pp = 100.0 * p / total
+    fp = 100.0 * f / total
+    skp = 100.0 * sk / total
+    cap = f"Pass {p} ({pp:.0f}%), Fail {f} ({fp:.0f}%), Skipped {sk} ({skp:.0f}%)"
+    return (
+        f'<div class="report-extent-donut-wrap" role="img" '
+        f'aria-label="{_e(cap)}" title="{_e(cap)}">'
+        f'<div class="report-extent-donut" style="--pct-pass:{pp:.2f};--pct-fail:{fp:.2f};--pct-skip:{skp:.2f}">'
+        f'<div class="report-extent-donut-hole">'
+        f'<span class="report-extent-donut-total">{_e(str(total))}</span>'
+        f'<span class="report-extent-donut-lbl">tests</span>'
+        f"</div></div></div>"
+    )
+
+
 def _html_dash_hbar_row(label: str, value: int, max_v: int, mod: str) -> str:
     mv = max(max_v, 1)
     pct = min(100.0, 100.0 * float(value) / float(mv))
@@ -510,21 +579,36 @@ def _html_dash_hbar_row(label: str, value: int, max_v: int, mod: str) -> str:
     )
 
 
-def _html_section_case_dashboard(ok: bool) -> str:
-    cpass, cfail = (1, 0) if ok else (0, 1)
+def _html_section_case_dashboard(ok: bool, steps: list) -> str:
+    cpass, cfail, cskip = _single_case_pass_fail_skip(ok, steps)
     m = 1
     rows = [
         _html_dash_hbar_row("Pass", cpass, m, "pass"),
         _html_dash_hbar_row("Fail", cfail, m, "fail"),
     ]
+    if cskip:
+        rows.append(_html_dash_hbar_row("Skipped", cskip, m, "skip"))
+    donut = _html_extent_donut(cpass, cfail, cskip)
+    if cskip:
+        kpi_skip = (
+            f'<div class="report-dash-kpi report-dash-kpi--extent">'
+            f'<span class="report-dash-kpi-v report-dash-kpi-v--skip">{_e(str(cskip))}</span>'
+            f'<span class="report-dash-kpi-l">Skipped</span></div>'
+        )
+    else:
+        kpi_skip = ""
     return (
-        f'<section class="report-dash" aria-label="Test Status">'
+        f'<section class="report-dash report-dash--extent" aria-label="Test Status">'
         f'<h2 class="section-title"><span class="title-accent">Test Status</span></h2>'
+        f'<div class="report-dash-row">'
+        f"{donut}"
         f'<div class="report-dash-kpis">'
-        f'<div class="report-dash-kpi"><span class="report-dash-kpi-v report-dash-kpi-v--ok">{_e(str(cpass))}</span>'
+        f'<div class="report-dash-kpi report-dash-kpi--extent"><span class="report-dash-kpi-v report-dash-kpi-v--ok">{_e(str(cpass))}</span>'
         f'<span class="report-dash-kpi-l">Passed</span></div>'
-        f'<div class="report-dash-kpi"><span class="report-dash-kpi-v report-dash-kpi-v--bad">{_e(str(cfail))}</span>'
+        f'<div class="report-dash-kpi report-dash-kpi--extent"><span class="report-dash-kpi-v report-dash-kpi-v--bad">{_e(str(cfail))}</span>'
         f'<span class="report-dash-kpi-l">Failed</span></div>'
+        f"{kpi_skip}"
+        f"</div>"
         f"</div>"
         f'<div class="report-dash-bars">{"".join(rows)}</div>'
         f"</section>"
@@ -533,35 +617,37 @@ def _html_section_case_dashboard(ok: bool) -> str:
 
 def _html_hero_landing_single() -> str:
     return (
-        '<div class="report-landing-hero">'
-        '<h1 class="report-landing-title">Dashboard</h1>'
+        '<div class="report-landing-hero report-landing-hero--extent">'
+        '<p class="report-landing-kicker">Summary</p>'
+        '<h1 class="report-landing-title">Execution Overview</h1>'
+        '<p class="report-landing-desc">Single test run (ExtentReports-style layout)</p>'
         "</div>"
     )
 
 
 def _html_hero_landing_suite() -> str:
     return (
-        '<div class="report-landing-hero">'
-        '<p class="report-landing-kicker">Suite Run</p>'
-        '<h1 class="report-landing-title">Dashboard</h1>'
+        '<div class="report-landing-hero report-landing-hero--extent">'
+        '<p class="report-landing-kicker">Suite run</p>'
+        '<h1 class="report-landing-title">Execution Overview</h1>'
         "</div>"
     )
 
 
-def _html_landing_page_single(ok: bool, *, tag: str = "") -> str:
+def _html_landing_page_single(ok: bool, steps: list, *, tag: str = "") -> str:
     inner = (
         _html_hero_landing_single()
-        + _html_section_case_dashboard(ok)
-        + _html_tag_breakdown_for_single_case((tag or "").strip(), ok)
+        + _html_section_case_dashboard(ok, steps)
+        + _html_tag_breakdown_for_single_case((tag or "").strip(), ok, steps)
     )
     return f'<div class="report-landing-wrap">{inner}</div>'
 
 
-def _html_tag_breakdown_for_single_case(tag_raw: str, ok: bool) -> str:
+def _html_tag_breakdown_for_single_case(tag_raw: str, ok: bool, steps: list) -> str:
     labels = parse_tag_tokens(tag_raw)
     if not labels:
         labels = ["—"]
-    cpass, cfail = (1, 0) if ok else (0, 1)
+    cpass, cfail, cskip = _single_case_pass_fail_skip(ok, steps)
     max_c = 1
     blocks: list[str] = []
     for tag_label in labels:
@@ -569,6 +655,10 @@ def _html_tag_breakdown_for_single_case(tag_raw: str, ok: bool) -> str:
             _html_dash_hbar_row("Pass", cpass, max_c, "pass"),
             _html_dash_hbar_row("Fail", cfail, max_c, "fail"),
         ]
+        if cskip:
+            bar_rows.append(
+                _html_dash_hbar_row("Skipped", cskip, max_c, "skip")
+            )
         t = _e(tag_label)
         blocks.append(
             f'<div class="report-dash-by-tag-block" role="group" '
@@ -636,23 +726,48 @@ def _html_tag_breakdown_for_suite(cases: list[dict[str, Any]]) -> str:
 def _html_suite_run_dashboard(cases: list[dict[str, Any]]) -> str:
     n_case = len(cases)
     cpass = sum(1 for c in cases if c.get("ok"))
-    cfail = n_case - cpass
-    max_c = max(cpass, cfail, 1)
+    cfail = sum(
+        1
+        for c in cases
+        if not c.get("ok") and not _all_steps_skipped(c.get("steps") or [])
+    )
+    cskip = sum(
+        1
+        for c in cases
+        if not c.get("ok") and _all_steps_skipped(c.get("steps") or [])
+    )
+    if cpass + cfail + cskip != n_case:
+        cfail = n_case - cpass - cskip
+    max_c = max(cpass, cfail, cskip, 1)
     bar_rows = [
         _html_dash_hbar_row("Pass", cpass, max_c, "pass"),
         _html_dash_hbar_row("Fail", cfail, max_c, "fail"),
     ]
+    if cskip:
+        bar_rows.append(_html_dash_hbar_row("Skipped", cskip, max_c, "skip"))
+    donut = _html_extent_donut(cpass, cfail, cskip)
+    if cskip:
+        kpi = (
+            f'<div class="report-dash-kpi report-dash-kpi--extent">'
+            f'<span class="report-dash-kpi-v report-dash-kpi-v--skip">{_e(str(cskip))}</span>'
+            f'<span class="report-dash-kpi-l">Skipped</span></div>'
+        )
+    else:
+        kpi = ""
     return (
-        f'<section class="report-dash report-dash--suite" aria-label="Test Status">'
+        f'<section class="report-dash report-dash--suite report-dash--extent" aria-label="Test Status">'
         f'<h2 class="section-title"><span class="title-accent">Test Status</span></h2>'
+        f'<div class="report-dash-row">'
+        f"{donut}"
         f'<div class="report-dash-kpis">'
-        f'<div class="report-dash-kpi"><span class="report-dash-kpi-v">{_e(str(n_case))}</span>'
+        f'<div class="report-dash-kpi report-dash-kpi--extent"><span class="report-dash-kpi-v">{_e(str(n_case))}</span>'
         f'<span class="report-dash-kpi-l">Total</span></div>'
-        f'<div class="report-dash-kpi"><span class="report-dash-kpi-v report-dash-kpi-v--ok">{_e(str(cpass))}</span>'
+        f'<div class="report-dash-kpi report-dash-kpi--extent"><span class="report-dash-kpi-v report-dash-kpi-v--ok">{_e(str(cpass))}</span>'
         f'<span class="report-dash-kpi-l">Passed</span></div>'
-        f'<div class="report-dash-kpi"><span class="report-dash-kpi-v report-dash-kpi-v--bad">{_e(str(cfail))}</span>'
+        f'<div class="report-dash-kpi report-dash-kpi--extent"><span class="report-dash-kpi-v report-dash-kpi-v--bad">{_e(str(cfail))}</span>'
         f'<span class="report-dash-kpi-l">Failed</span></div>'
-        f"</div>"
+        f"{kpi}"
+        f"</div></div>"
         f'<div class="report-dash-bars">{"".join(bar_rows)}</div>'
         f"</section>"
     )
@@ -745,7 +860,7 @@ def _build_case_content_html(
 {post_block}
 </section>
 {trace_block}
-<section class="report-section"><h2 class="section-title">Debug log</h2>
+<section class="report-section"><h2 class="section-title">Debug Logs</h2>
 <pre class="log">{log_txt}</pre>
 </section>"""
 
@@ -788,6 +903,11 @@ _REPORT_HEAD = """
   --radius:10px;
   --font:ui-sans-serif,system-ui,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --mono:ui-monospace,"SFMono-Regular","SF Mono",Menlo,Consolas,monospace;
+  --extent-pass:#26a69a;
+  --extent-fail:#ef5350;
+  --extent-skip:#ffb74d;
+  --extent-bar:#1b5e20;
+  --extent-bar2:#00897b;
 }}
 [data-theme="light"]{{
   color-scheme:light;
@@ -813,6 +933,11 @@ _REPORT_HEAD = """
   --skip-bg:#f5f5f4;
   --unk:#94a3b8;
   --shadow:0 1px 2px rgba(15,23,42,.06),0 4px 12px rgba(15,23,42,.05);
+  --extent-pass:#00897b;
+  --extent-fail:#e53935;
+  --extent-skip:#fb8c00;
+  --extent-bar:#2e7d32;
+  --extent-bar2:#00695c;
 }}
 *,*::before,*::after{{box-sizing:border-box}}
 body{{
@@ -1146,6 +1271,201 @@ body{{
   font-variant-numeric:tabular-nums;
   font-weight:600;
   color:var(--text);
+}}
+.report-extent-topbar{{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:0.75rem 1.25rem;
+  margin:0 0 1rem;
+  padding:0.85rem 1.1rem;
+  border-radius:var(--radius);
+  background:linear-gradient(120deg,var(--extent-bar) 0%,var(--extent-bar2) 55%,#004d40 100%);
+  color:#e8f5e9;
+  box-shadow:0 2px 12px rgba(0,0,0,.25);
+  border:1px solid color-mix(in srgb, #fff 12%, transparent);
+}}
+.report-extent-brand{{
+  display:flex;
+  align-items:center;
+  gap:0.65rem;
+  min-width:0;
+}}
+.report-extent-mark{{
+  display:inline-block;
+  width:0.5rem;
+  height:2.25rem;
+  border-radius:3px;
+  background:linear-gradient(180deg,#a5d6a7,#4caf50);
+  box-shadow:0 0 0 1px rgba(0,0,0,.15);
+  flex-shrink:0;
+}}
+.report-extent-title{{
+  display:block;
+  font-size:1.1rem;
+  font-weight:700;
+  letter-spacing:0.02em;
+  line-height:1.25;
+}}
+.report-extent-sub{{
+  display:block;
+  font-size:0.75rem;
+  font-weight:500;
+  opacity:0.88;
+  margin-top:0.12rem;
+  letter-spacing:0.04em;
+  text-transform:uppercase;
+}}
+.report-extent-when{{
+  margin:0;
+  font-size:0.8rem;
+  font-weight:500;
+  opacity:0.92;
+  font-family:var(--mono);
+}}
+.report-extent-meta{{
+  text-align:right;
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:0.35rem;
+  min-width:0;
+}}
+.report-extent-ids{{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:flex-end;
+  gap:0.35rem 0.5rem;
+  max-width:100%;
+}}
+.report-extent-id{{
+  font-size:0.72rem;
+  font-family:var(--mono);
+  background:rgba(0,0,0,.2);
+  padding:0.15rem 0.4rem;
+  border-radius:4px;
+  max-width:min(100%,18rem);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}}
+[data-theme="light"] .report-extent-id{{
+  background:rgba(0,0,0,.1);
+  color:var(--text);
+}}
+.report-extent-copy{{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  font:inherit;
+  margin:0;
+  padding:0.28rem;
+  line-height:0;
+  border-radius:5px;
+  border:1px solid rgba(255,255,255,.35);
+  background:rgba(255,255,255,.12);
+  color:inherit;
+  cursor:pointer;
+}}
+.report-extent-copy-ico{{display:block;}}
+.report-extent-copy:hover{{background:rgba(255,255,255,.2);}}
+.report-landing-hero--extent .report-landing-kicker{{
+  color:var(--extent-bar2);
+  font-weight:700;
+  letter-spacing:0.12em;
+  text-transform:uppercase;
+  font-size:0.72rem;
+  margin:0 0 0.35rem;
+}}
+[data-theme="dark"] .report-landing-hero--extent .report-landing-kicker{{
+  color:#4db6ac;
+}}
+.report-landing-desc{{
+  margin:0.45rem 0 0;
+  font-size:0.86rem;
+  color:var(--muted);
+  line-height:1.45;
+  max-width:40rem;
+}}
+.report-dash-row{{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:stretch;
+  gap:1rem 1.25rem;
+  margin:0 0 0.75rem 0;
+}}
+.report-extent-donut-wrap{{
+  flex:0 0 auto;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:0.15rem 0.25rem 0.35rem 0;
+}}
+.report-extent-donut{{
+  --a1:calc(var(--pct-pass)*3.6deg);
+  --a2:calc((var(--pct-pass)+var(--pct-fail))*3.6deg);
+  width:7.25rem;
+  height:7.25rem;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:conic-gradient(
+    var(--extent-pass) 0deg var(--a1),
+    var(--extent-fail) var(--a1) var(--a2),
+    var(--extent-skip) var(--a2) 360deg
+  );
+  box-shadow:0 2px 10px rgba(0,0,0,.2);
+}}
+.report-extent-donut-hole{{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  width:4.4rem;
+  height:4.4rem;
+  border-radius:50%;
+  background:var(--card);
+  border:1px solid var(--bd);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
+}}
+.report-extent-donut-total{{
+  font-size:1.25rem;
+  font-weight:800;
+  font-variant-numeric:tabular-nums;
+  line-height:1.1;
+  color:var(--text);
+}}
+.report-extent-donut-lbl{{
+  font-size:0.65rem;
+  font-weight:600;
+  text-transform:uppercase;
+  letter-spacing:0.08em;
+  color:var(--muted);
+  margin-top:0.1rem;
+}}
+.report-dash--extent .report-dash-kpis{{
+  flex:1 1 12rem;
+  min-width:0;
+}}
+.report-dash-kpi--extent{{
+  background:color-mix(in srgb, var(--card) 88%, var(--bd));
+  border:1px solid var(--bd);
+  border-top:3px solid var(--accent);
+  border-radius:10px;
+  padding:0.55rem 0.7rem 0.6rem;
+  box-shadow:0 1px 0 rgba(15,23,42,.04);
+}}
+[data-theme="dark"] .report-dash-kpi--extent{{
+  border-top-color:var(--extent-bar2);
+  box-shadow:0 1px 0 rgba(255,255,255,.04);
+}}
+.report-dash-kpi-v--skip{{color:var(--extent-skip);}}
+@media (max-width:28rem){{
+  .report-dash-row{{flex-direction:column;align-items:stretch;}}
+  .report-extent-donut-wrap{{justify-content:flex-start;}}
 }}
 @keyframes rep-fade{{
   from{{opacity:0.85;}}
@@ -1694,7 +2014,7 @@ pre.log{{
   .report-theme-btn{{display:none;}}
 }}
 </style>
-</head><body>
+</head><body class="report-extent">
 """
 
 _REPORT_TAIL = """
@@ -1724,6 +2044,17 @@ _REPORT_TAIL = """
       apply(cur === "dark" ? "light" : "dark");
     }});
   }}
+  function reportSetHashForPanel(id) {{
+    if (!id) return;
+    try {{
+      var u = new URL(window.location.href);
+      u.hash = id;
+      if (history.replaceState) history.replaceState(null, "", u);
+      else window.location.hash = id;
+    }} catch (e) {{
+      try {{ window.location.hash = id; }} catch (e2) {{}}
+    }}
+  }}
   document.querySelectorAll(".report-nav-item").forEach(function (btn) {{
     btn.addEventListener("click", function () {{
       var id = btn.getAttribute("data-target");
@@ -1737,6 +2068,34 @@ _REPORT_TAIL = """
       btn.setAttribute("aria-current", "page");
       var el = document.getElementById(id);
       if (el) {{ el.classList.add("is-active"); }}
+      reportSetHashForPanel(id);
+    }});
+  }});
+  function reportRouteFromHash() {{
+    var h = (location.hash || "").replace(/^#/, "");
+    if (!h) return;
+    if (h === "panel-dash" || /^case-\\d+$/.test(h)) {{
+      var t = document.querySelector('.report-nav-item[data-target="' + h + '"]');
+      if (t) t.click();
+      setTimeout(function () {{ window.scrollTo(0, 0); }}, 0);
+    }}
+  }}
+  window.addEventListener("hashchange", function () {{ reportRouteFromHash(); }});
+  reportRouteFromHash();
+  document.querySelectorAll("[data-report-copy]").forEach(function (cbtn) {{
+    cbtn.addEventListener("click", function () {{
+      var t = cbtn.getAttribute("data-report-copy");
+      if (!t) return;
+      var mark = function () {{
+        var prev = cbtn.getAttribute("aria-label");
+        cbtn.setAttribute("aria-label", "Copied");
+        setTimeout(function () {{ if (prev) cbtn.setAttribute("aria-label", prev); }}, 1600);
+      }};
+      if (navigator.clipboard && navigator.clipboard.writeText) {{
+        navigator.clipboard.writeText(t).then(mark).catch(function () {{ window.prompt("Copy:", t); }});
+      }} else {{
+        window.prompt("Copy:", t);
+      }}
     }});
   }});
   var fsel = document.getElementById("reportStatusSelect");
@@ -1799,7 +2158,7 @@ def render_spike_run_html(
 ) -> str:
     jt = (jira_id or "").strip()
     ttag = (tag or "").strip()
-    landing = _html_landing_page_single(ok, tag=ttag)
+    landing = _html_landing_page_single(ok, steps, tag=ttag)
     case_block = _build_case_content_html(
         run_id,
         title,
@@ -1820,10 +2179,14 @@ def render_spike_run_html(
     uniq_tags, inc_untagged = _tag_filter_choices(None, single_tag=ttag)
     filters_aside = _html_report_filters_aside(uniq_tags, inc_untagged)
     tag_pipe_attr = _e(_tag_data_pipe(None, tag=ttag))
-    nav_dash = _e("Dashboard")
+    nav_dash = _e("Summary")
     nav_title = _e(_nav_label_text(jt, (title or "").strip(), ttag))
     st_esc = _e(st)
+    extent_header = _html_extent_topbar(
+        copy_id=str(run_id or "").strip(), copy_label="Copy run id"
+    )
     body_html = f"""<div class="report-wrap report-wrap--nav">
+{extent_header}
   <div class="report-toolbar">
     <button type="button" class="report-theme-btn" id="reportThemeToggle" aria-label="Switch to light mode">
       <svg class="theme-ico theme-ico--sun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -1871,7 +2234,7 @@ def render_batch_report_html(
         return ""
     nav_items: list[str] = [
         '<li><button type="button" class="report-nav-item is-active" data-target="panel-dash" aria-current="page">'
-        + _e("Dashboard")
+        + _e("Summary")
         + "</button></li>"
     ]
     arts: list[str] = [
@@ -1944,7 +2307,11 @@ def render_batch_report_html(
     art_html = "\n".join(arts)
     uniq_tags, inc_untagged = _tag_filter_choices(cases)
     filters_aside = _html_report_filters_aside(uniq_tags, inc_untagged)
+    extent_header = _html_extent_topbar(
+        copy_id=str(report_id or "").strip(), copy_label="Copy report id"
+    )
     body_html = f"""<div class="report-wrap report-wrap--nav">
+{extent_header}
   <div class="report-toolbar">
     <button type="button" class="report-theme-btn" id="reportThemeToggle" aria-label="Switch to light mode">
       <svg class="theme-ico theme-ico--sun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
