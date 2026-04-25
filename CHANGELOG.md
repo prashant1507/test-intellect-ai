@@ -103,3 +103,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Added support for API tests
+
+---
+## [2.1.1]
+
+### Added
+- Added 'Stop Test Generation' button

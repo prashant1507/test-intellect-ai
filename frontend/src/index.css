@@ -4403,7 +4403,7 @@ section.tc {
   letter-spacing: 0.01em;
   color: var(--text);
   text-align: left;
-  white-space: normal;
+  white-space: pre-line;
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: 8px;
@@ -4720,7 +4720,13 @@ button.tc-summary:focus-visible {
   font-size: 0.8rem;
   font-weight: 500;
   color: var(--label);
+}
+
+.agentic-gen-check__label {
+  margin: 0;
   cursor: pointer;
+  font: inherit;
+  color: inherit;
 }
 
 .agentic-rounds-label {

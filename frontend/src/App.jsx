@@ -80,7 +80,7 @@ export default function App() {
   const [minTestCases, setMinTestCases] = useState("1");
   const [maxTestCases, setMaxTestCases] = useState("5");
   const [useAgenticGen, setUseAgenticGen] = useState(true);
-  const [agenticMaxRounds, setAgenticMaxRounds] = useState("2");
+  const [agenticMaxRounds, setAgenticMaxRounds] = useState("3");
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState("");
   const [lastFetchAt, setLastFetchAt] = useState(null);
@@ -170,6 +170,7 @@ export default function App() {
   }, [jiraHideUpdateAfterCreate]);
 
   const generationInFlightRef = useRef(false);
+  const generateAbortRef = useRef(null);
 
   const clearFetchedTicketState = useCallback(() => {
     setReq(null);
@@ -212,6 +213,10 @@ export default function App() {
     setPushingKey(null);
     setBusy(null);
     generationInFlightRef.current = false;
+    try {
+      generateAbortRef.current?.abort();
+    } catch (_) {}
+    generateAbortRef.current = null;
   }, [clearFetchedTicketState]);
 
   useEffect(() => {
@@ -319,7 +324,7 @@ export default function App() {
   });
 
   const apiForm = useCallback(
-    async (path, formData, afterRefresh = false) => {
+    async (path, formData, afterRefresh = false, fetchOptions = null) => {
       const headers = await withOidcAuthorization(
         {},
         { useKeycloak, oidcMgr, oidcUser, setOidcUser },
@@ -328,6 +333,7 @@ export default function App() {
         method: "POST",
         headers,
         body: formData,
+        signal: fetchOptions?.signal,
       });
       let d = {};
       try {
@@ -342,7 +348,7 @@ export default function App() {
             const u2 = await oidcMgr.getUser();
             if (u2?.access_token) {
               setOidcUser(u2);
-              return apiForm(path, formData, true);
+              return apiForm(path, formData, true, fetchOptions);
             }
           } catch (_) {}
           if (generationInFlightRef.current) {
@@ -360,7 +366,7 @@ export default function App() {
   );
 
   const api = useCallback(
-    async (path, method = "GET", body, afterRefresh = false) => {
+    async (path, method = "GET", body, afterRefresh = false, fetchOptions = null) => {
       const headers = await withOidcAuthorization(
         {},
         { useKeycloak, oidcMgr, oidcUser, setOidcUser },
@@ -370,6 +376,7 @@ export default function App() {
         method,
         headers,
         body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: fetchOptions?.signal,
       });
       let d = {};
       try {
@@ -384,7 +391,7 @@ export default function App() {
             const u2 = await oidcMgr.getUser();
             if (u2?.access_token) {
               setOidcUser(u2);
-              return api(path, method, body, true);
+              return api(path, method, body, true, fetchOptions);
             }
           } catch (_) {}
           if (generationInFlightRef.current) {
@@ -400,6 +407,12 @@ export default function App() {
     },
     [oidcUser, useKeycloak, oidcMgr, redirectToKeycloakLogin],
   );
+
+  const stopGeneration = useCallback(() => {
+    try {
+      generateAbortRef.current?.abort();
+    } catch (_) {}
+  }, []);
 
   const validateReqImages = useCallback(() => {
     const { maxCount, maxTotalMb, enabled } = reqImgConfig;
@@ -1442,6 +1455,9 @@ export default function App() {
     setMemoryMatch(null);
     setBusy(useAgenticGen ? "/generate-from-paste-agentic" : "/generate-from-paste");
     setAnnounce("Generating test cases…");
+    const ac = new AbortController();
+    generateAbortRef.current = ac;
+    const fetchOpts = { signal: ac.signal };
     try {
       const pastePath = useAgenticGen ? "/generate-from-paste-agentic" : "/generate-from-paste";
       const pastePayload = {
@@ -1457,9 +1473,9 @@ export default function App() {
         const fd = new FormData();
         fd.append("payload", JSON.stringify(pastePayload));
         for (const f of reqImageFiles) fd.append("files", f);
-        d = await apiForm(pastePath, fd);
+        d = await apiForm(pastePath, fd, false, fetchOpts);
       } else {
-        d = await api(pastePath, "POST", pastePayload);
+        d = await api(pastePath, "POST", pastePayload, false, fetchOpts);
       }
       if (inputModeRef.current !== "paste") {
         setAnnounce("");
@@ -1475,10 +1491,16 @@ export default function App() {
       await syncLists();
       await refreshMemoryPanelIfOpen(normTicketId(d.ticket_id));
     } catch (e) {
-      setErr(e.message || "Something went wrong.");
-      setAnnounce("");
+      if (e?.name === "AbortError") {
+        setErr("");
+        setAnnounce("Generation stopped.");
+      } else {
+        setErr(e.message || "Something went wrong.");
+        setAnnounce("");
+      }
     } finally {
       generationInFlightRef.current = false;
+      generateAbortRef.current = null;
       setBusy(null);
     }
   };
@@ -1502,6 +1524,9 @@ export default function App() {
         const genPath = useAgenticGen ? "/generate-tests-agentic" : "/generate-tests";
         const credBody = cred();
         setAnnounce("Generating test cases…");
+        const ac = new AbortController();
+        generateAbortRef.current = ac;
+        const fetchOpts = { signal: ac.signal };
         const genPayload = {
           ...credBody,
           test_project_key: jiraTestProject.trim(),
@@ -1517,9 +1542,9 @@ export default function App() {
           const fd = new FormData();
           fd.append("payload", JSON.stringify(genPayload));
           for (const f of reqImageFiles) fd.append("files", f);
-          d = await apiForm(genPath, fd);
+          d = await apiForm(genPath, fd, false, fetchOpts);
         } else {
-          d = await api(genPath, "POST", genPayload);
+          d = await api(genPath, "POST", genPayload, false, fetchOpts);
         }
         if (inputModeRef.current !== "jira") {
           return;
@@ -1574,11 +1599,17 @@ export default function App() {
         return;
       }
     } catch (e) {
-      setErr(e.message || "Something went wrong.");
-      setAnnounce("");
+      if (e?.name === "AbortError") {
+        setErr("");
+        setAnnounce(path === "/generate-tests" ? "Generation stopped." : "");
+      } else {
+        setErr(e.message || "Something went wrong.");
+        setAnnounce("");
+      }
     } finally {
       if (path === "/generate-tests") {
         generationInFlightRef.current = false;
+        generateAbortRef.current = null;
       }
       setBusy(null);
     }
@@ -2586,13 +2617,14 @@ export default function App() {
             </div>
               </div>
             ) : null}
+            </fieldset>
             {inputMode === "jira" || inputMode === "paste" ? (
               <>
             <label className={`check check-save-memory${mock ? " check-disabled" : ""}`}>
               <input
                 type="checkbox"
                 checked={saveToMemory}
-                disabled={mock}
+                disabled={generatingTestCases || mock}
                 onChange={(e) => setSaveToMemory(e.target.checked)}
               />
               <span className="check-save-memory-text" role="note">
@@ -2645,6 +2677,11 @@ export default function App() {
                   {isPasteGenBusy(busy) ? "Generating…" : "Generate Test Cases"}
                 </button>
               )}
+              {isAnyGenBusy(busy) && (inputMode === "jira" || inputMode === "paste") ? (
+                <button type="button" className="secondary" onClick={stopGeneration} aria-label="Stop test generation">
+                  Stop Test Generation
+                </button>
+              ) : null}
             </div>
             {inputMode === "jira" && !canSubmit ? (
               <p className="form-hint-warn">Complete every field above to enable actions.</p>
@@ -2662,7 +2699,6 @@ export default function App() {
                 <strong>Error.</strong> {err}
               </div>
             ) : null}
-            </fieldset>
           </div>
 
           {showAutoTestsUi ? (

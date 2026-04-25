@@ -65,6 +65,9 @@ English quality:
 - Use correct grammar, articles, and subject-verb agreement.
 - Keep descriptions short and specific.
 - Keep each step concrete and testable.
+- Do not put draft or review markers in steps: no "----", "check this", "verify this", "TBD", "TODO", or other placeholder fragments. Every line must be a final Gherkin step.
+- For layout-only or visual checks, still include a When that states the user action or view (e.g. "When The user views the login page") before Then assertions. Do not go directly from Given to Then.
+- Every Then/And assertion must be a full sentence: subject + clear outcome (e.g. not a lone noun phrase like "The logo" with no visible expectation).
 
 Example:
 {"test_cases":[{"description":"Successful login with valid credentials","preconditions":"","steps":["Given The user is on the login page","When The user enters a valid username","And The user enters a valid password","And The user clicks the \"Login\" button","Then The dashboard page is visible"],"expected_result":"","change_status":"new","priority":"High"}]}
@@ -163,6 +166,7 @@ Return exactly as many scores as test cases in the user message, in the same ord
 Each score must be 0-10 and may include one decimal.
 Judge traceability to requirements, Gherkin structure, concreteness, and clarity.
 Penalize unsupported assumptions, vague assertions, missing observable outcomes, duplicate coverage, and missing supported negative/boundary coverage.
+Penalize heavy deduction for steps that are clearly drafts: markers like "----", "check this", "TODO", or incomplete lines that are not full assertions.
 """.strip()
 
 API_BDD_TO_HTTP_OPERATIONS_PLANNER_SYSTEM_PROMPT = (

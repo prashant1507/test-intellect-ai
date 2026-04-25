@@ -9,6 +9,7 @@ from langgraph.graph import END, StateGraph
 
 from ai_client import (
     _chat,
+    _generated_case_quality_issues,
     _json as parse_llm_json,
     _norm,
     build_generation_user_prompt,
@@ -136,6 +137,7 @@ class AgentState(TypedDict, total=False):
     validator: ValidatorResult | None
     validation_passed: bool | None
     suggestion_swap: dict | None
+    quality_issues: list[str]
     final_cases: list[dict]
     requirement_images: list[dict]
 
@@ -145,14 +147,14 @@ def _max_rounds_cap(state: AgentState) -> int:
 
 
 def _passed(vr: ValidatorResult) -> bool:
-    if vr.aggregate < AGG_MIN or vr.min_dimension() < DIM_MIN:
-        return False
-    if vr.aggregate >= STRONG_AGG and vr.min_dimension() >= STRONG_DIM:
-        return True
     if any((x or "").strip() for x in vr.issues):
         return False
     if any((x or "").strip() for x in vr.must_fix):
         return False
+    if vr.aggregate < AGG_MIN or vr.min_dimension() < DIM_MIN:
+        return False
+    if vr.aggregate >= STRONG_AGG and vr.min_dimension() >= STRONG_DIM:
+        return True
     return True
 
 
@@ -164,6 +166,29 @@ def _bounds_ok(n: int, state: AgentState) -> bool:
     if hi and n > hi:
         return False
     return True
+
+
+def _cases_from_env(env: GenerationEnvelope, state: AgentState) -> list[dict]:
+    allowed = state.get("allowed_priorities") or ["Medium"]
+    return [_norm(c.model_dump(), allowed_priorities=allowed) for c in env.test_cases]
+
+
+def _deterministic_quality_issues(env: GenerationEnvelope, state: AgentState) -> list[str]:
+    return _generated_case_quality_issues(
+        _cases_from_env(env, state),
+        min_test_cases=int(state.get("min_test_cases") or 1),
+        max_test_cases=int(state.get("max_test_cases") or 0),
+        allowed_priorities=state.get("allowed_priorities") or ["Medium"],
+    )
+
+
+def _quality_feedback(issues: list[str]) -> str:
+    body = "\n".join(f"- {x}" for x in issues[:12])
+    return (
+        "Deterministic quality checks failed. Regenerate the full JSON test suite and fix these issues "
+        "without adding unsupported behavior:\n"
+        f"{body}"
+    )
 
 
 def generate_node(state: AgentState) -> dict:
@@ -193,9 +218,23 @@ def generate_node(state: AgentState) -> dict:
     msgs, has_imgs = _msgs_with_images(
         AGENT_CANDIDATE_TEST_SUITE_GENERATION_SYSTEM_PROMPT, user, imgs
     )
-    raw = _llm_chat(msgs, temperature=0.12, max_tokens=4096, skip_json_for_vision=has_imgs)
+    raw = _llm_chat(
+        msgs,
+        temperature=0.12,
+        max_tokens=4096,
+        json_response_format=True,
+        skip_json_for_vision=has_imgs,
+    )
     g = (state.get("generation") or 0) + 1
-    return {"raw": raw, "generation": g}
+    return {
+        "raw": raw,
+        "generation": g,
+        "envelope": None,
+        "validator": None,
+        "validation_passed": None,
+        "suggestion_swap": None,
+        "quality_issues": [],
+    }
 
 
 def parse_node(state: AgentState) -> dict:
@@ -211,7 +250,21 @@ def parse_node(state: AgentState) -> dict:
         env = GenerationEnvelope.model_validate({"test_cases": fixed})
         if not _bounds_ok(len(env.test_cases), state):
             raise ValueError("test_cases count outside min/max")
-        return {"envelope": env, "parse_error": None, "error": None}
+        quality_issues = _deterministic_quality_issues(env, state)
+        if quality_issues and gen < mx:
+            return {
+                "envelope": None,
+                "quality_issues": quality_issues,
+                "parse_error": "deterministic quality checks failed",
+                "feedback": _quality_feedback(quality_issues),
+            }
+        err = (
+            "deterministic quality checks did not fully pass: "
+            + "; ".join(quality_issues)
+            if quality_issues
+            else None
+        )
+        return {"envelope": env, "quality_issues": quality_issues, "parse_error": None, "error": err}
     except Exception as e:
         err = str(e)
         if gen >= mx:
@@ -231,17 +284,26 @@ def score_node(state: AgentState) -> dict:
     user = f"Requirements:\n{req}\n\nGenerated:\n{body}\n\nReturn only the scoring JSON."
     imgs = state_payload_to_images(state.get("requirement_images"))
     msgs, has_imgs = _msgs_with_images(AGENT_TEST_SUITE_VALIDATION_RUBRIC_SYSTEM_PROMPT, user, imgs)
-    raw = _llm_chat(
-        msgs,
-        temperature=0.08,
-        max_tokens=1024,
-        json_response_format=True,
-        skip_json_for_vision=has_imgs,
-    )
-    data = parse_llm_json(raw)
-    vr = ValidatorResult.model_validate(data)
     mx = _max_rounds_cap(state)
     gen = int(state.get("generation") or 0)
+    try:
+        raw = _llm_chat(
+            msgs,
+            temperature=0.08,
+            max_tokens=1024,
+            json_response_format=True,
+            skip_json_for_vision=has_imgs,
+        )
+        data = parse_llm_json(raw)
+        vr = ValidatorResult.model_validate(data)
+    except Exception as e:
+        msg = f"Validator failed to return valid scoring JSON: {e!s}"
+        if gen < mx:
+            return {"validator": None, "validation_passed": False, "feedback": msg}
+        return {"validator": None, "validation_passed": False, "error": msg}
+    quality_issues = _deterministic_quality_issues(env, state)
+    if quality_issues:
+        vr.must_fix = list(vr.must_fix) + [f"Deterministic check: {x}" for x in quality_issues]
     ok = _passed(vr)
     if ok:
         return {"validator": vr, "validation_passed": True}
@@ -282,7 +344,13 @@ def merge_suggestions_node(state: AgentState) -> dict:
         AGENT_SUGGESTED_SCENARIOS_GENERATION_SYSTEM_PROMPT, user, imgs
     )
     try:
-        raw = _llm_chat(msgs, temperature=0.12, max_tokens=4096, skip_json_for_vision=has_imgs)
+        raw = _llm_chat(
+            msgs,
+            temperature=0.12,
+            max_tokens=4096,
+            json_response_format=True,
+            skip_json_for_vision=has_imgs,
+        )
         data = parse_llm_json(raw)
         tc = data.get("test_cases")
         if not isinstance(tc, list) or not tc:
@@ -388,15 +456,24 @@ def route_parse(state: AgentState) -> str:
 def route_score(state: AgentState) -> str:
     vr = state.get("validator")
     if not vr:
+        if state.get("feedback") and int(state.get("generation") or 0) < _max_rounds_cap(state):
+            return "generate"
         return "finalize"
     if _passed(vr):
         sugs = [s for s in (vr.suggestions or []) if (s or "").strip()]
-        if sugs:
+        if sugs and not state.get("suggestion_swap"):
             return "merge_suggestions"
         return "finalize"
     if int(state.get("generation") or 0) >= _max_rounds_cap(state):
         return "finalize"
     return "generate"
+
+
+def route_suggestion_swap(state: AgentState) -> str:
+    swap = state.get("suggestion_swap")
+    if isinstance(swap, dict) and swap.get("done") is True:
+        return "score"
+    return "finalize"
 
 
 def build_graph():
@@ -418,7 +495,11 @@ def build_graph():
         route_score,
         {"finalize": "finalize", "generate": "generate", "merge_suggestions": "merge_suggestions"},
     )
-    g.add_edge("merge_suggestions", "finalize")
+    g.add_conditional_edges(
+        "merge_suggestions",
+        route_suggestion_swap,
+        {"score": "score", "finalize": "finalize"},
+    )
     g.add_edge("finalize", END)
     return g.compile()
 

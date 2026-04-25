@@ -78,6 +78,10 @@ _VAGUE_ASSERTION_RE = re.compile(
     r")\b",
     re.IGNORECASE,
 )
+_STEP_DRAFT_MARKERS_RE = re.compile(
+    r"----|\bche?ck\s+this\b|\bchekc\b|\bcheck\s+this\b|\bverify\s+this\b|\bTODO\b|\bFIXME\b|\bTBD\b|\bplaceholder\b",
+    re.IGNORECASE,
+)
 
 
 def _cap_first_line(s: str) -> str:
@@ -820,6 +824,10 @@ def _generated_case_quality_issues(
             if not kw:
                 issues.append(f"Case {idx} step {step_no} has an invalid Gherkin prefix.")
                 continue
+            if _STEP_DRAFT_MARKERS_RE.search(step):
+                issues.append(
+                    f"Case {idx} step {step_no} contains a draft/placeholder or marker; remove it and use a final assertion."
+                )
             if kw == "Given" and (seen_when or seen_then):
                 issues.append(f"Case {idx} step {step_no} has Given after When/Then.")
             elif kw == "When":
