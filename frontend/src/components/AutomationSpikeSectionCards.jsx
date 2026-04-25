@@ -35,17 +35,19 @@ const SAVED_LINKED_LIST_VISIBLE_ROWS = 4;
 const SAVED_SELECTORS_VISIBLE_ROWS = 2;
 const SUITE_REPORTS_RECENT_LS_KEY = "automation-suite-reports-recent-open";
 
+function defaultParallelFromEnv(envObj) {
+  const p = envObj.automation_parallel_execution;
+  if (typeof p === "number" && p >= 1 && p <= 4) return p;
+  return 1;
+}
+
 function buildEnvOptionsBody(envObj, patch) {
   const defTo =
     typeof envObj.automation_default_timeout_ms === "number" &&
     !Number.isNaN(envObj.automation_default_timeout_ms)
       ? envObj.automation_default_timeout_ms
       : 30_000;
-  const defPar = (() => {
-    const p = envObj.automation_parallel_execution;
-    if (typeof p === "number" && p >= 1 && p <= 4) return p;
-    return 1;
-  })();
+  const defPar = defaultParallelFromEnv(envObj);
   return {
     automation_headless: patch.automation_headless ?? !!envObj.automation_headless,
     automation_screenshot_on_pass:
@@ -107,6 +109,63 @@ function stepForBddLineIndex(steps, byIdx, hasIndex, i) {
   return null;
 }
 
+function mergePickIntoSorted(available, prev, item) {
+  if (!item) return prev;
+  if (prev.includes(item) || !available.includes(item)) return prev;
+  return [...prev, item].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
+function filterSuggestionsExcludingPicked(options, pickedSet, input) {
+  const q = String(input).trim().toLowerCase();
+  return options.filter(
+    (t) => !pickedSet.has(t) && (q === "" || t.toLowerCase().includes(q)),
+  );
+}
+
+function AnalysisStepItem({ runId, step, line, stepIndex, expandedShotId, onExpandedChange }) {
+  const showReason = shouldShowErrInStepAnalysis(step?.err) && !stepIsPass(step);
+  return (
+    <div
+      className={analysisStepClass(step)}
+      role="listitem"
+    >
+      <div className="automation-spike-analysis-step-line">{line}</div>
+      {showReason ? (
+        <div className="automation-spike-analysis-step-reason">{String(step.err)}</div>
+      ) : null}
+      <AutomationRunStepScreenshot
+        runId={runId}
+        step={step}
+        defaultExpanded={false}
+        accordionId={stepShotAccordionId(runId, step, stepIndex)}
+        expandedAccordionId={expandedShotId}
+        onExpandedAccordionChange={onExpandedChange}
+      />
+    </div>
+  );
+}
+
+function IconTrash() {
+  return (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
+    </svg>
+  );
+}
+
 function SuiteAnalysisStepsView({ bdd, runDetail }) {
   const [expandedShotId, setExpandedShotId] = useState(null);
   useEffect(() => {
@@ -149,27 +208,16 @@ function SuiteAnalysisStepsView({ bdd, runDetail }) {
     );
     ordered.forEach((s, i) => {
       const line = String(s?.step_text || "").trim() || "—";
-      const showReason =
-        shouldShowErrInStepAnalysis(s?.err) && !stepIsPass(s);
       rows.push(
-        <div
+        <AnalysisStepItem
           key={`st-orphan-${i}`}
-          className={analysisStepClass(s)}
-          role="listitem"
-        >
-          <div className="automation-spike-analysis-step-line">{line}</div>
-          {showReason ? (
-            <div className="automation-spike-analysis-step-reason">{String(s.err)}</div>
-          ) : null}
-          <AutomationRunStepScreenshot
-            runId={runId}
-            step={s}
-            defaultExpanded={false}
-            accordionId={stepShotAccordionId(runId, s, i)}
-            expandedAccordionId={expandedShotId}
-            onExpandedAccordionChange={setExpandedShotId}
-          />
-        </div>,
+          runId={runId}
+          step={s}
+          line={line}
+          stepIndex={i}
+          expandedShotId={expandedShotId}
+          onExpandedChange={setExpandedShotId}
+        />,
       );
     });
   } else {
@@ -191,27 +239,16 @@ function SuiteAnalysisStepsView({ bdd, runDetail }) {
         continue;
       }
       const line = (lineTexts[i] ?? String(s?.step_text || "").trim()) || "—";
-      const showReason =
-        shouldShowErrInStepAnalysis(s?.err) && !stepIsPass(s);
-        rows.push(
-        <div
+      rows.push(
+        <AnalysisStepItem
           key={`st-${i}`}
-          className={analysisStepClass(s)}
-          role="listitem"
-        >
-          <div className="automation-spike-analysis-step-line">{line}</div>
-          {showReason ? (
-            <div className="automation-spike-analysis-step-reason">{String(s.err)}</div>
-          ) : null}
-          <AutomationRunStepScreenshot
-            runId={runId}
-            step={s}
-            defaultExpanded={false}
-            accordionId={stepShotAccordionId(runId, s, i)}
-            expandedAccordionId={expandedShotId}
-            onExpandedAccordionChange={setExpandedShotId}
-          />
-        </div>,
+          runId={runId}
+          step={s}
+          line={line}
+          stepIndex={i}
+          expandedShotId={expandedShotId}
+          onExpandedChange={setExpandedShotId}
+        />,
       );
     }
     if (stepsHaveIndex && lineTexts.length > 0) {
@@ -222,27 +259,16 @@ function SuiteAnalysisStepsView({ bdd, runDetail }) {
         const s = byStepIndex.get(k);
         if (!s) continue;
         const line = String(s?.step_text || "").trim() || `Step ${k}`;
-        const showReason =
-          shouldShowErrInStepAnalysis(s?.err) && !stepIsPass(s);
         rows.push(
-          <div
+          <AnalysisStepItem
             key={`st-extra-${k}`}
-            className={analysisStepClass(s)}
-            role="listitem"
-          >
-            <div className="automation-spike-analysis-step-line">{line}</div>
-            {showReason ? (
-              <div className="automation-spike-analysis-step-reason">{String(s.err)}</div>
-            ) : null}
-            <AutomationRunStepScreenshot
-              runId={runId}
-              step={s}
-              defaultExpanded={false}
-              accordionId={stepShotAccordionId(runId, s, k)}
-              expandedAccordionId={expandedShotId}
-              onExpandedAccordionChange={setExpandedShotId}
-            />
-          </div>,
+            runId={runId}
+            step={s}
+            line={line}
+            stepIndex={k}
+            expandedShotId={expandedShotId}
+            onExpandedChange={setExpandedShotId}
+          />,
         );
       }
     }
@@ -518,22 +544,7 @@ function SuiteCaseRow({ c, runDisabled, onView, onRun, onAnalysis, onHistory, on
             disabled={runDisabled}
             aria-label="Remove from saved suite"
           >
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden
-            >
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              <line x1="10" y1="11" x2="10" y2="17" />
-              <line x1="14" y1="11" x2="14" y2="17" />
-            </svg>
+            <IconTrash />
           </button>
         </FloatingTooltip>
       </div>
@@ -614,21 +625,25 @@ export function AutomationSpikeSectionCards({
     return Array.from(s).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   }, [suiteCases]);
 
-  const suiteTagRunFilterSuggestions = useMemo(() => {
-    const picked = new Set(suiteRunFilterSelectedTags);
-    const q = suiteRunFilterTagInput.trim().toLowerCase();
-    return suiteTagFilterOptions.filter(
-      (t) => !picked.has(t) && (q === "" || t.toLowerCase().includes(q)),
-    );
-  }, [suiteTagFilterOptions, suiteRunFilterSelectedTags, suiteRunFilterTagInput]);
+  const suiteTagRunFilterSuggestions = useMemo(
+    () =>
+      filterSuggestionsExcludingPicked(
+        suiteTagFilterOptions,
+        new Set(suiteRunFilterSelectedTags),
+        suiteRunFilterTagInput,
+      ),
+    [suiteTagFilterOptions, suiteRunFilterSelectedTags, suiteRunFilterTagInput],
+  );
 
-  const suiteJiraRunFilterSuggestions = useMemo(() => {
-    const picked = new Set(suiteRunFilterSelectedJiras);
-    const q = suiteRunFilterJiraInput.trim().toLowerCase();
-    return suiteJiraFilterOptions.filter(
-      (k) => !picked.has(k) && (q === "" || k.toLowerCase().includes(q)),
-    );
-  }, [suiteJiraFilterOptions, suiteRunFilterSelectedJiras, suiteRunFilterJiraInput]);
+  const suiteJiraRunFilterSuggestions = useMemo(
+    () =>
+      filterSuggestionsExcludingPicked(
+        suiteJiraFilterOptions,
+        new Set(suiteRunFilterSelectedJiras),
+        suiteRunFilterJiraInput,
+      ),
+    [suiteJiraFilterOptions, suiteRunFilterSelectedJiras, suiteRunFilterJiraInput],
+  );
 
   useEffect(() => {
     const ts = new Set(suiteTagFilterOptions);
@@ -643,11 +658,7 @@ export function AutomationSpikeSectionCards({
   const addSuiteRunFilterTag = useCallback(
     (t) => {
       if (!t) return;
-      setSuiteRunFilterSelectedTags((prev) => {
-        if (prev.includes(t)) return prev;
-        if (!suiteTagFilterOptions.includes(t)) return prev;
-        return [...prev, t].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-      });
+      setSuiteRunFilterSelectedTags((prev) => mergePickIntoSorted(suiteTagFilterOptions, prev, t));
       setSuiteRunFilterTagInput("");
     },
     [suiteTagFilterOptions],
@@ -660,11 +671,7 @@ export function AutomationSpikeSectionCards({
   const addSuiteRunFilterJira = useCallback(
     (k) => {
       if (!k) return;
-      setSuiteRunFilterSelectedJiras((prev) => {
-        if (prev.includes(k)) return prev;
-        if (!suiteJiraFilterOptions.includes(k)) return prev;
-        return [...prev, k].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-      });
+      setSuiteRunFilterSelectedJiras((prev) => mergePickIntoSorted(suiteJiraFilterOptions, prev, k));
       setSuiteRunFilterJiraInput("");
     },
     [suiteJiraFilterOptions],
@@ -2180,22 +2187,7 @@ export function AutomationSpikeSectionCards({
                         onClick={() => deleteSel(r.rowid)}
                         aria-label="Remove saved selector"
                       >
-                        <svg
-                          width="18"
-                          height="18"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          aria-hidden
-                        >
-                          <polyline points="3 6 5 6 21 6" />
-                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          <line x1="10" y1="11" x2="10" y2="17" />
-                          <line x1="14" y1="11" x2="14" y2="17" />
-                        </svg>
+                        <IconTrash />
                       </button>
                     </FloatingTooltip>
                   </li>
