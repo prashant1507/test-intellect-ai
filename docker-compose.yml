@@ -1,3 +1,4 @@
+# LLM/Keycloak on the host: use host.docker.internal (see extra_hosts).
 services:
   test-intellect-ai:
     image: test-intellect-ai:1.0
@@ -5,38 +6,49 @@ services:
     ports:
       - "8001:8000"
     environment:
+      SHOW_MEMORY_UI: "true"
+      SHOW_AUDIT_UI: "true"
+      SHOW_JIRA_MODE_UI: "true"
+      SHOW_PASTE_REQUIREMENTS_MODE_UI: "true"
+      SHOW_AUTO_TESTS_UI: "true"
+
       JIRA_URL: ""
       JIRA_USERNAME: ""
       JIRA_PASSWORD: ""
-      JIRA_VERIFY_SSL: "false"
       JIRA_TEST_PROJECT_KEY: ""
       JIRA_TEST_ISSUE_TYPE: Test
       JIRA_TEST_LINK_TYPE: Relates
       JIRA_LINK_INWARD_IS_REQUIREMENT: "true"
+      JIRA_VERIFY_SSL: "false"
       JIRA_LINKED_WORK_ISSUE_TYPES: "Story,Improvement,Feature"
 
       MOCK: "false"
-      SHOW_MEMORY_UI: "true"
-      SHOW_AUDIT_UI: "true"
 
-      USE_KEYCLOAK: "true"
-      KEYCLOAK_URL: http://localhost:8080
-      KEYCLOAK_REALM: master
-      KEYCLOAK_CLIENT_ID: user-client-id-jira
+      AUTOMATION_POST_ANALYSIS: "true"
+      AUTOMATION_WRITE_RUN_HTML: "true"
+      AUTOMATION_RETENTION_DAYS: "20"
+      AUTOMATION_SPIKE_PRERUN: "false"
+
+      USE_KEYCLOAK: "false"
+      KEYCLOAK_URL: ""
+      KEYCLOAK_REALM: ""
+      KEYCLOAK_CLIENT_ID: ""
       KEYCLOAK_CLIENT_SECRET: ""
       KEYCLOAK_IDLE_TIMEOUT_MINUTES: "60"
-      KEYCLOAK_INTERNAL_URL: http://host.docker.internal:8080
+      KEYCLOAK_INTERNAL_URL: "http://host.docker.internal:8080"
 
-      LLM_TEXT_URL: http://host.docker.internal:1234/v1
-      LLM_TEXT_MODEL: qwen/qwen3-vl-30b
+      LLM_TEXT_URL: "http://host.docker.internal:1234/v1"
+      LLM_TEXT_MODEL: "qwen/qwen3-coder-next"
       LLM_TEXT_ACCESS_TOKEN: ""
-      LLM_VISION_URL: http://host.docker.internal:1234/v1
-      LLM_VISION_MODEL: qwen/qwen3-vl-30b
+      DOCKER_LLM_URL: ""
+
+      LLM_VISION_URL: "http://host.docker.internal:1234/v1"
+      LLM_VISION_MODEL: "qwen/qwen3-vl-30b"
       LLM_VISION_ACCESS_TOKEN: ""
 
-      LLM_REQUIREMENT_IMAGES_ENABLED: "true"
+      LLM_REQUIREMENT_IMAGES_ENABLED: "false"
       LLM_REQUIREMENT_IMAGES_MAX_COUNT: "5"
-      LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB: "200"
+      LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB: "300"
 
       MEMORY_SIMILARITY_THRESHOLD: "0.92"
       PASTE_MODE_PRIORITIES: "Highest, High, Medium, Low, Lowest"
