@@ -10,6 +10,13 @@ import requests
 from typing import Any
 
 from key_norm import norm_issue_key
+from prompts import (
+    BDD_TEST_CASES_BATCH_SCORING_SYSTEM_PROMPT,
+    BDD_TEST_CASE_GENERATION_SYSTEM_PROMPT,
+    BDD_TEST_GENERATION_WITH_ATTACHMENTS_SUPPLEMENT_PROMPT,
+    SKELETON_TEST_CODE_GENERATION_SYSTEM_PROMPT,
+    UI_SPIKE_TEST_RUN_SUMMARY_SYSTEM_PROMPT,
+)
 from settings import settings
 
 
@@ -52,47 +59,6 @@ _GH_PREFIX = re.compile(r"^(Given|When|Then|And)\s+(.*)$", re.IGNORECASE | re.DO
 _GH_KEYWORD = {"given": "Given", "when": "When", "then": "Then", "and": "And"}
 _WS_NORM = re.compile(r"\s+")
 _AND_SPLIT = re.compile(r"\s+and\s+", re.IGNORECASE)
-
-SYS = """
-You are a senior QA automation engineer. Produce automation-ready BDD-style scenarios as JSON (not a Feature file or markdown). Derive test cases from the **Requirements** (title + description) and from **Prior** and **Linked JIRA tests** when those sections appear in the user message.
-
-Do not invent behavior, integrations, or concrete values that appear nowhere in the sections that are actually present. If something material is unstated, stay conservative: cover only what the text or attachments support.
-
-Traceability: Every scenario must tie to the Requirements **or** to Prior / linked tests when present. Prefer wording from the requirement or from included sections.
-
-Depth and variety (within the budget of min/max test cases from the Task):
-- Include a primary happy path when the requirement describes success.
-- Mix in edge, negative, and alternative scenarios where the text supports them—not only trivial happy paths.
-- Add focused scenarios for: alternative paths or branches named in the text; state/setup differences (e.g. role, flag, mode) if mentioned; validation and "must not" behavior; empty, missing, or invalid input when the requirement implies rejection or guarding; boundary or edge behavior when min/max, optional/required, or "at least one" style rules appear; recovery or idempotency only if described.
-- Prefer distinct scenarios over repeating the same flow with tiny wording changes. Do not emit two test cases that differ only by one word in the title or by trivial synonym when the steps are the same or nearly the same. When space is tight, prioritize one strong edge or negative case over duplicate happy paths.
-- For multiple data variants (valid vs invalid inputs, different messages), use separate items in "test_cases" with their own "steps"—do not output Scenario Outline / Examples tables inside a single case.
-
-Automation-ready steps (within each scenario's "steps" array):
-- Describe what the user does and what is visible on the UI or system—never name automation frameworks, drivers, or APIs (no Selenium, Playwright, XPath, CSS selectors, or locator code in step text).
-- Each Then/And assertion must state one observable outcome (specific text, control state, message, navigation, or content). Avoid vague outcomes like "it works", "the page loads correctly", or "validation works" without naming what appears.
-- When the requirement or UI copy specifies labels, placeholders, headings, button text, links, or error messages, put the **exact** expected string in double quotes inside the step (e.g. Then the error message "Invalid credentials" is visible).
-- Disambiguate repeated controls using visible text or clear role (e.g. the user clicks the "Submit" button, the field labeled "Email").
-
-Gherkin (strict): The scenario lives ONLY in "steps" — an array of single lines in order: Given, then And*, then When, then And*, then Then, then And*. Allowed prefixes only: "Given ", "And ", "When ", "Then " (case-sensitive). Do not use "But". "preconditions" and "expected_result" must be "".
-
-Atomic steps: Each line is ONE condition, ONE action, or ONE outcome. Never join two with natural-language "and" or commas inside the same line (wrong: "Given The user is logged in and on a protected page"). Use separate lines: "Given The user is logged in" then "And The user is on a protected dashboard page". Same for When/Then: split multiple actions or assertions onto extra "And" lines.
-
-Quality: One clause per array element (never "Then A And B" in one string — split to two lines). Steps must be concrete and testable (who/what/where in Given/When; observable outcome in Then). Use "And" only to continue the same phase (more context, more actions, or more assertions), not to smuggle unrelated checks.
-
-JSON only, no markdown. Top-level key "test_cases" only. Each item: description, preconditions "", steps, expected_result "", change_status, priority — do not include an "id" field. change_status: new if no prior; else new/updated/unchanged vs Prior. If Prior already has a scenario for the same test idea and Requirements only changed concrete values (limits, counts, durations, labels), treat it as the same scenario: set change_status to **updated**, align description and steps with the new values, and do not add a duplicate "new" scenario for the same idea. priority: business importance for triage (exact label will be given in the Task).
-
-Example steps: ["Given …", "When …", "Then …", "And …"]
-
-Grammar and style (English):
-- Use correct grammar: subject–verb agreement, proper articles (a/an/the), and standard word order in every description and step.
-- Scenario "description": a short, clear title (not a Gherkin line). Capitalize the first word; no typos; optional ending period only if it is a full sentence.
-- Steps: present tense. Prefer "The user <verb>s …" or "The system <verb>s …" for clarity; be consistent within one scenario. After "Given "/"When "/"Then "/"And ", write a complete clause (not a bare noun phrase unless the requirement uses that form).
-- Avoid run-ons; one idea per line. Use commas only where they follow normal English punctuation rules.
-"""
-
-SYS_IMAGE_SUPPLEMENT = """
-When the user message includes images or PDFs (after the written text): derive test cases using **both** the structured sections above (Requirements, Prior, linked tests) **and** those attachments. Images may show UI, mockups, or diagrams; PDFs may add specs or wireframes—use visible labels, layout, text, and states where they align with the written requirement. When text on screen is legible, prefer steps that quote that copy exactly in double quotes for assertions and field/button identification. Do not invent behavior that contradicts the written requirement; if text and attachment disagree on scope, follow the text and avoid steps that assume unwritten product rules.
-""".strip()
 
 
 def _cap_first_line(s: str) -> str:
@@ -681,9 +647,6 @@ def _chat(
     return (r.json().get("choices") or [{}])[0].get("message", {}).get("content") or ""
 
 
-_SCORE_EACH_SYS = """Reply JSON only: {"scores":[number,...]}. Exactly as many numbers as test cases in the user message, same order. Each 0-10 (decimals allowed). Judge traceability to requirements, Gherkin structure, and clarity."""
-
-
 def strip_test_case_diff_meta(tc: dict) -> dict:
     if not isinstance(tc, dict):
         return tc
@@ -712,7 +675,10 @@ def score_test_cases_0_10(req: dict, cases: list[dict]) -> None:
     clean = [strip_test_case_diff_meta(c) if isinstance(c, dict) else c for c in cases]
     body = json.dumps({"test_cases": clean}, ensure_ascii=False, indent=2)
     user = f"Requirements:\n{rq}\n\nTest cases:\n{body}"
-    msgs = [{"role": "system", "content": _SCORE_EACH_SYS}, {"role": "user", "content": user}]
+    msgs = [
+        {"role": "system", "content": BDD_TEST_CASES_BATCH_SCORING_SYSTEM_PROMPT},
+        {"role": "user", "content": user},
+    ]
     model = _llm_model()
     try:
         raw = _chat(base, model, msgs, 0.05, max_tokens=1024)
@@ -866,7 +832,11 @@ async def generate_test_cases(
         )
     model = _llm_model()
     user_content = build_multimodal_user_content(user, imgs)
-    system_content = SYS if not imgs else f"{SYS}\n\n{SYS_IMAGE_SUPPLEMENT}"
+    system_content = (
+        BDD_TEST_CASE_GENERATION_SYSTEM_PROMPT
+        if not imgs
+        else f"{BDD_TEST_CASE_GENERATION_SYSTEM_PROMPT}\n\n{BDD_TEST_GENERATION_WITH_ATTACHMENTS_SUPPLEMENT_PROMPT}"
+    )
     msgs = [{"role": "system", "content": system_content}, {"role": "user", "content": user_content}]
     raw = await asyncio.to_thread(_chat, base, model, msgs, 0.15)
     data = _json(raw)
@@ -875,17 +845,6 @@ async def generate_test_cases(
     out = [_norm(c, allowed_priorities=allowed_priorities) for c in cases if isinstance(c, dict)]
     out = _dedupe_similar_test_cases(out)
     return out[:max_test_cases] if max_test_cases else out
-
-
-_AUTOMATION_SKELETON_SYS = """
-You are an expert test automation engineer. You receive one JSON test case (BDD-style steps or classic steps).
-
-Task: Output a single **skeleton** test file for the requested programming language and test framework.
-- Map Given/When/Then steps into comments or structured placeholders; use TODO comments for unknown URLs, selectors, or credentials.
-- Do not invent product-specific URLs or selectors; use example.com or obvious placeholders where needed.
-- No explanation prose before or after the code. No markdown fences wrapping the answer unless the language convention requires nothing else (prefer raw source only).
-- Imports and project structure should match common conventions for that stack (e.g. pytest-playwright for Python+Playwright if typical).
-""".strip()
 
 
 def _strip_code_fence(s: str) -> str:
@@ -914,7 +873,10 @@ async def generate_automation_skeleton(test_case: dict, language: str, framework
         f"Test case JSON:\n{payload}"
     )
     model = _llm_model()
-    msgs = [{"role": "system", "content": _AUTOMATION_SKELETON_SYS}, {"role": "user", "content": user}]
+    msgs = [
+        {"role": "system", "content": SKELETON_TEST_CODE_GENERATION_SYSTEM_PROMPT},
+        {"role": "user", "content": user},
+    ]
     raw = await asyncio.to_thread(_chat, base, model, msgs, 0.2)
     return _strip_code_fence(raw.strip())
 
@@ -970,15 +932,14 @@ def spike_post_run_analysis(
             },
             ensure_ascii=False,
         )[:24_000]
-        sysm = (
-            "You are a senior QA engineer. Summarize the test run, root cause if failed, "
-            "and one next step. At most 6 short sentences. Plain text only."
-        )
         u = f"Data:\n{body}\n\nLog tail:\n{log_tail[:8000]}"
         return _chat(
             _llm_base(),
             _llm_model(),
-            [{"role": "system", "content": sysm}, {"role": "user", "content": u}],
+            [
+                {"role": "system", "content": UI_SPIKE_TEST_RUN_SUMMARY_SYSTEM_PROMPT},
+                {"role": "user", "content": u},
+            ],
             0.15,
             max_tokens=1200,
         ).strip()

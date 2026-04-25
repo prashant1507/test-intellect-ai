@@ -13,6 +13,12 @@ from .errors import SpikeUserError
 from .prefs import get_effective_automation_parallel_execution
 from .run_report_html import render_batch_report_html
 from .spike import run_automation_spike
+from .store import (
+    append_suite_case_run_history,
+    list_suite_cases,
+    set_suite_case_last_analysis,
+    set_suite_case_last_run_id_only,
+)
 from .tag_csv import parse_jira_key_tokens, parse_tag_tokens
 
 
@@ -24,12 +30,6 @@ def _spike_type_for_suite_case(c: dict[str, Any]) -> str:
     if toks and toks[0].lower() == "api":
         return "api"
     return "ui"
-from .store import (
-    append_suite_case_run_history,
-    list_suite_cases,
-    set_suite_case_last_analysis,
-    set_suite_case_last_run_id_only,
-)
 
 
 def _apply_optional_suite_filters(

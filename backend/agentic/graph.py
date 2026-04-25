@@ -8,13 +8,19 @@ from typing import TypedDict
 from langgraph.graph import END, StateGraph
 
 from ai_client import (
-    SYS_IMAGE_SUPPLEMENT,
     _chat,
     _json as parse_llm_json,
     _norm,
     build_generation_user_prompt,
     build_multimodal_user_content,
     score_test_cases_0_10,
+)
+from prompts import (
+    AGENT_CANDIDATE_TEST_SUITE_GENERATION_SYSTEM_PROMPT,
+    AGENT_SCENARIOS_QUALITY_RANKING_SYSTEM_PROMPT,
+    AGENT_SUGGESTED_SCENARIOS_GENERATION_SYSTEM_PROMPT,
+    AGENT_TEST_SUITE_VALIDATION_RUBRIC_SYSTEM_PROMPT,
+    BDD_TEST_GENERATION_WITH_ATTACHMENTS_SUPPLEMENT_PROMPT,
 )
 from requirement_images import images_to_state_payload, state_payload_to_images
 from settings import settings
@@ -25,22 +31,6 @@ AGG_MIN = 3.5
 DIM_MIN = 2
 STRONG_AGG = 4.25
 STRONG_DIM = 4
-
-GEN_SYS = """Senior QA. Output JSON only: {"test_cases":[...]}. Each case: description, preconditions "", steps (Given/When/Then/And lines per app rules), expected_result "", change_status, priority. Trace every scenario to the requirement. No invented behavior. English, concrete steps."""
-
-VAL_SYS = """You score BDD test cases vs requirements. Reply JSON only:
-{"dimensions":{"traceability":0-5,"coverage":0-5,"gherkin_structure":0-5,"concreteness":0-5,"non_redundancy":0-5},"issues":[],"must_fix":[],"suggestions":[]}
-- dimensions: 0-5 each.
-- issues / must_fix: ONLY blocking defects (wrong trace to requirement, broken Gherkin, missing required coverage, misleading steps). These trigger revision.
-- suggestions: optional polish (wording, extra scenarios, Remember Me); never blocking. Put nitpicks here, NOT in issues/must_fix, if the suite is already acceptable.
-- If every dimension is >= 4 and the suite is broadly correct, prefer empty issues and must_fix; use suggestions for minor improvements."""
-
-SUG_GEN_SYS = """Output JSON only: {"test_cases":[...]}. Each item: description, preconditions "", expected_result "", change_status "new", priority.
-steps MUST be a JSON array of strings, one string per line, e.g. ["Given ...","When ...","Then ..."]. Never put all steps in one string. One scenario per suggestion; trace only to requirements."""
-
-RANK_SYS = """Reply JSON only: {"base_scores":[number,...],"candidate_scores":[number,...]}
-Each value is 0-5 overall quality (traceability, Gherkin, clarity).
-CRITICAL: base_scores must contain EXACTLY as many numbers as BASE_SCENARIOS (same count). candidate_scores must contain EXACTLY as many numbers as CANDIDATE_SCENARIOS. Count carefully."""
 
 
 def _json_mode_response() -> dict | None:
@@ -73,7 +63,11 @@ def _msgs_with_images(
 ) -> tuple[list[dict], bool]:
     uc = build_multimodal_user_content(user_text, imgs)
     has = bool(imgs)
-    ss = system if not has else f"{system}\n\n{SYS_IMAGE_SUPPLEMENT}"
+    ss = (
+        system
+        if not has
+        else f"{system}\n\n{BDD_TEST_GENERATION_WITH_ATTACHMENTS_SUPPLEMENT_PROMPT}"
+    )
     return [{"role": "system", "content": ss}, {"role": "user", "content": uc}], has
 
 
@@ -196,7 +190,9 @@ def generate_node(state: AgentState) -> dict:
             "Additional image or PDF parts follow. Combine them with the Requirements text and Prior/linked context; "
             "ground scenarios in written and visual (or document) requirement evidence where they agree."
         )
-    msgs, has_imgs = _msgs_with_images(GEN_SYS, user, imgs)
+    msgs, has_imgs = _msgs_with_images(
+        AGENT_CANDIDATE_TEST_SUITE_GENERATION_SYSTEM_PROMPT, user, imgs
+    )
     raw = _llm_chat(msgs, temperature=0.12, max_tokens=4096, skip_json_for_vision=has_imgs)
     g = (state.get("generation") or 0) + 1
     return {"raw": raw, "generation": g}
@@ -234,7 +230,7 @@ def score_node(state: AgentState) -> dict:
     body = json.dumps({"test_cases": [c.model_dump() for c in env.test_cases]}, ensure_ascii=False, indent=2)
     user = f"Requirements:\n{req}\n\nGenerated:\n{body}\n\nReturn only the scoring JSON."
     imgs = state_payload_to_images(state.get("requirement_images"))
-    msgs, has_imgs = _msgs_with_images(VAL_SYS, user, imgs)
+    msgs, has_imgs = _msgs_with_images(AGENT_TEST_SUITE_VALIDATION_RUBRIC_SYSTEM_PROMPT, user, imgs)
     raw = _llm_chat(
         msgs,
         temperature=0.08,
@@ -282,7 +278,9 @@ def merge_suggestions_node(state: AgentState) -> dict:
         f"Priorities exactly one of: {pri}.\nReturn only JSON with key test_cases."
     )
     imgs = state_payload_to_images(state.get("requirement_images"))
-    msgs, has_imgs = _msgs_with_images(SUG_GEN_SYS, user, imgs)
+    msgs, has_imgs = _msgs_with_images(
+        AGENT_SUGGESTED_SCENARIOS_GENERATION_SYSTEM_PROMPT, user, imgs
+    )
     try:
         raw = _llm_chat(msgs, temperature=0.12, max_tokens=4096, skip_json_for_vision=has_imgs)
         data = parse_llm_json(raw)
@@ -307,7 +305,7 @@ def merge_suggestions_node(state: AgentState) -> dict:
         f"CANDIDATE_SCENARIOS ({nc} items, indices 0..{nc - 1}):\n{json.dumps(candidates_norm, ensure_ascii=False, indent=2)}\n\n"
         f"Return only JSON with base_scores: array of exactly {nb} numbers, candidate_scores: array of exactly {nc} numbers."
     )
-    msgs2, _ = _msgs_with_images(RANK_SYS, user2, imgs)
+    msgs2, _ = _msgs_with_images(AGENT_SCENARIOS_QUALITY_RANKING_SYSTEM_PROMPT, user2, imgs)
     try:
         raw2 = _llm_chat(
             msgs2,

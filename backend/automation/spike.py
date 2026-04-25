@@ -9,6 +9,14 @@ from pathlib import Path
 from typing import Any
 
 from ai_client import llm_chat_completion, parse_llm_json_object, spike_post_run_analysis
+from prompts import (
+    PLAYWRIGHT_SINGLE_STEP_FAILURE_REPAIR_SYSTEM_PROMPT,
+    PLAYWRIGHT_STEPS_VS_DOM_INTRO_SYSTEM_PROMPT,
+    playwright_map_bdd_to_locator_steps_prompt,
+    playwright_reconcile_step_count_mismatch_prompt,
+    playwright_refine_locators_against_html_rule,
+    playwright_repair_zero_locator_matches_prompt,
+)
 from settings import settings
 
 from .bdd import parse_bdd_structured, parse_bdd_step_lines
@@ -77,6 +85,11 @@ def _normalize_spike_action(raw: str, log: list[str] | None) -> str:
     if log is not None:
         _l(log, f"Unknown action {raw!r} -> click")
     return "click"
+
+
+def _normalize_spike_type(raw: str | None) -> str:
+    st = (raw or "ui").lower()
+    return st if st in ("ui", "api") else "ui"
 
 
 def _playwright_run_locator_action(
@@ -342,11 +355,7 @@ def _llm_reconcile_step_count(
 ) -> list[dict[str, Any]] | None:
     n = len(bdd_lines)
     safe = [x if isinstance(x, dict) else {} for x in draft]
-    sys_r = (
-        f'Return only JSON: {{"steps": [...]}}. "steps" MUST have length {n} (one object per BDD line in order). '
-        f"The draft has {len(draft)} items; expand, split, or replace so the final list has exactly {n} items. "
-        'Each object: "playwright_selector", "action", "value" (string).'
-    )
+    sys_r = playwright_reconcile_step_count_mismatch_prompt(n, len(draft))
     num = "\n".join(f"  {i}. {line}" for i, line in enumerate(bdd_lines))
     u = f"Title: {title}\nBDD:\n{num}\n\nDraft steps:\n{json.dumps(safe, ensure_ascii=False)}\n\nHTML:\n{_truncate_dom(dom)}"
     raw = llm_chat_completion(sys_r, u, temperature=0.05, max_tokens=12_000)
@@ -388,26 +397,7 @@ def _llm_build_steps(
     title: str, bdd_lines: list[str], dom: str, log: list[str]
 ) -> list[dict[str, Any]]:
     n = len(bdd_lines)
-    sys0 = (
-        "You are a Playwright test expert. BDD has N = "
-        f"{n} lines; HTML is from page.content() or a pasted client snapshot."
-        f' Return one JSON object with key "steps": an array of length EXACTLY {n}.'
-        f" steps[i] maps to BDD line i (0-based)."
-        f" 'Given the user navigates to the X page' after URL load: use assert_visible on a stable on-page control (e.g. input[name=username] on login). "
-        "Use short locators: input[name=...], button:has-text('Login'), text=Required, .oxd-form. Avoid long :has() chains. "
-        ' Each object: "playwright_selector" (string for page.locator), "action", "value" (string, "" if unused).'
-        " Actions: click, dblclick, fill, assert_visible, assert_hidden, assert_text, assert_contains, get_text, "
-        "assert_placeholder, assert_attribute, assert_value, assert_class, press, select_option, hover, check, uncheck, "
-        "scroll_into_view, clear, focus, press_sequentially, assert_checked, assert_unchecked, assert_enabled, assert_disabled. "
-        "For validation errors on form fields, assert_class may check for a CSS class substring (e.g. error state) and "
-        "assert_contains for visible error text. "
-        "To assert an input is empty, use assert_value with value exactly \"\". "
-        "assert_placeholder is ONLY for the HTML placeholder attribute (hint text), not the current field value. "
-        "Error messages with exact copy: use assert_visible or assert_contains on a locator (e.g. text=Required or .oxd-input-group__message), "
-        "when the BDD line says the message should appear or be visible. Never use assert_hidden for a message that must be shown. "
-        "Use assert_hidden only when the BDD line says the message should not appear, or there is no error (e.g. 'And no error message' below a field). "
-        "For XPath, prefer normalize-space(.)= over text()=. Never use CSS ::placeholder in selectors. JSON only."
-    )
+    sys0 = playwright_map_bdd_to_locator_steps_prompt(n)
     num = "\n".join(f"  {i}. {line}" for i, line in enumerate(bdd_lines))
     user0 = f"Title: {title}\nBDD (N={n}, step[i] MUST implement line i only):\n{num}\n\nHTML:\n{_truncate_dom(dom)}"
     data: Any = None
@@ -467,19 +457,10 @@ def _llm_validate_and_refine_steps(
     )
     fwi = first_when_index
     num = "\n".join(f"  {i}. {line}" for i, line in enumerate(bdd_lines))
-    rule = (
-        f"First When at BDD index {fwi}. For 0..{fwi - 1} each selector must match the HTML. "
-        f"For {fwi}..n-1 use plausible locators. "
-        "For Then/And: visible messages -> assert_contains with a selector that matches the live error node; "
-        "for short error copy like Required, use locator text=Required (or span.oxd-input-group__message in OrangeHRM). "
-        "Red/error borders -> assert_class on the input with substring oxd-input--error (or error) if in HTML. "
-        "Do not use assert_attribute unless the attribute name and value exist in the HTML. "
-        'Return JSON only: {"steps":[%d objects]} with keys playwright_selector, action, value. '
-        "No ::placeholder in selector strings. JSON only." % n
-    )
+    rule = playwright_refine_locators_against_html_rule(fwi, n)
     try:
         raw = llm_chat_completion(
-            "You validate and fix Playwright step JSON to match HTML.",
+            PLAYWRIGHT_STEPS_VS_DOM_INTRO_SYSTEM_PROMPT,
             f"Title: {title}\nBDD lines:\n{num}\nProposed:\n{proposed}\n\n{rule}\n\nHTML:\n{_truncate_dom(dom)}",
             temperature=0.1,
             max_tokens=10_000,
@@ -502,7 +483,7 @@ def _llm_repair_zero_match_steps(
     log: list[str],
 ) -> list[dict[str, Any]]:
     n = len(bdd_lines)
-    sys_r = f"Pre-run: locator().count() was 0 for step indices {bad!s}. Return JSON with {{\"steps\": [...]}} of exactly {n} objects. Fix those indices. Prefer text=, [name=], [data-testid=]."
+    sys_r = playwright_repair_zero_locator_matches_prompt(n, bad)
     u = f"Title: {title}\nBDD:\n" + "\n".join(bdd_lines) + f"\nSteps:\n{json.dumps(spec, ensure_ascii=False)}\n\nHTML:\n{_truncate_dom(dom)}"
     try:
         raw = llm_chat_completion(sys_r, u, temperature=0.1, max_tokens=10_000)
@@ -532,9 +513,13 @@ def _llm_repair_after_runtime_fail(
     u = f"BDD line: {bdd_line}\nFailed: {cur!r}\nError: {err!s}\nHTML:\n{_truncate_dom(dom2)}"
     if style_hint:
         u += f"\nComputed (failed selector) JSON: {style_hint[:8000]}"
-    s = "Return JSON: {steps: [one object]}. keys playwright_selector, action, value. Fix for current DOM."
     try:
-        raw = llm_chat_completion(s, u, temperature=0.1, max_tokens=4000)
+        raw = llm_chat_completion(
+            PLAYWRIGHT_SINGLE_STEP_FAILURE_REPAIR_SYSTEM_PROMPT,
+            u,
+            temperature=0.1,
+            max_tokens=4000,
+        )
         data = parse_llm_json_object(raw)
         st = (data.get("steps") or data) if isinstance(data, dict) else None
         if isinstance(st, list) and st and isinstance(st[0], dict):
@@ -644,8 +629,7 @@ def _dom_fingerprint_snip(s: str | None) -> str:
 
 
 def _fingerprint_extras(spike_type: str, html_dom: str | None) -> str:
-    st = (spike_type or "ui").lower()
-    if st == "api":
+    if _normalize_spike_type(spike_type) == "api":
         return "api"
     return _dom_fingerprint_snip(html_dom)
 
@@ -1015,9 +999,7 @@ def _execute_spike_sync(
     write_run_html: bool = True,
     spike_type: str = "ui",
 ) -> dict[str, Any]:
-    st = (spike_type or "ui").lower()
-    if st not in ("ui", "api"):
-        st = "ui"
+    st = _normalize_spike_type(spike_type)
     bdd_lines = parse_bdd_step_lines(bdd)
     _l(log, f"Parsed BDD: {len(bdd_lines)} line(s).")
     try:
@@ -1129,9 +1111,7 @@ def run_automation_spike(
     log: list[str] = []
     u = (url or "").strip()
     run_id = str(uuid.uuid4())
-    st = (spike_type or "ui").lower()
-    if st not in ("ui", "api"):
-        st = "ui"
+    st = _normalize_spike_type(spike_type)
     _l(
         log,
         f"run_id={run_id} title={title!r} url={u!r} spike_type={st!r}",
