@@ -17,6 +17,7 @@ Coverage guidance, within the requested min/max count:
 - Include the main happy path when the requirement describes a successful outcome.
 - Add edge, negative, validation, and alternative-path scenarios only when supported by the text or attachments.
 - Cover explicit states, roles, flags, modes, required/optional behavior, boundaries, and "must not" rules when mentioned.
+- Before writing JSON, internally identify which supported coverage categories apply: happy path, validation, negative, boundary, permissions, state/mode, regression from Prior, and gaps in Linked JIRA tests. Output only scenarios supported by the evidence.
 - Prefer distinct test ideas over near-duplicates.
 - Do not create multiple scenarios that differ only by tiny wording or data changes unless the requirement makes those variants materially different.
 - Use separate test cases for materially different data variants. Do not use Scenario Outline or Examples tables.
@@ -100,14 +101,19 @@ UI_SPIKE_TEST_RUN_SUMMARY_SYSTEM_PROMPT = (
     "Use at most 6 short sentences."
 )
 
-AGENT_CANDIDATE_TEST_SUITE_GENERATION_SYSTEM_PROMPT = """
-You are a senior QA engineer. Output JSON only: {"test_cases":[...]}.
-Each test case must include: description, preconditions "", steps, expected_result "", change_status, priority.
-Use Given/When/Then/And steps only.
-Trace every scenario to the requirement or supplied context.
-Do not invent unsupported behavior.
-Keep scenarios concrete, non-duplicative, and automation-ready.
+AGENT_CANDIDATE_TEST_SUITE_GENERATION_SYSTEM_PROMPT = (
+    BDD_TEST_CASE_GENERATION_SYSTEM_PROMPT.strip()
+    + "\n\n"
+    + """
+
+Agentic refinement rules:
+- Treat validator feedback as mandatory when it identifies traceability, coverage, Gherkin, concreteness, or redundancy problems.
+- Fix the whole suite, not only the named scenario, if the feedback reveals a repeated pattern.
+- Preserve valid prior coverage when it still matches the current requirement.
+- Replace weak, vague, or duplicate scenarios with stronger supported scenarios.
+- Do not increase coverage by inventing unsupported behavior.
 """.strip()
+)
 
 AGENT_TEST_SUITE_VALIDATION_RUBRIC_SYSTEM_PROMPT = """
 You score BDD test cases against requirements. Reply JSON only:
@@ -123,6 +129,12 @@ Scoring:
 Rules:
 - Put only blocking defects in issues or must_fix.
 - Blocking defects include unsupported behavior, broken Gherkin, missing required coverage, misleading assertions, or duplicated scenarios that reduce useful coverage.
+- Add a must_fix item when any scenario has no clear trace to the requirements or supplied context.
+- Add a must_fix item when any Then/And assertion lacks an observable outcome.
+- Add a must_fix item when a step combines multiple separate actions or assertions.
+- Add a must_fix item when success behavior is described but no happy path exists.
+- Add a must_fix item when validation, limits, permissions, state, or "must not" behavior is described but the suite omits that supported risk.
+- Add a must_fix item when two scenarios cover the same test idea with only trivial wording differences.
 - Put optional polish in suggestions only.
 - If every dimension is >= 4 and the suite is broadly correct, prefer empty issues and must_fix.
 """.strip()
@@ -150,6 +162,7 @@ Reply JSON only: {"scores":[number,...]}.
 Return exactly as many scores as test cases in the user message, in the same order.
 Each score must be 0-10 and may include one decimal.
 Judge traceability to requirements, Gherkin structure, concreteness, and clarity.
+Penalize unsupported assumptions, vague assertions, missing observable outcomes, duplicate coverage, and missing supported negative/boundary coverage.
 """.strip()
 
 API_BDD_TO_HTTP_OPERATIONS_PLANNER_SYSTEM_PROMPT = (

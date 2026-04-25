@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import os
 import re
 from difflib import SequenceMatcher
 
@@ -59,6 +60,24 @@ _GH_PREFIX = re.compile(r"^(Given|When|Then|And)\s+(.*)$", re.IGNORECASE | re.DO
 _GH_KEYWORD = {"given": "Given", "when": "When", "then": "Then", "and": "And"}
 _WS_NORM = re.compile(r"\s+")
 _AND_SPLIT = re.compile(r"\s+and\s+", re.IGNORECASE)
+_GH_ALLOWED_PREFIXES = ("Given ", "When ", "Then ", "And ")
+_ASSERTION_OBSERVABLE_RE = re.compile(
+    r"\b("
+    r"visible|displayed|shown|appears?|message|error|warning|toast|alert|notification|"
+    r"page|screen|dialog|modal|button|field|input|link|tab|row|table|list|card|"
+    r"status|value|enabled|disabled|checked|unchecked|selected|redirected|navigated|"
+    r"created|updated|deleted|removed|saved|downloaded|uploaded"
+    r")\b",
+    re.IGNORECASE,
+)
+_VAGUE_ASSERTION_RE = re.compile(
+    r"\b("
+    r"it works|works correctly|loads correctly|validation works|behaves correctly|"
+    r"displayed correctly|shown correctly|handled correctly|processed successfully|"
+    r"successful(?:ly)?"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 def _cap_first_line(s: str) -> str:
@@ -83,18 +102,12 @@ def _cap_gherkin_line(s: str) -> str:
         return s
     gr = _gh_kw_and_rest_raw(s)
     if not gr:
-        return _cap_first_line(s)
+        return s
     kw, rest = gr
     rest = rest.lstrip()
     if not rest:
         return kw
-    j = 0
-    while j < len(rest) and not rest[j].isspace():
-        j += 1
-    first_word, after = rest[:j], rest[j:]
-    if first_word and first_word[0].isalpha():
-        first_word = first_word[0].upper() + first_word[1:]
-    return f"{kw} {first_word}{after}"
+    return f"{kw} {rest}"
 
 
 def _cap_lines(s: str) -> str:
@@ -142,7 +155,7 @@ def _split_natural_and_in_line(line: str) -> list[str]:
     rest = rest.strip()
     if not rest:
         return [line]
-    parts = _AND_SPLIT.split(rest)
+    parts = _split_unquoted_natural_and(rest)
     if len(parts) <= 1:
         return [line]
     if any(len(p.split()) < 2 for p in parts):
@@ -153,6 +166,37 @@ def _split_natural_and_in_line(line: str) -> list[str]:
         if p:
             out.append(f"And {p}")
     return out
+
+
+def _inside_double_quotes(text: str, idx: int) -> bool:
+    quoted = False
+    escaped = False
+    for ch in text[:idx]:
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\":
+            escaped = True
+            continue
+        if ch == '"':
+            quoted = not quoted
+    return quoted
+
+
+def _split_unquoted_natural_and(rest: str) -> list[str]:
+    parts: list[str] = []
+    last = 0
+    split = False
+    for m in _AND_SPLIT.finditer(rest):
+        if _inside_double_quotes(rest, m.start()):
+            continue
+        parts.append(rest[last : m.start()].strip())
+        last = m.end()
+        split = True
+    if not split:
+        return [rest]
+    parts.append(rest[last:].strip())
+    return parts
 
 
 def _split_natural_and_in_steps(lines: list[str]) -> list[str]:
@@ -622,6 +666,12 @@ def _llm_model() -> str:
     return (settings.llm_model or "").strip() or "local-model"
 
 
+def _json_mode_response() -> dict | None:
+    if (os.environ.get("LLM_JSON_MODE") or "").strip().lower() in ("1", "true", "yes", "on"):
+        return {"type": "json_object"}
+    return None
+
+
 def _chat(
     base: str,
     model: str,
@@ -681,7 +731,7 @@ def score_test_cases_0_10(req: dict, cases: list[dict]) -> None:
     ]
     model = _llm_model()
     try:
-        raw = _chat(base, model, msgs, 0.05, max_tokens=1024)
+        raw = _chat(base, model, msgs, 0.05, max_tokens=1024, response_format=_json_mode_response())
         data = _json(raw)
         fitted = _fit_case_scores_0_10(data.get("scores"), len(cases))
         if not fitted:
@@ -697,6 +747,127 @@ def score_merged_test_cases(req: dict, cases: list[dict]) -> None:
         if isinstance(c, dict):
             c.pop("score", None)
     score_test_cases_0_10(req, cases)
+
+
+def _normalize_generated_case_list(data: dict, allowed_priorities: list[str]) -> list[dict]:
+    cases = data.get("test_cases")
+    cases = cases if isinstance(cases, list) else []
+    out = [_norm(c, allowed_priorities=allowed_priorities) for c in cases if isinstance(c, dict)]
+    return _dedupe_similar_test_cases(out)
+
+
+def _step_keyword(step: str) -> str:
+    for prefix in _GH_ALLOWED_PREFIXES:
+        if step.startswith(prefix):
+            return prefix.strip()
+    return ""
+
+
+def _assertion_is_observable(step: str) -> bool:
+    body = re.sub(r"^(Then|And)\s+", "", step, flags=re.I).strip()
+    if '"' in body:
+        return True
+    return bool(_ASSERTION_OBSERVABLE_RE.search(body))
+
+
+def _generated_case_quality_issues(
+    cases: list[dict],
+    *,
+    min_test_cases: int,
+    max_test_cases: int,
+    allowed_priorities: list[str],
+) -> list[str]:
+    issues: list[str] = []
+    if len(cases) < min_test_cases:
+        issues.append(f"Only {len(cases)} test case(s) remain after normalization; at least {min_test_cases} required.")
+    if max_test_cases and len(cases) > max_test_cases:
+        issues.append(f"{len(cases)} test case(s) returned; at most {max_test_cases} allowed.")
+
+    seen_desc: set[str] = set()
+    seen_sig: set[str] = set()
+    allowed_cf = {str(x).casefold() for x in allowed_priorities}
+    for idx, tc in enumerate(cases, start=1):
+        desc = str(tc.get("description") or "").strip()
+        if not desc:
+            issues.append(f"Case {idx} has an empty description.")
+        desc_key = _WS_NORM.sub(" ", desc).casefold()
+        if desc_key and desc_key in seen_desc:
+            issues.append(f"Case {idx} duplicates an earlier scenario description.")
+        if desc_key:
+            seen_desc.add(desc_key)
+
+        pr = str(tc.get("priority") or "").strip()
+        if allowed_cf and pr.casefold() not in allowed_cf:
+            issues.append(f"Case {idx} priority {pr!r} is not one of the allowed labels.")
+
+        steps = tc.get("steps") if isinstance(tc.get("steps"), list) else []
+        steps = [str(x).strip() for x in steps if str(x).strip()]
+        if not steps:
+            issues.append(f"Case {idx} has no steps.")
+            continue
+        sig = _tc_signature_norm({"description": desc, "steps": steps})
+        if sig in seen_sig:
+            issues.append(f"Case {idx} duplicates an earlier scenario's steps.")
+        seen_sig.add(sig)
+
+        if not steps[0].startswith("Given "):
+            issues.append(f"Case {idx} must start with a Given step.")
+        seen_when = False
+        seen_then = False
+        prev_kw = ""
+        for step_no, step in enumerate(steps, start=1):
+            kw = _step_keyword(step)
+            if not kw:
+                issues.append(f"Case {idx} step {step_no} has an invalid Gherkin prefix.")
+                continue
+            if kw == "Given" and (seen_when or seen_then):
+                issues.append(f"Case {idx} step {step_no} has Given after When/Then.")
+            elif kw == "When":
+                if seen_then:
+                    issues.append(f"Case {idx} step {step_no} has When after Then.")
+                seen_when = True
+            elif kw == "Then":
+                if not seen_when:
+                    issues.append(f"Case {idx} step {step_no} has Then before When.")
+                seen_then = True
+            elif kw == "And" and not prev_kw:
+                issues.append(f"Case {idx} step {step_no} starts with And without a prior phase.")
+
+            if seen_then and kw in ("Then", "And"):
+                if _VAGUE_ASSERTION_RE.search(step) and not _assertion_is_observable(step):
+                    issues.append(f"Case {idx} step {step_no} has a vague assertion without an observable outcome.")
+                elif kw == "Then" and not _assertion_is_observable(step):
+                    issues.append(f"Case {idx} step {step_no} assertion is not clearly observable.")
+            prev_kw = kw or prev_kw
+        if not seen_when:
+            issues.append(f"Case {idx} is missing a When step.")
+        if not seen_then:
+            issues.append(f"Case {idx} is missing a Then step.")
+        if len(issues) >= 16:
+            return issues[:16]
+    return issues[:16]
+
+
+def _quality_retry_user_prompt(
+    original_user_prompt: str,
+    draft_cases: list[dict],
+    issues: list[str],
+    *,
+    min_test_cases: int,
+    max_test_cases: int,
+) -> str:
+    max_note = "no upper limit" if max_test_cases == 0 else f"at most {max_test_cases}"
+    issue_text = "\n".join(f"- {x}" for x in issues[:12])
+    draft = json.dumps({"test_cases": draft_cases}, ensure_ascii=False, indent=2)
+    return (
+        f"{original_user_prompt}\n\n"
+        "Quality review found blocking issues in the draft below. Regenerate the full JSON object, fixing these issues "
+        "without adding unsupported behavior.\n\n"
+        f"Required count: at least {min_test_cases}, {max_note}.\n"
+        f"Issues:\n{issue_text}\n\n"
+        f"Draft to improve:\n{draft}\n\n"
+        "Return only the corrected JSON object."
+    )
 
 
 def _priority_guidance(allowed: list[str], paste_mode: bool) -> str:
@@ -838,12 +1009,46 @@ async def generate_test_cases(
         else f"{BDD_TEST_CASE_GENERATION_SYSTEM_PROMPT}\n\n{BDD_TEST_GENERATION_WITH_ATTACHMENTS_SUPPLEMENT_PROMPT}"
     )
     msgs = [{"role": "system", "content": system_content}, {"role": "user", "content": user_content}]
-    raw = await asyncio.to_thread(_chat, base, model, msgs, 0.15)
+    response_format = None if imgs else _json_mode_response()
+    raw = await asyncio.to_thread(_chat, base, model, msgs, 0.15, response_format=response_format)
     data = _json(raw)
-    cases = data.get("test_cases")
-    cases = cases if isinstance(cases, list) else []
-    out = [_norm(c, allowed_priorities=allowed_priorities) for c in cases if isinstance(c, dict)]
-    out = _dedupe_similar_test_cases(out)
+    out = _normalize_generated_case_list(data, allowed_priorities)
+    issues = _generated_case_quality_issues(
+        out,
+        min_test_cases=min_test_cases,
+        max_test_cases=max_test_cases,
+        allowed_priorities=allowed_priorities,
+    )
+    if issues:
+        retry_user = _quality_retry_user_prompt(
+            user,
+            out,
+            issues,
+            min_test_cases=min_test_cases,
+            max_test_cases=max_test_cases,
+        )
+        retry_content = build_multimodal_user_content(retry_user, imgs)
+        retry_msgs = [{"role": "system", "content": system_content}, {"role": "user", "content": retry_content}]
+        try:
+            retry_raw = await asyncio.to_thread(
+                _chat,
+                base,
+                model,
+                retry_msgs,
+                0.08,
+                response_format=response_format,
+            )
+            retry_out = _normalize_generated_case_list(_json(retry_raw), allowed_priorities)
+            retry_issues = _generated_case_quality_issues(
+                retry_out,
+                min_test_cases=min_test_cases,
+                max_test_cases=max_test_cases,
+                allowed_priorities=allowed_priorities,
+            )
+            if retry_out and len(retry_issues) < len(issues):
+                out = retry_out
+        except Exception:
+            pass
     return out[:max_test_cases] if max_test_cases else out
 
 
