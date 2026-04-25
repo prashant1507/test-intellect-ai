@@ -9,7 +9,7 @@
 [![Keycloak](https://img.shields.io/badge/Keycloak-OIDC-5C6BC0?style=flat-square&logo=keycloak&logoColor=white)](https://www.keycloak.org/)
 
 Web app that pull JIRA requirements (or paste text), use an OpenAI-compatible LLM or VLM (local or cloud) to generate
-Gherkin-style test cases, push to JIRA, and run BDD in a browser (Playwright).
+Gherkin-style test cases, push to JIRA, and run UI and API test case.
 Set the model via `LLM_URL` (must include /v1) and optionally `LLM_ACCESS_TOKEN` for Bearer auth.
 
 Optionally:
