@@ -37,7 +37,7 @@ Optionally:
 
 ---
 
-### Product Sample Images
+### Product Sample Report
 
 [Sample Automation Test Report](resources/Sample-Automation-Report.html)
 
@@ -60,6 +60,154 @@ flowchart LR
   AG -.->|uses| LLM
   ATA -.->|plans API steps| LLM
 ```
+
+---
+
+## Functionality Flowcharts
+
+<details>
+<summary><strong>JIRA Mode</strong></summary>
+
+```mermaid
+flowchart TB
+
+  subgraph ui[JIRA tab]
+    A[Enter Jira URL, username, password, ticket ID, test project]
+    B[Fetch Requirements]
+    C[Generate Test Cases]
+    A --> B
+    A --> C
+  end
+
+  B -->|fetch ticket| F[Backend Jira REST]
+  F --> R[Prepare requirements and metadata]
+  R --> M{Optional memory or diff}
+  M --> UI2[Show requirements and diff]
+
+  C -->|generate tests| G[LLM creates BDD test cases]
+  G --> T[Test Cases panel]
+
+  T -->|run auto test| SW[Switch to Auto Tests tab]
+```
+
+</details>
+
+<details>
+<summary><strong>Paste Requirements</strong></summary>
+
+```mermaid
+flowchart TB
+
+  subgraph ui[Paste Requirements]
+    P[Enter title, requirement text, optional attachments]
+    G2[Generate Test Cases]
+    P --> G2
+  end
+
+  G2 -->|generate from paste| LLM[LLM creates BDD test cases JSON]
+  LLM --> TC[Test Cases panel same as Jira]
+
+  TC -->|run auto test| SW2[Auto Tests tab with prefilled data]
+```
+
+</details>
+
+<details>
+<summary><strong>Auto Test (Suite Run)</strong></summary>
+
+```mermaid
+flowchart TB
+
+  subgraph client2[Client]
+    S0[Select suite and filters]
+    S1[Run suite]
+    S0 --> S1
+  end
+
+  S1 -->|start run| SR[Run suite sequential or threaded]
+
+  SR --> CANCEL{Clear cancel flag}
+  CANCEL --> LIST[Load suite cases from DB]
+  LIST --> FILTER[Apply filters]
+  FILTER --> REP[Create report id and file]
+  FILTER --> PARM{Parallel execution enabled}
+
+  PARM -->|no| LOOP[Run cases one by one]
+  PARM -->|yes| POOL[Thread pool workers]
+  POOL --> WORK[Run case in worker]
+
+  LOOP --> ONE[Run single case]
+  WORK --> ONE
+
+  ONE --> STOP{Cancel suite}
+  STOP -->|yes| END1[Stop execution]
+  STOP -->|no| RASP[Run automation logic]
+
+  RASP --> HIST[Save run history]
+  HIST --> BATCH[Collect results]
+
+  LOOP --> NEX{More cases}
+  NEX -->|yes| LOOP
+  NEX -->|no| REND
+
+  END1 --> REND[Render HTML report]
+  WORK -->|done| REND
+  REND --> OUT[Return report id and results]
+
+  subgraph percase[Per case reuse]
+    RASP -.-> SAME[Reuse single run logic]
+  end
+```
+
+</details>
+
+<details>
+<summary><strong>Auto Test (Single Run)</strong></summary>
+
+```mermaid
+flowchart TB
+
+  subgraph client[Client]
+    A[Enter BDD, base URL, mode UI or API]
+    B[Start Test]
+    A --> B
+  end
+
+  B -->|start run| API[API receives request]
+
+  API --> ASYNC[Run async in background thread]
+
+  ASYNC --> BEGIN[Create run id and store in DB]
+  BEGIN --> EXEC[Execute test flow]
+
+  EXEC --> PARSE[Parse BDD steps]
+  PARSE --> ST{Mode}
+
+  ST -->|api| APIPATH[Validate API base URL]
+  APIPATH --> APILLM[LLM converts steps to HTTP actions]
+  APILLM --> APIHTTP[Execute requests and checks]
+  APIHTTP --> FIN[Finalize run]
+
+  ST -->|ui| UIPATH[Validate page URL]
+  UIPATH --> FP[Build fingerprint]
+  FP --> CACHE{Cache hit}
+
+  CACHE -->|yes| LOAD[Load cached selectors]
+  CACHE -->|no| UILLM[LLM generates Playwright steps]
+
+  UILLM --> MAYBE[Optional validation step]
+  LOAD --> RUNPW[Run browser automation]
+  MAYBE --> RUNPW
+  RUNPW --> FIN
+
+  FIN --> UPD[Save results and artifacts]
+  UPD --> OPT[Optional summary]
+  OPT --> RESP[Return status and run id]
+
+  ASYNC --> CLEAN[Clear cancel flag]
+```
+
+</details>
 
 ---
 
@@ -221,8 +369,8 @@ all under `/api/...`).
   JIRA depending on setup
 - Make sure to use model that supports vision in order to use feature to pass mockups to LLM
 - Analysis for each test case will have details of last execution only if executed from 'Saved Suite'
-- Green dot will appear for currently running test case
-- View Report will show report from 'Start Test' as well
+- Green dot will appear for the currently running test case
+- View Report will show the report from 'Start Test' as well
 - 'Run Test Case' button will be enabled when `SHOW_AUTO_TESTS_UI=true`
 - System will keep automation artifacts for last 20 days
 
@@ -242,7 +390,7 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 
 ## Future Improvements & Features
 
-- Use linked issue to get knowledge of the Requirement ticket
+- Use a linked issue to get knowledge of the Requirement ticket
 - Choice to generate test cases based on BDD or something else
 - RAG feature
 - Link with QA test framework and DEV code
@@ -250,5 +398,5 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 ## Last
 
 - Use TSX instead of JSX for frontend
-- Provide dropdown to select models or type model id
-- Use multi model approach for Test Generation, coding and vision
+- Provide a dropdown to select models or type model ID
+- Use a multi-model approach for Test Generation, coding, and vision
