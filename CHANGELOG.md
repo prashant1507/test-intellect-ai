@@ -110,6 +110,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added 'Stop Test Generation' button
 - Added possibility to use same or different model for Text and Vision
+- Added feature_list.md
 
 ### Changed
 - Minor bug fixes

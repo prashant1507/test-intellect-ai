@@ -1114,8 +1114,31 @@ async def generate_automation_skeleton(test_case: dict, language: str, framework
 
 
 def llm_chat_completion(
-    system: str, user: str, *, temperature: float = 0.1, max_tokens: int = 12_000
+    system: str,
+    user: str,
+    *,
+    image_png: bytes | None = None,
+    temperature: float = 0.1,
+    max_tokens: int = 12_000,
 ) -> str:
+    v = (settings.llm_vision_url or "").strip()
+    if image_png and v:
+        b = v.rstrip("/")
+        m = (settings.llm_vision_model or "").strip() or "local-model"
+        uc = build_multimodal_user_content(
+            user, [("spike-vision-repair.png", "image/png", image_png)]
+        )
+        return _chat(
+            b,
+            m,
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": uc},
+            ],
+            temperature,
+            max_tokens=max_tokens,
+            bearer=_llm_vision_bearer(),
+        )
     b = _llm_base()
     if not b:
         return ""

@@ -195,14 +195,31 @@ API_BDD_TO_HTTP_OPERATIONS_PLANNER_SYSTEM_PROMPT = (
 )
 
 PLAYWRIGHT_STEPS_VS_DOM_INTRO_SYSTEM_PROMPT = (
-    "You validate and repair Playwright step JSON so it matches the supplied HTML and BDD intent. "
-    "Return JSON only."
+    "You validate and repair Playwright step JSON so selectors work on the supplied HTML while strictly following the written BDD. "
+    "Return JSON only. "
+    "Never output an empty playwright_selector; for Then steps that assert the result of navigation (e.g. dashboard), output a non-empty locator even if that node is not in the current HTML snapshot. "
+    "When a BDD line uses double-quoted text for an expected label, message, or visible string, the step's `value` for "
+    "assert_text, assert_contains, or assert_value must be that string exactly as written in the BDD (character-for-character), "
+    "not text copied or corrected from the HTML. If the BDD is wrong, the runtime test should still assert exactly what the BDD says."
 )
 
 PLAYWRIGHT_SINGLE_STEP_FAILURE_REPAIR_SYSTEM_PROMPT = (
     "Return JSON only: {\"steps\":[one object]}. "
     "The object must include playwright_selector, action, and value. "
-    "Repair the failed step for the current DOM without changing the BDD intent."
+    "Repair the failed step for the current DOM (improve the locator/selector and action if needed) without changing what the BDD line requires. "
+    "If the BDD line includes double-quoted expected text, keep that exact `value` string; do not replace it with different text from the page."
+)
+
+PLAYWRIGHT_VISION_STEP_EVIDENCE_SYSTEM_PROMPT = (
+    "You are given a PNG of the current page, HTML (text), a BDD line, and the failed Playwright step. "
+    "1) If the BDD line double-quotes the exact string to check, set expected_visible to true only if that exact string (same spelling and punctuation) "
+    "is visible in the screenshot; if the page shows different text (e.g. another year or wording), set expected_visible to false. "
+    "For lines without a quoted exact string, you may set expected_visible from whether the BDD-described content is visible. "
+    "2) If expected_visible is true, output one object in 'steps' with playwright_selector, action, and value. "
+    "If the BDD line contains double-quoted text for an assertion, `value` must be that exact quoted string, not a corrected or HTML-derived variant. "
+    "Otherwise use the HTML for text and the image for layout. If expected_visible is false, use an empty 'steps' array. "
+    "Return JSON only: {\"expected_visible\": boolean, \"steps\": [at most one object]}. "
+    "Each object must use keys playwright_selector, action, value (strings; value may be empty)."
 )
 
 
@@ -222,7 +239,8 @@ def playwright_map_bdd_to_locator_steps_prompt(n: int) -> str:
         f"Return one JSON object with key \"steps\" containing exactly {n} objects. "
         "steps[i] must implement BDD line i only, preserving order. "
         "Each object must include: playwright_selector, action, value. "
-        "playwright_selector must be a string usable by page.locator(). "
+        "playwright_selector must be a non-empty string usable by page.locator(); never \"\" or whitespace-only. "
+        "For Then steps about redirect or landing on a page (e.g. dashboard), use a stable post-login locator such as text=Dashboard with assert_visible (the snapshot HTML may still be the login page). "
         "value must be a string and must be \"\" when unused. "
         "Allowed actions: click, dblclick, fill, clear, focus, hover, check, uncheck, press, "
         "press_sequentially, select_option, scroll_into_view, get_text, assert_text, assert_contains, "
@@ -234,7 +252,10 @@ def playwright_map_bdd_to_locator_steps_prompt(n: int) -> str:
         "Never use CSS ::placeholder in selectors. "
         "For XPath, prefer normalize-space(.) over text() equality. "
         "For a navigation Given after page.goto, assert a stable visible page element instead of navigating again. "
-        "For exact visible error text, prefer assert_visible or assert_contains with a locator that matches the message. "
+        "Strict BDD: when the step quotes expected text in double quotes, the `value` for assert_text or assert_contains must be "
+        "exactly that quoted text from the BDD line (copy verbatim, including any typos or wrong years). Do not replace it with text from the HTML. "
+        "Choose a locator that targets the right region; the assertion value still comes from the BDD, not the DOM. "
+        "For exact visible error text without a quoted string in the BDD, use assert_visible or assert_contains with a value from the BDD. "
         "Use assert_hidden only when the BDD says an element or message must not appear. "
         "To assert an input is empty, use assert_value with value exactly \"\". "
         "assert_placeholder is only for the placeholder attribute, not the field value. "
@@ -248,7 +269,8 @@ def playwright_refine_locators_against_html_rule(first_when_index: int, n: int) 
         f"First When is at BDD index {first_when_index}. "
         f"For BDD indices 0 through {first_when_index - 1}, each selector must match the supplied HTML. "
         f"For BDD indices {first_when_index} through {n - 1}, use plausible locators for the live DOM after actions. "
-        "For visible messages, prefer assert_contains or assert_visible on the live message node. "
+        "For Then/And steps with double-quoted expected text, keep the quoted text exactly in `value`; do not substitute HTML wording. "
+        "For other visible messages, prefer assert_contains or assert_visible; match the BDD, not a paraphrase from the HTML. "
         "For short exact text such as Required, text=Required is acceptable. "
         "For red/error borders, use assert_class only when the class or a clear error class pattern is supported by HTML. "
         "Do not use assert_attribute unless the attribute name and expected value exist in the HTML. "
@@ -262,6 +284,6 @@ def playwright_repair_zero_locator_matches_prompt(n: int, bad: list[int]) -> str
     return (
         f"Pre-run locator().count() was 0 for step indices {bad!s}. "
         f"Return JSON only with {{\"steps\": [...]}} containing exactly {n} objects. "
-        "Fix those indices while preserving the BDD intent. "
+        "Fix only selectors/actions so elements are found; keep assert value strings exactly as required by the BDD lines (do not change quoted expected text to match the HTML). "
         "Prefer stable text=, [name=], [data-testid=], [aria-label=], role-like text, or short CSS selectors."
     )

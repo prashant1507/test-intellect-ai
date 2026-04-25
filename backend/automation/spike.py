@@ -6,11 +6,12 @@ import json
 import re
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ai_client import llm_chat_completion, parse_llm_json_object, spike_post_run_analysis
 from prompts import (
     PLAYWRIGHT_SINGLE_STEP_FAILURE_REPAIR_SYSTEM_PROMPT,
+    PLAYWRIGHT_VISION_STEP_EVIDENCE_SYSTEM_PROMPT,
     PLAYWRIGHT_STEPS_VS_DOM_INTRO_SYSTEM_PROMPT,
     playwright_map_bdd_to_locator_steps_prompt,
     playwright_reconcile_step_count_mismatch_prompt,
@@ -39,6 +40,9 @@ from .store import (
 )
 
 _GH = re.compile(r"^(Given|When|Then|And)\b", re.I)
+_BDD_THEN_TEXT_DISPLAYED = re.compile(
+    r'(?i)\bThe text\s+"([^"]+)"\s+is\s+displayed\.?\s*$'
+)
 _PSEUDO_STRIP: tuple[str, ...] = (
     "::file-selector-button",
     "::first-line",
@@ -298,6 +302,59 @@ def _quoted_hint(s: str) -> str:
     return m.group(1) if m else ""
 
 
+def _bdd_literal_quoted_text_displayed(bdd_line: str) -> str | None:
+    m = _BDD_THEN_TEXT_DISPLAYED.search((bdd_line or "").strip())
+    return m.group(1) if m else None
+
+
+def _default_selector_for_empty_bdd_step(
+    bdd_line: str, st: dict[str, Any]
+) -> str:
+    bl = (bdd_line or "").strip()
+    if re.search(r"(?i)\bdashboard\b", bl) and re.search(
+        r"(?i)\b(redirect|redirects|navigate|navigation|land|lands|reach|reaches|open|opens|taken|goes|deliver|delivers)\b",
+        bl,
+    ):
+        return "text=Dashboard"
+    if re.search(r"(?i)\borangehrm\b", bl) and re.search(
+        r"(?i)\b(login page|sign in|log in)\b",
+        bl,
+    ):
+        return "text=OrangeHRM"
+    if re.search(r"(?i)\busername\b", bl) and re.search(
+        r"(?i)\b(enter|type|fill|input)\b",
+        bl,
+    ):
+        return "input[name='username']"
+    if re.search(r"(?i)\bpassword\b", bl) and re.search(
+        r"(?i)\b(enter|type|fill|input)\b",
+        bl,
+    ):
+        return "input[name='password']"
+    if re.search(r"(?i)\blogin\b", bl) and re.search(r"(?i)\b(click|press)\b", bl):
+        return "button[type='submit']"
+    return "body"
+
+
+def _ensure_step_selectors(
+    spec: list[dict[str, Any]], bdd_lines: list[str], log: list[str]
+) -> None:
+    for i, st in enumerate(spec):
+        if not isinstance(st, dict):
+            continue
+        if not isinstance(st.get("playwright_selector"), str):
+            st["playwright_selector"] = ""
+        if (st.get("playwright_selector") or "").strip():
+            continue
+        bline = bdd_lines[i] if i < len(bdd_lines) else ""
+        d = _default_selector_for_empty_bdd_step(bline, st)
+        st["playwright_selector"] = d
+        _l(
+            log,
+            f"step {i}: empty playwright_selector filled -> {d!r} for {bline[:72]!r}",
+        )
+
+
 def _first_when_index(bdd_lines: list[str]) -> int:
     for i, ln in enumerate(bdd_lines):
         if re.match(r"^When\b", (ln or "").strip(), re.I):
@@ -426,6 +483,7 @@ def _llm_build_steps(
             f"LLM: still {len(steps_list)} step(s) need {n}, applying heuristic padding",
         )
         steps_list = _heuristic_pad_to_n(steps_list, n, bdd_lines, log)
+    _ensure_step_selectors(steps_list, bdd_lines, log)
     for i, st in enumerate(steps_list):
         if not isinstance(st, dict):
             raise ValueError(f"step {i} is not a JSON object")
@@ -467,6 +525,7 @@ def _llm_validate_and_refine_steps(
         )
         data = parse_llm_json_object(raw)
         out = _parse_steps_payload(data, n, log)
+        _ensure_step_selectors(out, bdd_lines, log)
         _l(log, "LLM: validation pass against DOM.")
         return out
     except Exception as e:  # noqa: BLE001
@@ -488,6 +547,7 @@ def _llm_repair_zero_match_steps(
     try:
         raw = llm_chat_completion(sys_r, u, temperature=0.1, max_tokens=10_000)
         out = _parse_steps_payload(parse_llm_json_object(raw), n, log)
+        _ensure_step_selectors(out, bdd_lines, log)
         _l(log, f"LLM: repair 0-matches {bad!s}")
         return out
     except Exception as e:  # noqa: BLE001
@@ -529,6 +589,55 @@ def _llm_repair_after_runtime_fail(
     except Exception as e:  # noqa: BLE001
         _l(log, f"LLM: runtime repair step {idx} {e!r}")
     return None
+
+
+def _llm_vision_repair_step_evidence(
+    png: bytes,
+    title: str,
+    bdd_line: str,
+    idx: int,
+    cur: dict[str, str],
+    err: str,
+    dom2: str,
+    log: list[str],
+    *,
+    style_hint: str = "",
+) -> dict[str, Any] | Literal["not_visible"] | None:
+    v = (settings.llm_vision_url or "").strip()
+    if not v or not _llm_base_ok():
+        return None
+    u = (
+        f"Title: {title}\nBDD line: {bdd_line}\nFailed: {cur!r}\n"
+        f"Error: {err!s}\n\nHTML:\n{_truncate_dom(dom2)}"
+    )
+    if style_hint:
+        u += f"\nComputed (failed selector) JSON: {style_hint[:8000]}"
+    try:
+        raw = llm_chat_completion(
+            PLAYWRIGHT_VISION_STEP_EVIDENCE_SYSTEM_PROMPT,
+            u,
+            image_png=png,
+            temperature=0.1,
+            max_tokens=4000,
+        )
+        data = parse_llm_json_object(raw)
+    except Exception as e:  # noqa: BLE001
+        _l(log, f"LLM: vision repair step {idx} {e!r}")
+        return None
+    if not isinstance(data, dict):
+        return None
+    ev = data.get("expected_visible")
+    if ev is False:
+        return "not_visible"
+    st0 = data.get("steps")
+    step: dict[str, Any] | None = None
+    if isinstance(st0, list) and st0 and isinstance(st0[0], dict):
+        step = st0[0]
+    if step is None and "playwright_selector" in data:
+        step = data
+    if not isinstance(step, dict) or not (str(step.get("playwright_selector") or "").strip()):
+        return None
+    return step
 
 
 def _bdd_line_implies_message_hidden(line: str) -> bool:
@@ -591,9 +700,18 @@ def _merge_to_run_steps(
     for i, bline in enumerate(bdd_lines):
         st: dict[str, Any] = spec[i] if i < len(spec) else {}
         ps = (st.get("playwright_selector") or st.get("selector") or "") or ""
+        if not (str(ps) or "").strip():
+            ps = _default_selector_for_empty_bdd_step(bline, st)
         ps = _finalize_playwright_selector(str(ps), log)
         a = _normalize_spike_action(str(st.get("action") or "click"), log)
         v = (st.get("value") or "") or ""
+        lit = _bdd_literal_quoted_text_displayed(bline)
+        if lit is not None:
+            if a in ("assert_text", "assert_contains"):
+                v = lit
+            elif a == "assert_visible":
+                a = "assert_text"
+                v = lit
         out.append(
             {
                 "step_index": i,
@@ -725,7 +843,10 @@ def _run_spike_one_browser(
             for i, st in enumerate(results):
                 _raise_if_spike_cancelled(log)
                 abort = False
-                for attempt in (0, 1):
+                n_step_attempts = (
+                    3 if (settings.llm_vision_url or "").strip() else 2
+                )
+                for attempt in range(n_step_attempts):
                     sel = (st.get("selector") or "").strip()
                     action = _normalize_spike_action(
                         str(st.get("action") or "click"), log
@@ -808,6 +929,60 @@ def _run_spike_one_browser(
                             st["value"] = mg["value"]
                             st["source"] = "llm"
                         continue
+                    if attempt == 1 and (settings.llm_vision_url or "").strip():
+                        shv = _playwright_computed_style_hint(
+                            page, expect, sel, tw, log
+                        ) if action != "assert_class" else ""
+                        try:
+                            vpng = page.screenshot(type="png", full_page=True)
+                        except Exception as e3:  # noqa: BLE001
+                            _l(log, f"LLM: vision repair screenshot: {e3!r}")
+                            vpng = b""
+                        if vpng:
+                            dom2v = page.content()
+                            vout = _llm_vision_repair_step_evidence(
+                                vpng,
+                                title,
+                                bdd_lines[i],
+                                i,
+                                {
+                                    "playwright_selector": st.get("selector", ""),
+                                    "action": st.get("action", "click"),
+                                    "value": (st.get("value") or "") or "",
+                                },
+                                (st.get("err") or err or "unknown") or "",
+                                dom2v,
+                                log,
+                                style_hint=shv,
+                            )
+                            if vout == "not_visible":
+                                st["err"] = "Expected content not visible on page (vision)"
+                                pthf = run_dir / f"shot_step_{i}_fail.png"
+                                try:
+                                    page.screenshot(
+                                        path=str(pthf), full_page=True
+                                    )
+                                    st["screenshot_path"] = (
+                                        f"{run_id}/{pthf.name}"
+                                    )
+                                except OSError:
+                                    st["screenshot_path"] = None
+                                for j in range(i + 1, len(results)):
+                                    results[j]["pass"] = False
+                                    results[j]["err"] = (
+                                        "skipped (previous step failed)"
+                                    )
+                                abort = True
+                                break
+                            if isinstance(vout, dict) and vout:
+                                mg = _merge_to_run_steps(
+                                    [bdd_lines[i]], [vout], "llm", log
+                                )[0]
+                                st["selector"] = mg["selector"]
+                                st["action"] = mg["action"]
+                                st["value"] = mg["value"]
+                                st["source"] = "llm-vision"
+                                continue
                     pthf = run_dir / f"shot_step_{i}_fail.png"
                     try:
                         page.screenshot(path=str(pthf), full_page=True)
@@ -968,7 +1143,18 @@ def _execute_spike_finalize(
         used_cache=used_cache,
     )
     if ok and upsert_cache_on_ok:
-        upsert_selector_cache(fp, list(rel_steps))
+        vision_repair_passed = any(
+            (s.get("source") or "") == "llm-vision" and s.get("pass")
+            for s in rel_steps
+        )
+        if vision_repair_passed:
+            _l(
+                log,
+                "Saved Selectors: not updated (step(s) passed after vision-based repair; "
+                "selectors are not treated as stable).",
+            )
+        else:
+            upsert_selector_cache(fp, list(rel_steps))
     base = f"/api/automation/artifacts/{run_id}"
     return {
         "run_id": run_id,

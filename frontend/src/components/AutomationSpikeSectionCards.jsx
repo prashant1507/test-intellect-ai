@@ -2173,12 +2173,12 @@ export function AutomationSpikeSectionCards({
                 {selectors.map((r, i) => (
                   <li key={`sel-${i}-${r.rowid}-${r.fingerprint}-${r.step_index}`}>
                     <code className="automation-spike-sel-code">{r.selector}</code>
-                    <FloatingTooltip text="Remove cached selector">
+                    <FloatingTooltip text="Remove saved selector">
                       <button
                         type="button"
                         className="tc-delete-icon-btn"
                         onClick={() => deleteSel(r.rowid)}
-                        aria-label="Remove cached selector"
+                        aria-label="Remove saved selector"
                       >
                         <svg
                           width="18"

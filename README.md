@@ -22,24 +22,38 @@ Optionally:
 
 ### Product Sample Video
 
-[Check out the video on YouTube](https://www.youtube.com/watch?v=u5MYzPwuOGI)
 <p align="center">
-  <a href="https://youtu.be/u5MYzPwuOGI">
-    <img src="https://img.youtube.com/vi/u5MYzPwuOGI/hqdefault.jpg" width="600" alt="Watch product sample video on YouTube" />
+  <a href="https://youtu.be/MCDQR60AEiE">
+    <img src="https://img.youtube.com/vi/MCDQR60AEiE/hqdefault.jpg" width="450" alt="Watch product sample video on YouTube" />
   </a>
 </p>
 
 ---
 
-### Product Sample Images
+### Product Sample Images and Report
 
-<img src="resources/product-images/img-1.png" alt="UI" width="200" /> <img src="resources/product-images/img-2.png" alt="UI" width="200" /> <img src="resources/product-images/img-2a.png" alt="UI" width="200" /> <img src="resources/product-images/img-3.png" alt="UI" width="200" /> <img src="resources/product-images/img-4.png" alt="UI" width="200" /> <img src="resources/product-images/img-5.png" alt="UI" width="200" /> <img src="resources/product-images/img-6.png" alt="UI" width="200" />
+<details>
+<summary><strong>Images</strong></summary>
 
----
+<img src="resources/product-sample/images/img-1.png" alt="UI" width="200" />
+<img src="resources/product-sample/images/img-2.png" alt="UI" width="200" />
+<img src="resources/product-sample/images/img-2a.png" alt="UI" width="200" />
+<img src="resources/product-sample/images/img-3.png" alt="UI" width="200" />
+<img src="resources/product-sample/images/img-4.png" alt="UI" width="200" />
+<img src="resources/product-sample/images/img-5.png" alt="UI" width="200" />
+<img src="resources/product-sample/images/img-6.png" alt="UI" width="200" />
+<img src="resources/product-sample/images/img-7.png" alt="UI" width="200" />
+<img src="resources/product-sample/images/img-8.png" alt="UI" width="200" />
+<img src="resources/product-sample/images/img-9.png" alt="UI" width="200" />
+<img src="resources/product-sample/images/img-10.png" alt="UI" width="200" />
+<img src="resources/product-sample/images/img-11.png" alt="UI" width="200" />
 
-### Product Sample Report
 
-[Sample Automation Test Report](resources/Sample-Automation-Report.html)
+</details>
+
+[Sample Automation Test Report](resources/product-sample/sample-automation-report.html)
+
+[Sample Audit Records](resources/product-sample/sample-audit-records.pdf)
 
 ---
 
@@ -126,11 +140,11 @@ flowchart TB
 
   S1 -->|start run| SR[Run suite sequential or threaded]
 
-  SR --> CANCEL{Clear cancel flag}
+  SR --> CANCEL[Clear cancel flag]
   CANCEL --> LIST[Load suite cases from DB]
   LIST --> FILTER[Apply filters]
   FILTER --> REP[Create report id and file]
-  FILTER --> PARM{Parallel execution enabled}
+  FILTER --> PARM{Parallel execution enabled?}
 
   PARM -->|no| LOOP[Run cases one by one]
   PARM -->|yes| POOL[Thread pool workers]
@@ -139,14 +153,41 @@ flowchart TB
   LOOP --> ONE[Run single case]
   WORK --> ONE
 
-  ONE --> STOP{Cancel suite}
+  ONE --> STOP{Cancel suite?}
   STOP -->|yes| END1[Stop execution]
-  STOP -->|no| RASP[Run automation logic]
+  STOP -->|no| RASP[Run automation spike per case]
 
-  RASP --> HIST[Save run history]
+  subgraph repair[UI spike: two-LLM repair optional]
+    RASP --> SPIKE[Plan steps from BDD + DOM; optional pre-run check]
+    SPIKE --> STEPS[Execute Playwright step]
+    STEPS --> OK{Step passed?}
+    OK -->|yes| NXT2{More steps?}
+    OK -->|no| T1[Text LLM: repair from fresh DOM + error]
+    T1 --> STEPS2[Retry same step]
+    STEPS2 --> OK2{Passed?}
+    OK2 -->|yes| NXT2
+    OK2 -->|no| VCFG{LLM_VISION_URL set?}
+    VCFG -->|no| FAIL[Step fails; continue / abort as configured]
+    VCFG -->|yes| V1[Capture screenshot; Vision LLM repair]
+    V1 --> STEPS3[Retry same step]
+    STEPS3 --> OK3{Passed?}
+    OK3 -->|yes| NXT2
+    OK3 -->|no| FAIL
+    NXT2 -->|yes| STEPS
+    NXT2 -->|no| CACHE{Vision repair passed on any step?}
+    CACHE -->|yes| NOC[Skip Saved Selectors cache for this run]
+    CACHE -->|no| UPS[Upsert Saved Selectors on success]
+    NOC --> DONE1[Spike result]
+    UPS --> DONE1
+    FAIL --> DONE1
+  end
+
+  RASP -.-> repair
+
+  DONE1 --> HIST[Save run history]
   HIST --> BATCH[Collect results]
 
-  LOOP --> NEX{More cases}
+  LOOP --> NEX{More cases?}
   NEX -->|yes| LOOP
   NEX -->|no| REND
 
@@ -155,7 +196,7 @@ flowchart TB
   REND --> OUT[Return report id and results]
 
   subgraph percase[Per case reuse]
-    RASP -.-> SAME[Reuse single run logic]
+    RASP -.-> SAME[Same as standalone spike: run_automation_spike]
   end
 ```
 
@@ -177,34 +218,62 @@ flowchart TB
 
   API --> ASYNC[Run async in background thread]
 
-  ASYNC --> BEGIN[Create run id and store in DB]
+  ASYNC --> CL[Clear cancel flag for isolated run]
+  CL --> BEGIN[Create run id and store in DB]
   BEGIN --> EXEC[Execute test flow]
 
   EXEC --> PARSE[Parse BDD steps]
   PARSE --> ST{Mode}
 
   ST -->|api| APIPATH[Validate API base URL]
-  APIPATH --> APILLM[LLM converts steps to HTTP actions]
+  APIPATH --> APILLM[Text LLM: plan HTTP steps]
   APILLM --> APIHTTP[Execute requests and checks]
   APIHTTP --> FIN[Finalize run]
 
   ST -->|ui| UIPATH[Validate page URL]
-  UIPATH --> FP[Build fingerprint]
-  FP --> CACHE{Cache hit}
+  UIPATH --> FP[Build fingerprint from title, BDD, URL, optional pasted HTML]
+  FP --> CACHE{Selector cache hit?}
 
   CACHE -->|yes| LOAD[Load cached selectors]
-  CACHE -->|no| UILLM[LLM generates Playwright steps]
+  CACHE -->|no| UILLM[Text LLM: BDD to Playwright steps from DOM]
+  UILLM --> VAL[Optional: validate or refine against DOM]
+  VAL --> PRERUN{Prerun: early steps match page?}
+  PRERUN -->|fail once| ZFIX[Text LLM: repair zero-match locators]
+  ZFIX --> PR2{Still bad?}
+  PR2 -->|yes| ERR[Fail with prerun error]
+  PR2 -->|no| BROWSER
+  PRERUN -->|ok| BROWSER[Launch browser, goto page]
+  LOAD --> BROWSER
 
-  UILLM --> MAYBE[Optional validation step]
-  LOAD --> RUNPW[Run browser automation]
-  MAYBE --> RUNPW
-  RUNPW --> FIN
+  BROWSER --> STEPPW[For each step: run Playwright action]
+  STEPPW --> POK{Step passed?}
+  POK -->|yes| MRD{More steps?}
+  POK -->|no| R1[Text LLM: repair with fresh DOM, no image]
+  R1 --> RET1[Retry same step]
+  RET1 --> P2{Passed?}
+  P2 -->|yes| MRD
+  P2 -->|no| VSET{LLM_VISION_URL set?}
+  VSET -->|no| STEPF[Step / run fails as configured]
+  VSET -->|yes| R2[Vision LLM: screenshot + repair]
+  R2 --> RET2[Retry same step]
+  RET2 --> P3{Passed?}
+  P3 -->|yes| MRD
+  P3 -->|no| STEPF
+  MRD -->|yes| STEPPW
+  MRD -->|no| PANA[Optional: post-run analysis text LLM]
+  PANA --> SC{Any passed step source llm-vision?}
+  SC -->|yes| NOCA[Omit upsert to Saved Selectors]
+  SC -->|no| UPSV[Upsert Saved Selectors on success]
+  NOCA --> FIN
+  UPSV --> FIN
+  STEPF --> FIN2[Finalize run]
+  ERR --> FIN2
 
-  FIN --> UPD[Save results and artifacts]
-  UPD --> OPT[Optional summary]
-  OPT --> RESP[Return status and run id]
+  FIN --> UPD[Save results and artifacts in DB]
+  UPD --> RESP[Return status and run id to client]
+  FIN2 --> UPD2[Save results and artifacts in DB]
+  UPD2 --> RESP
 
-  ASYNC --> CLEAN[Clear cancel flag]
 ```
 
 </details>
@@ -374,9 +443,8 @@ all under `/api/...`).
 - View Report will show the report from 'Start Test' as well
 - 'Run Test Case' button will be enabled when `SHOW_AUTO_TESTS_UI=true`
 - System will keep automation artifacts for last 20 days
-- If `LLM_VISION_URL` is not set, the **Upload mockups** UI and the **include attachment** checkboxes for generation
-are hidden; JIRA can still list ticket attachments. See [resources/env-variables.md](resources/env-variables.md) for
-details.
+- If `LLM_VISION_URL` is not set, the **Upload mockups** UI and the **include attachment** checkboxes for generation are hidden; JIRA can still list ticket attachments. See [resources/env-variables.md](resources/env-variables.md) for details.
+- If a step is passed using screenshot from Vision model then the record will not be saved in 'aved Selectors'
 
 ---
 
