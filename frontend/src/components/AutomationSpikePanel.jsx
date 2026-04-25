@@ -697,7 +697,7 @@ export function AutomationSpikePanel({
                 {Array.isArray(result.steps) && result.steps.length > 0 ? (
                   <div className="automation-spike-analysis-steps">
                     <p className="automation-spike-analysis-steps-label">
-                      BDD step &amp; browser action
+                      BDD Steps &amp; Browser Actions
                     </p>
                     <ol className="automation-spike-steps">
                       {[...result.steps]
