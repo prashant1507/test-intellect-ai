@@ -6,10 +6,10 @@ from types import ModuleType
 
 
 def _load() -> ModuleType:
-    path = Path(__file__).resolve().parent.parent / "resources" / "llm_prompts.py"
+    path = Path(__file__).resolve().parent / "llm_prompts.py"
     spec = importlib.util.spec_from_file_location("llm_prompts", path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("missing resources/llm_prompts.py")
+        raise RuntimeError("missing backend/llm_prompts.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)  # noqa: S102
     return mod
