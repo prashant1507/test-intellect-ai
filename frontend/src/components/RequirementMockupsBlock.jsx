@@ -6,23 +6,32 @@ function MockupFilePicker({
   disabled,
   onChange,
   describedBy,
-  selectedCount,
   maxCount,
   combinedCount,
+  atSizeLimit = false,
   variant,
 }) {
   const status =
-    selectedCount === 0
+    combinedCount === 0
       ? "No files chosen"
-      : `${selectedCount} file${selectedCount === 1 ? "" : "s"} selected`;
+      : `${combinedCount} of ${maxCount} selected`;
   const atLimit = maxCount > 0 && combinedCount >= maxCount;
-  const inputDisabled = disabled || atLimit;
+  const inputDisabled = disabled || atLimit || atSizeLimit;
+  const sizeHintId = `${id}-size-hint`;
   const limitHintId = `${id}-limit-hint`;
-  const describeIds = [describedBy, atLimit ? limitHintId : null].filter(Boolean).join(" ") || undefined;
+  const showSizeMsg = atSizeLimit;
+  const showCountMsg = atLimit && !atSizeLimit;
+  const describeIds = [describedBy, showSizeMsg ? sizeHintId : null, showCountMsg ? limitHintId : null]
+    .filter(Boolean)
+    .join(" ") || undefined;
   const limitText =
     variant === "paste"
       ? `Maximum ${maxCount} file(s) reached. Remove a file to add more.`
       : `Maximum ${maxCount} attachments reached. Remove a file or deselect an attachment to add more.`;
+  const sizeText =
+    variant === "paste"
+      ? "Combined size is at the limit. Remove a file to add more."
+      : "Combined size is at the limit. Remove a file or deselect a ticket attachment, then you can add more.";
   return (
     <div className="req-file-input-wrap">
       <div className="req-file-input-row">
@@ -41,7 +50,12 @@ function MockupFilePicker({
         </label>
         <span className="req-file-input-status">{status}</span>
       </div>
-      {atLimit ? (
+      {showSizeMsg ? (
+        <p id={sizeHintId} className="req-file-input-limit-msg" role="status">
+          {sizeText}
+        </p>
+      ) : null}
+      {showCountMsg ? (
         <p id={limitHintId} className="req-file-input-limit-msg" role="status">
           {limitText}
         </p>
@@ -58,9 +72,9 @@ export function RequirementMockupsBlock({
   disabled,
   onChange,
   describedBy,
-  selectedCount,
   maxCount,
   combinedCount,
+  atSizeLimit = false,
   variant,
   hintId,
   hintChildren,
@@ -78,9 +92,9 @@ export function RequirementMockupsBlock({
         disabled={disabled}
         onChange={onChange}
         describedBy={describedBy}
-        selectedCount={selectedCount}
         maxCount={maxCount}
         combinedCount={combinedCount}
+        atSizeLimit={atSizeLimit}
         variant={variant}
       />
       <p id={hintId} className="req-images-meta">

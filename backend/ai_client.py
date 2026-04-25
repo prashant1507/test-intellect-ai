@@ -232,7 +232,7 @@ def _json(s: str) -> dict:
         s = m.group(1).strip()
     if not s:
         raise ValueError(
-            "The model returned an empty response. Try again, or check LLM_URL and server logs."
+            "The model returned an empty response. Try again, or check LLM_TEXT_URL and server logs."
         )
     try:
         return json.loads(s)
@@ -657,17 +657,32 @@ def merge_test_cases_with_previous(
     return out_rows
 
 
-def _llm_bearer() -> str:
-    t = (settings.llm_access_token or "").strip()
+def _llm_text_bearer() -> str:
+    t = (settings.llm_text_access_token or "").strip()
     return t if t else "lm-studio"
 
 
+def _llm_vision_bearer() -> str:
+    t = (settings.llm_vision_access_token or "").strip()
+    return t if t else _llm_text_bearer()
+
+
 def _llm_base() -> str:
-    return settings.llm_url.rstrip("/")
+    return (settings.llm_text_url or "").strip().rstrip("/")
 
 
 def _llm_model() -> str:
-    return (settings.llm_model or "").strip() or "local-model"
+    return (settings.llm_text_model or "").strip() or "local-model"
+
+
+def _llm_target_for_images(
+    imgs: list[tuple[str, str, bytes]],
+) -> tuple[str, str, str | None]:
+    if imgs and (settings.llm_vision_url or "").strip():
+        v = (settings.llm_vision_url or "").strip().rstrip("/")
+        m = (settings.llm_vision_model or "").strip() or "local-model"
+        return v, m, _llm_vision_bearer()
+    return _llm_base(), _llm_model(), None
 
 
 def _json_mode_response() -> dict | None:
@@ -684,6 +699,7 @@ def _chat(
     *,
     max_tokens: int | None = None,
     response_format: dict | None = None,
+    bearer: str | None = None,
 ) -> str:
     url = f"{base.rstrip('/')}/chat/completions"
     payload: dict = {"model": model, "messages": messages, "temperature": temperature}
@@ -691,9 +707,10 @@ def _chat(
         payload["max_tokens"] = max_tokens
     if response_format is not None:
         payload["response_format"] = response_format
+    token = (bearer if bearer is not None else _llm_text_bearer())
     r = requests.post(
         url,
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {_llm_bearer()}"},
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
         json=payload,
         timeout=600,
     )
@@ -989,9 +1006,6 @@ async def generate_test_cases(
     existing_jira_tests: list[dict] | None = None,
     requirement_images: list[tuple[str, str, bytes]] | None = None,
 ) -> list[dict]:
-    base = _llm_base()
-    if not base:
-        raise ValueError("LLM_URL is not set in .env")
     user = build_generation_user_prompt(
         req,
         prev,
@@ -1009,7 +1023,9 @@ async def generate_test_cases(
             "cover UI flows, labels, and states shown in images or PDFs when they match the requirement scope. "
             "If there were no attachments, this paragraph would not apply—text-only runs use only the sections above."
         )
-    model = _llm_model()
+    base, model, bear = _llm_target_for_images(imgs)
+    if not base:
+        raise ValueError("LLM_TEXT_URL is not set in .env")
     user_content = build_multimodal_user_content(user, imgs)
     system_content = (
         BDD_TEST_CASE_GENERATION_SYSTEM_PROMPT
@@ -1018,7 +1034,9 @@ async def generate_test_cases(
     )
     msgs = [{"role": "system", "content": system_content}, {"role": "user", "content": user_content}]
     response_format = None if imgs else _json_mode_response()
-    raw = await asyncio.to_thread(_chat, base, model, msgs, 0.15, response_format=response_format)
+    raw = await asyncio.to_thread(
+        _chat, base, model, msgs, 0.15, response_format=response_format, bearer=bear
+    )
     data = _json(raw)
     out = _normalize_generated_case_list(data, allowed_priorities)
     issues = _generated_case_quality_issues(
@@ -1045,6 +1063,7 @@ async def generate_test_cases(
                 retry_msgs,
                 0.08,
                 response_format=response_format,
+                bearer=bear,
             )
             retry_out = _normalize_generated_case_list(_json(retry_raw), allowed_priorities)
             retry_issues = _generated_case_quality_issues(
@@ -1077,7 +1096,7 @@ async def generate_automation_skeleton(test_case: dict, language: str, framework
         )
     base = _llm_base()
     if not base:
-        raise ValueError("LLM_URL is not set in .env")
+        raise ValueError("LLM_TEXT_URL is not set in .env")
     tc_in = test_case if isinstance(test_case, dict) else {}
     payload = json.dumps(tc_in, ensure_ascii=False, indent=2)
     user = (

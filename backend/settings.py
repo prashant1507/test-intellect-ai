@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ENV = Path(__file__).resolve().parent.parent / ".env"
@@ -47,16 +47,6 @@ class Settings(BaseSettings):
     def _coerce_bool(cls, v: object) -> bool:
         return _env_bool(v)
 
-    @model_validator(mode="after")
-    def at_least_one_requirement_mode(self) -> "Settings":
-        if not (
-            self.show_jira_mode_ui
-            or self.show_paste_requirements_mode_ui
-            or self.show_auto_tests_ui
-        ):
-            self.show_jira_mode_ui = True
-        return self
-
     jira_url: str = ""
     jira_username: str = ""
     jira_password: str = ""
@@ -78,9 +68,21 @@ class Settings(BaseSettings):
     keycloak_client_id: str = ""
     keycloak_client_secret: str = ""
     keycloak_idle_timeout_minutes: int = 5
-    llm_url: str = ""
-    llm_model: str = ""
-    llm_access_token: str = ""
+    llm_text_url: str = Field(
+        default="",
+        validation_alias=AliasChoices("LLM_TEXT_URL", "LLM_URL"),
+    )
+    llm_text_model: str = Field(
+        default="",
+        validation_alias=AliasChoices("LLM_TEXT_MODEL", "LLM_MODEL"),
+    )
+    llm_text_access_token: str = Field(
+        default="",
+        validation_alias=AliasChoices("LLM_TEXT_ACCESS_TOKEN", "LLM_ACCESS_TOKEN"),
+    )
+    llm_vision_url: str = ""
+    llm_vision_model: str = ""
+    llm_vision_access_token: str = ""
     llm_requirement_images_enabled: bool = False
     llm_requirement_images_max_count: int = 5
     llm_requirement_images_max_total_mb: int = 200
@@ -137,6 +139,36 @@ class Settings(BaseSettings):
             return 20
         n = int(v)
         return min(max(n, 0), 3650)
+
+    @model_validator(mode="after")
+    def at_least_one_requirement_mode(self) -> "Settings":
+        if not (
+            self.show_jira_mode_ui
+            or self.show_paste_requirements_mode_ui
+            or self.show_auto_tests_ui
+        ):
+            self.show_jira_mode_ui = True
+        return self
+
+    @model_validator(mode="after")
+    def text_llm_required_when_not_mock(self) -> "Settings":
+        if self.mock:
+            return self
+        if not (str(self.llm_text_url or "").strip()):
+            raise ValueError("LLM_TEXT_URL (or LLM_URL) must be set when MOCK=false")
+        if not (str(self.llm_text_model or "").strip()):
+            raise ValueError("LLM_TEXT_MODEL (or LLM_MODEL) must be set when MOCK=false")
+        return self
+
+    @model_validator(mode="after")
+    def vision_url_model_pair(self) -> "Settings":
+        vu = (self.llm_vision_url or "").strip()
+        vm = (self.llm_vision_model or "").strip()
+        if vu and not vm:
+            raise ValueError("LLM_VISION_MODEL is required when LLM_VISION_URL is set")
+        if vm and not vu:
+            raise ValueError("LLM_VISION_URL is required when LLM_VISION_MODEL is set")
+        return self
 
 
 settings = Settings()

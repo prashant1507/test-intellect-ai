@@ -308,6 +308,7 @@ class ConfigResponse(BaseModel):
     llm_requirement_images_enabled: bool = False
     llm_requirement_images_max_count: int = 5
     llm_requirement_images_max_total_mb: int = 200
+    llm_vision_configured: bool = False
     automation_browser: str = "chromium"
     automation_headless: bool = True
     automation_screenshot_on_pass: bool = False
@@ -316,6 +317,10 @@ class ConfigResponse(BaseModel):
     automation_default_timeout_ms: int = 30_000
     automation_parallel_execution: int = 1
     automation_retention_days: int = 20
+
+
+def _llm_vision_configured() -> bool:
+    return bool((settings.llm_vision_url or "").strip())
 
 
 def _req_snapshot(d: dict) -> str:
@@ -684,6 +689,8 @@ async def _merge_req_images_jira(body: GenerateIn, files: list[UploadFile]) -> l
     _require_req_images_enabled(files, list(body.attachment_ids or []))
     if not settings.llm_requirement_images_enabled:
         return []
+    if not _llm_vision_configured():
+        return []
     uploads = await _upload_tuples(files)
     jira_parts = await _jira_attachment_parts_for_generate(body, list(body.attachment_ids or []))
     return _merge_req_validated(uploads, jira_parts)
@@ -692,6 +699,8 @@ async def _merge_req_images_jira(body: GenerateIn, files: list[UploadFile]) -> l
 async def _merge_req_images_paste(files: list[UploadFile]) -> list[tuple[str, str, bytes]]:
     _require_req_images_enabled(files, None)
     if not settings.llm_requirement_images_enabled:
+        return []
+    if not _llm_vision_configured():
         return []
     uploads = await _upload_tuples(files)
     return _merge_req_validated(uploads, [])
@@ -823,6 +832,7 @@ def get_config():
         llm_requirement_images_enabled=s.llm_requirement_images_enabled,
         llm_requirement_images_max_count=s.llm_requirement_images_max_count,
         llm_requirement_images_max_total_mb=s.llm_requirement_images_max_total_mb,
+        llm_vision_configured=_llm_vision_configured(),
         automation_browser=get_effective_automation_browser(),
         automation_headless=get_effective_automation_headless(),
         automation_screenshot_on_pass=get_effective_automation_screenshot_on_pass(),

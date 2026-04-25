@@ -8,9 +8,9 @@
 [![LLM](https://img.shields.io/badge/LLM-OpenAI%20compatible-8B5CF6?style=flat-square&logo=openai&logoColor=white)](https://platform.openai.com/docs/api-reference)
 [![Keycloak](https://img.shields.io/badge/Keycloak-OIDC-5C6BC0?style=flat-square&logo=keycloak&logoColor=white)](https://www.keycloak.org/)
 
-Web app that pull JIRA requirements (or paste text), use an OpenAI-compatible LLM or VLM (local or cloud) to generate
-Gherkin-style test cases, push to JIRA, and run UI and API test case.
-Set the model via `LLM_URL` (must include /v1) and optionally `LLM_ACCESS_TOKEN` for Bearer auth.
+Web app that pulls JIRA requirements (or paste text), uses OpenAI-compatible APIs to generate Gherkin-style test cases,
+push to JIRA, and run UI/API automation.
+
 
 Optionally:
 
@@ -277,8 +277,9 @@ flowchart TB
 
 1. `cp .env.example .env` (repo root). See [resources/env-variables.md](resources/env-variables.md) for a full list.
 
-2. **Minimum to try:** JIRA connection fields if not mocking; `LLM_URL` + `LLM_MODEL` (+ token if needed). **Mock:** set
-   `MOCK=true` for JIRA-free dev.
+2. **Minimum (non-mock):** `LLM_TEXT_URL` + `LLM_TEXT_MODEL` (+ `LLM_TEXT_ACCESS_TOKEN` if your provider needs it). Add
+   `LLM_VISION_*` only if you want image/PDF in the model and the upload UI. **Mock:** `MOCK=true` for JIRA-free dev
+   (JIRA can be dummy values).
 
 3. **UI flags:** `SHOW_MEMORY_UI`, `SHOW_AUDIT_UI`, `SHOW_JIRA_MODE_UI`, `SHOW_PASTE_REQUIREMENTS_MODE_UI`,
    `SHOW_AUTO_TESTS_UI` — at least one requirement-related mode must stay on (defaults ensure this).
@@ -327,7 +328,7 @@ local LLM or cloud API; with **`MOCK=true`**, JIRA can be dummy values.
 2. Point [docker-compose.yml](docker-compose.yml) at the image, then `docker compose up`
 3. UI is typically at `http://127.0.0.1:8001`
 
-Containers often use `LLM_URL` → `http://host.docker.internal:...` to reach the host’s LM Studio. `USE_KEYCLOAK` (not a
+Containers often set `LLM_TEXT_URL` → `http://host.docker.internal:...` to reach the host’s LM Studio. `USE_KEYCLOAK` (not a
 lone `KEYCLOAK=` flag) must be `true` to enable Keycloak. See [docker-compose.yml](docker-compose.yml) for
 `KEYCLOAK_INTERNAL_URL` defaults.
 
@@ -373,6 +374,9 @@ all under `/api/...`).
 - View Report will show the report from 'Start Test' as well
 - 'Run Test Case' button will be enabled when `SHOW_AUTO_TESTS_UI=true`
 - System will keep automation artifacts for last 20 days
+- If `LLM_VISION_URL` is not set, the **Upload mockups** UI and the **include attachment** checkboxes for generation
+are hidden; JIRA can still list ticket attachments. See [resources/env-variables.md](resources/env-variables.md) for
+details.
 
 ---
 

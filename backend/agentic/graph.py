@@ -11,6 +11,8 @@ from ai_client import (
     _chat,
     _generated_case_quality_issues,
     _json as parse_llm_json,
+    _llm_text_bearer,
+    _llm_vision_bearer,
     _norm,
     build_generation_user_prompt,
     build_multimodal_user_content,
@@ -47,14 +49,24 @@ def _llm_chat(
     max_tokens: int,
     json_response_format: bool = False,
     skip_json_for_vision: bool = False,
+    for_multimodal_with_images: bool = False,
 ) -> str:
-    base = settings.llm_url.rstrip("/")
-    if not base:
-        raise ValueError("LLM_URL is not set in .env")
-    model = (settings.llm_model or "").strip() or "local-model"
+    v_url = (settings.llm_vision_url or "").strip()
+    if for_multimodal_with_images and v_url:
+        base = v_url.rstrip("/")
+        model = (settings.llm_vision_model or "").strip() or "local-model"
+        b = _llm_vision_bearer()
+    else:
+        base = (settings.llm_text_url or "").strip().rstrip("/")
+        if not base:
+            raise ValueError("LLM_TEXT_URL is not set in .env")
+        model = (settings.llm_text_model or "").strip() or "local-model"
+        b = _llm_text_bearer()
     use_json = json_response_format and not skip_json_for_vision
     fmt = _json_mode_response() if use_json else None
-    return _chat(base, model, messages, temperature, max_tokens=max_tokens, response_format=fmt)
+    return _chat(
+        base, model, messages, temperature, max_tokens=max_tokens, response_format=fmt, bearer=b
+    )
 
 
 def _msgs_with_images(
@@ -224,6 +236,7 @@ def generate_node(state: AgentState) -> dict:
         max_tokens=4096,
         json_response_format=True,
         skip_json_for_vision=has_imgs,
+        for_multimodal_with_images=has_imgs,
     )
     g = (state.get("generation") or 0) + 1
     return {
@@ -293,6 +306,7 @@ def score_node(state: AgentState) -> dict:
             max_tokens=1024,
             json_response_format=True,
             skip_json_for_vision=has_imgs,
+            for_multimodal_with_images=has_imgs,
         )
         data = parse_llm_json(raw)
         vr = ValidatorResult.model_validate(data)
@@ -350,6 +364,7 @@ def merge_suggestions_node(state: AgentState) -> dict:
             max_tokens=4096,
             json_response_format=True,
             skip_json_for_vision=has_imgs,
+            for_multimodal_with_images=has_imgs,
         )
         data = parse_llm_json(raw)
         tc = data.get("test_cases")
@@ -373,14 +388,15 @@ def merge_suggestions_node(state: AgentState) -> dict:
         f"CANDIDATE_SCENARIOS ({nc} items, indices 0..{nc - 1}):\n{json.dumps(candidates_norm, ensure_ascii=False, indent=2)}\n\n"
         f"Return only JSON with base_scores: array of exactly {nb} numbers, candidate_scores: array of exactly {nc} numbers."
     )
-    msgs2, _ = _msgs_with_images(AGENT_SCENARIOS_QUALITY_RANKING_SYSTEM_PROMPT, user2, imgs)
+    msgs2, has_imgs2 = _msgs_with_images(AGENT_SCENARIOS_QUALITY_RANKING_SYSTEM_PROMPT, user2, imgs)
     try:
         raw2 = _llm_chat(
             msgs2,
             temperature=0.05,
             max_tokens=1024,
             json_response_format=True,
-            skip_json_for_vision=has_imgs,
+            skip_json_for_vision=has_imgs2,
+            for_multimodal_with_images=has_imgs2,
         )
         rank = parse_llm_json(raw2)
         bs = rank.get("base_scores")

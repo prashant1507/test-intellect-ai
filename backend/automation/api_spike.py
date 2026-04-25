@@ -100,7 +100,7 @@ def _llm_api_steps(
     title: str, bdd_lines: list[str], base_url: str, log: list[str]
 ) -> list[dict[str, Any]]:
     if not _llm_base_ok():
-        raise SpikeUserError("LLM_URL is not set; cannot run API BDD.", logs=log)
+        raise SpikeUserError("LLM_TEXT_URL is not set; cannot run API BDD.", logs=log)
     n = len(bdd_lines)
     num = "\n".join(f"  {i}. {line}" for i, line in enumerate(bdd_lines))
     user = (

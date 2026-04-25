@@ -89,6 +89,7 @@ export default function App() {
   const [reqAttachments, setReqAttachments] = useState([]);
   const [reqImgConfig, setReqImgConfig] = useState({
     enabled: false,
+    visionConfigured: false,
     maxCount: 5,
     maxTotalMb: 200,
   });
@@ -415,8 +416,8 @@ export default function App() {
   }, []);
 
   const validateReqImages = useCallback(() => {
-    const { maxCount, maxTotalMb, enabled } = reqImgConfig;
-    if (!enabled) return "";
+    const { maxCount, maxTotalMb, enabled, visionConfigured } = reqImgConfig;
+    if (!enabled || !visionConfigured) return "";
     const n = reqImageFiles.length + selectedReqAttachmentIds.size;
     if (n > maxCount) {
       return `At most ${maxCount} file(s) total (uploads + selected ticket attachments).`;
@@ -441,9 +442,25 @@ export default function App() {
     return "";
   }, [reqImgConfig, reqImageFiles, selectedReqAttachmentIds, reqAttachments]);
 
+  const reqImageBytesTotal = useMemo(() => {
+    if (!reqImgConfig.enabled || !reqImgConfig.visionConfigured) return 0;
+    let t = 0;
+    for (const f of reqImageFiles) t += f.size || 0;
+    for (const id of selectedReqAttachmentIds) {
+      const a = reqAttachments.find((x) => String(x.id) === id);
+      if (a && typeof a.size === "number") t += a.size;
+    }
+    return t;
+  }, [reqImgConfig.enabled, reqImgConfig.visionConfigured, reqImageFiles, selectedReqAttachmentIds, reqAttachments]);
+
+  const reqImageAtSizeLimit = useMemo(
+    () => reqImageBytesTotal >= reqImgConfig.maxTotalMb * 1024 * 1024,
+    [reqImageBytesTotal, reqImgConfig.maxTotalMb],
+  );
+
   const toggleReqAttachment = useCallback(
     (id) => {
-      if (!reqImgConfig.enabled || mock) return;
+      if (!reqImgConfig.enabled || !reqImgConfig.visionConfigured || mock) return;
       setSelectedReqAttachmentIds((prev) => {
         const next = new Set(prev);
         if (next.has(id)) {
@@ -460,12 +477,35 @@ export default function App() {
           setErr(ARCHIVE_NOT_ALLOWED_MSG);
           return prev;
         }
+        if (att && typeof att.size === "number") {
+          const maxB = reqImgConfig.maxTotalMb * 1024 * 1024;
+          let used = 0;
+          for (const f of reqImageFiles) used += f.size || 0;
+          for (const oid of prev) {
+            const oa = reqAttachments.find((x) => String(x.id) === oid);
+            if (oa && typeof oa.size === "number") used += oa.size;
+          }
+          if (used + att.size > maxB) {
+            setErr(
+              `Combined size must not exceed ${reqImgConfig.maxTotalMb} MB. Deselect another attachment or remove uploads first.`,
+            );
+            return prev;
+          }
+        }
         next.add(id);
         setErr("");
         return next;
       });
     },
-    [reqImgConfig.enabled, reqImgConfig.maxCount, mock, reqImageFiles.length, reqAttachments],
+    [
+      reqImgConfig.enabled,
+      reqImgConfig.visionConfigured,
+      reqImgConfig.maxCount,
+      reqImgConfig.maxTotalMb,
+      mock,
+      reqImageFiles,
+      reqAttachments,
+    ],
   );
 
   const removeReqImageAt = useCallback((idx) => {
@@ -476,7 +516,7 @@ export default function App() {
     (e) => {
       const picked = Array.from(e.target.files || []);
       e.target.value = "";
-      if (!picked.length || !reqImgConfig.enabled || mock) return;
+      if (!picked.length || !reqImgConfig.enabled || !reqImgConfig.visionConfigured || mock) return;
       const blocked = picked.filter((f) => isBlockedArchiveFilename(f.name));
       const ok = picked.filter((f) => !isBlockedArchiveFilename(f.name));
       if (blocked.length) {
@@ -487,16 +527,45 @@ export default function App() {
         );
       }
       if (!ok.length) return;
-      setReqImageFiles((prev) => {
-        const next = [...prev];
-        for (const f of ok) {
-          if (next.length + selectedReqAttachmentIds.size >= reqImgConfig.maxCount) break;
-          next.push(f);
+      const maxB = reqImgConfig.maxTotalMb * 1024 * 1024;
+      const maxC = reqImgConfig.maxCount;
+      let jiraB = 0;
+      for (const rid of selectedReqAttachmentIds) {
+        const a = reqAttachments.find((x) => String(x.id) === rid);
+        if (a && typeof a.size === "number") jiraB += a.size;
+      }
+      let used = jiraB;
+      for (const f of reqImageFiles) used += f.size || 0;
+      const out = [...reqImageFiles];
+      let hitSize = false;
+      for (const f of ok) {
+        if (out.length + selectedReqAttachmentIds.size >= maxC) break;
+        if (used + (f.size || 0) > maxB) {
+          hitSize = true;
+          break;
         }
-        return next;
-      });
+        out.push(f);
+        used += f.size || 0;
+      }
+      if (hitSize) {
+        setErr(
+          `Combined size must not exceed ${reqImgConfig.maxTotalMb} MB. Remove or deselect items first, or add smaller files.`,
+        );
+      } else if (!blocked.length) {
+        setErr("");
+      }
+      setReqImageFiles(out);
     },
-    [reqImgConfig.enabled, reqImgConfig.maxCount, mock, selectedReqAttachmentIds.size],
+    [
+      reqImgConfig.enabled,
+      reqImgConfig.visionConfigured,
+      reqImgConfig.maxCount,
+      reqImgConfig.maxTotalMb,
+      mock,
+      reqImageFiles,
+      selectedReqAttachmentIds,
+      reqAttachments,
+    ],
   );
 
   const downloadReqAttachment = useCallback(
@@ -1143,6 +1212,7 @@ export default function App() {
         if (typeof c.llm_requirement_images_enabled === "boolean") {
           setReqImgConfig({
             enabled: c.llm_requirement_images_enabled,
+            visionConfigured: c.llm_vision_configured === true,
             maxCount:
               typeof c.llm_requirement_images_max_count === "number"
                 ? c.llm_requirement_images_max_count
@@ -1469,7 +1539,7 @@ export default function App() {
         ...(useAgenticGen ? { max_rounds: clampAgenticMaxRounds(agenticMaxRounds) } : {}),
       };
       let d;
-      if (reqImgConfig.enabled && reqImageFiles.length > 0) {
+      if (reqImgConfig.enabled && reqImgConfig.visionConfigured && reqImageFiles.length > 0) {
         const fd = new FormData();
         fd.append("payload", JSON.stringify(pastePayload));
         for (const f of reqImageFiles) fd.append("files", f);
@@ -1534,11 +1604,11 @@ export default function App() {
           ...testCaseBounds(minTestCases, maxTestCases),
           ...(useAgenticGen ? { max_rounds: clampAgenticMaxRounds(agenticMaxRounds) } : {}),
         };
-        if (reqImgConfig.enabled) {
+        if (reqImgConfig.enabled && reqImgConfig.visionConfigured) {
           genPayload.attachment_ids = [...selectedReqAttachmentIds];
         }
         let d;
-        if (reqImgConfig.enabled && reqImageFiles.length > 0) {
+        if (reqImgConfig.enabled && reqImgConfig.visionConfigured && reqImageFiles.length > 0) {
           const fd = new FormData();
           fd.append("payload", JSON.stringify(genPayload));
           for (const f of reqImageFiles) fd.append("files", f);
@@ -2390,7 +2460,7 @@ export default function App() {
                   parseMinTc={parseMinTc}
                   parseMaxTc={parseMaxTc}
                 />
-                {reqImgConfig.enabled && !mock && pasteText.trim() ? (
+                {reqImgConfig.enabled && reqImgConfig.visionConfigured && !mock && pasteText.trim() ? (
                   <RequirementMockupsBlock
                     title="Upload Mockups and Attachments"
                     fieldInfoText="Mockups or documents sent to the LLM with your pasted text: PNG, JPEG, GIF, WebP, or PDF. ZIP and other archive files are not allowed."
@@ -2398,9 +2468,9 @@ export default function App() {
                     disabled={generatingTestCases}
                     onChange={onReqImageFilesInput}
                     describedBy="hint-req-images-paste"
-                    selectedCount={reqImageFiles.length}
                     maxCount={reqImgConfig.maxCount}
                     combinedCount={reqImageFiles.length}
+                    atSizeLimit={reqImageAtSizeLimit}
                     variant="paste"
                     hintId="hint-req-images-paste"
                     hintChildren={
@@ -2764,7 +2834,7 @@ export default function App() {
               ) : req ? (
                 <>
                   <PasteRequirementsPreview text={fmtReqMarkdown(req)} />
-                  {inputMode === "jira" && reqImgConfig.enabled && !mock ? (
+                  {inputMode === "jira" && reqImgConfig.enabled && reqImgConfig.visionConfigured && !mock ? (
                     <RequirementMockupsBlock
                       className="req-images-block--in-requirements"
                       title="Upload Mockups and Attachments"
@@ -2773,9 +2843,9 @@ export default function App() {
                       disabled={generatingTestCases}
                       onChange={onReqImageFilesInput}
                       describedBy="hint-req-images-jira"
-                      selectedCount={reqImageFiles.length}
                       maxCount={reqImgConfig.maxCount}
                       combinedCount={reqImageFiles.length + selectedReqAttachmentIds.size}
+                      atSizeLimit={reqImageAtSizeLimit}
                       variant="jira"
                       hintId="hint-req-images-jira"
                       hintChildren={
@@ -2795,7 +2865,7 @@ export default function App() {
                       attachments={reqAttachments}
                       onDownload={downloadReqAttachment}
                       disabled={mock}
-                      selectable={reqImgConfig.enabled && !mock}
+                      selectable={reqImgConfig.enabled && reqImgConfig.visionConfigured && !mock}
                       selectedIds={selectedReqAttachmentIds}
                       onToggleSelect={toggleReqAttachment}
                     />

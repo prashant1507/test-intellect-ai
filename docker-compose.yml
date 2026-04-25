@@ -27,9 +27,12 @@ services:
       KEYCLOAK_IDLE_TIMEOUT_MINUTES: "60"
       KEYCLOAK_INTERNAL_URL: http://host.docker.internal:8080
 
-      LLM_URL: http://host.docker.internal:1234/v1
-      LLM_MODEL: qwen/qwen3-vl-30b
-      LLM_ACCESS_TOKEN: ""
+      LLM_TEXT_URL: http://host.docker.internal:1234/v1
+      LLM_TEXT_MODEL: qwen/qwen3-vl-30b
+      LLM_TEXT_ACCESS_TOKEN: ""
+      LLM_VISION_URL: http://host.docker.internal:1234/v1
+      LLM_VISION_MODEL: qwen/qwen3-vl-30b
+      LLM_VISION_ACCESS_TOKEN: ""
 
       LLM_REQUIREMENT_IMAGES_ENABLED: "true"
       LLM_REQUIREMENT_IMAGES_MAX_COUNT: "5"

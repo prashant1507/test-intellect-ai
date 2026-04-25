@@ -306,7 +306,7 @@ def _first_when_index(bdd_lines: list[str]) -> int:
 
 
 def _llm_base_ok() -> bool:
-    return bool((settings.llm_url or "").strip()) and not settings.mock
+    return bool((settings.llm_text_url or "").strip()) and not settings.mock
 
 
 def _coerce_spec_list(data: object, n: int, log: list[str]) -> list[dict[str, Any]]:
@@ -1023,7 +1023,7 @@ def _execute_spike_sync(
         _raise_if_spike_cancelled(log)
         if not _llm_base_ok():
             raise SpikeUserError(
-                "LLM_URL is not set; cannot run API BDD (LLM plans each step).", logs=log
+                "LLM_TEXT_URL is not set; cannot run API BDD (LLM plans each step).", logs=log
             )
         fp = compute_fingerprint(title, bdd, u, "api")
         _l(log, f"API fingerprint: {fp[:16]}…")
@@ -1066,7 +1066,7 @@ def _execute_spike_sync(
             _l(log, "Selector cache hit.")
     if spec_from_cache is None and not _llm_base_ok():
         raise SpikeUserError(
-            "LLM_URL is not set; cannot build selectors on first run for this fingerprint.",
+            "LLM_TEXT_URL is not set; cannot build selectors on first run for this fingerprint.",
             logs=log,
         )
     _raise_if_spike_cancelled(log)

@@ -8,8 +8,9 @@ Env keys use UPPER_SNAKE; in code they map to the same names in `lower_snake` (e
 
 **Booleans:** `true` / `false`, `1` / `0`, `yes` / `no`, `on` / `off` (where validated).
 
-**Order and example values** below follow `.env.example` exactly. Anything configurable only in `settings.py` (and not
-in `.env.example`) is not listed—see `backend/settings.py` (e.g. default automation DB paths, timeout fallback).
+**Order and example values** below follow `.env.example` closely. Anything configurable only in `settings.py` (and not
+in `.env.example`) is not listed—see `backend/settings.py` (e.g. default automation DB paths, timeout fallback). Some
+variables accept **legacy aliases** (see LLM table).
 
 ---
 
@@ -77,24 +78,55 @@ sets `SHOW_JIRA_MODE_UI` back to `true` so at least one mode stays available.
 
 ---
 
-## LLM Settings (OpenAI-compatible)
+## Text LLM (OpenAI-compatible)
 
-| Variable           | Example                    | Description                                                                                                                   |
-|--------------------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------|
-| `LLM_URL`          | `http://127.0.0.1:1234/v1` | OpenAI-compatible API base; must include `/v1` if your server expects that path.                                              |
-| `LLM_MODEL`        | `qwen/qwen3-vl-30b`        | Model id. Use a **vision** model if you enable requirement images.                                                            |
-| `LLM_ACCESS_TOKEN` | *(empty)*                  | Bearer token for cloud APIs; leave empty for local servers without auth.                                                      |
-| `DOCKER_LLM_URL`   | *(empty)*                  | **Not read by the backend** (`settings` ignores it). For compose/docs: value you might map into `LLM_URL` inside a container. |
+Used for BDD generation, batch scoring, agentic graph (when not using a separate vision call), Playwright automation
+planning, and other text endpoints.
+
+| Variable                 | Example                    | Description                                                                                                                                   |
+|--------------------------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+| `LLM_TEXT_URL`           | `http://127.0.0.1:1234/v1` | OpenAI-compatible API base; include `/v1` if the server uses that path. **Required** when `MOCK=false` (see validation in `settings.py`).      |
+| `LLM_TEXT_MODEL`         | `qwen/qwen2.5-7b`          | Model id for text. **Required** when `MOCK=false`.                                                                                            |
+| `LLM_TEXT_ACCESS_TOKEN`  | *(empty)*                  | Bearer for the text API; leave empty for local servers.                                                                                       |
+| *Aliases (same fields)*  |                            | `LLM_URL` → `LLM_TEXT_URL`, `LLM_MODEL` → `LLM_TEXT_MODEL`, `LLM_ACCESS_TOKEN` → `LLM_TEXT_ACCESS_TOKEN` (Pydantic `AliasChoices` in settings). |
+| `DOCKER_LLM_URL`         | *(empty)*                  | **Not read by the app.** Compose/docs only: map into `LLM_TEXT_URL` inside a container.                                                       |
+
+Non-secret hint: `GET /api/config` does not expose LLM URLs, models, or tokens.
+
+---
+
+## Vision LLM (optional, OpenAI-compatible)
+
+When **`LLM_VISION_URL` is set** (non-empty), the app treats a vision endpoint as available: multimodal **image/PDF** requests
+for test generation and the agentic pipeline use this URL and model, with **`LLM_VISION_ACCESS_TOKEN`** as Bearer (or the
+text token if the vision token is empty). The UI shows mockup upload and JIRA attachment **selection** only when
+`LLM_VISION_URL` is configured and requirement-image flags allow it (`GET /api/config` includes `llm_vision_configured`).
+
+If **both** `LLM_VISION_URL` and `LLM_VISION_MODEL` are empty, the deployment is text-only: JIRA **still fetches** ticket
+attachments for display, but the user cannot select them for the LLM and cannot upload mockups for generation.
+
+| Variable                    | Example                    | Description                                                                                    |
+|-----------------------------|----------------------------|------------------------------------------------------------------------------------------------|
+| `LLM_VISION_URL`            | *(empty)*                  | OpenAI-compatible base for vision/multimodal calls. If set, `LLM_VISION_MODEL` must be set.    |
+| `LLM_VISION_MODEL`          | *(empty)*                  | Vision model id. If set, `LLM_VISION_URL` must be set.                                         |
+| `LLM_VISION_ACCESS_TOKEN`   | *(empty)*                  | Bearer for the vision API; if empty, `LLM_TEXT_ACCESS_TOKEN` is used.                          |
 
 ---
 
 ## Requirement mockups / screenshots (LLM)
 
-| Variable                              | Example | Description                                                                                |
-|---------------------------------------|---------|--------------------------------------------------------------------------------------------|
-| `LLM_REQUIREMENT_IMAGES_ENABLED`      | `false` | Enable sending image attachments to the model (OpenAI-style vision: PNG, JPEG, GIF, WebP). |
-| `LLM_REQUIREMENT_IMAGES_MAX_COUNT`    | `5`     | Max number of image files per request.                                                     |
-| `LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB` | `300`   | Max combined size of those images in MB.                                                   |
+| Variable                              | Example | Description                                                                                                                                     |
+|---------------------------------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| `LLM_REQUIREMENT_IMAGES_ENABLED`      | `false` | Server-side: allow building image/PDF payload for generate routes when a vision model is available and limits pass.                            |
+| `LLM_REQUIREMENT_IMAGES_MAX_COUNT`    | `5`     | Max number of files (uploads + selected JIRA attachments) per request.                                                                         |
+| `LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB` | `300`   | Max combined size of those files in MB.                                                                                                        |
+
+**UI:** The paste/JIRA **upload** row and JIRA **checkboxes** to include attachments are shown only when
+`llm_requirement_images_enabled` is true **and** `llm_vision_configured` is true (i.e. `LLM_VISION_URL` is set in the
+backend). JIRA can still list attachments without vision; they are not selectable for the LLM until vision is configured.
+
+**Backend:** If `LLM_VISION_URL` is unset, generate routes merge **no** image bytes for the LLM even if
+`LLM_REQUIREMENT_IMAGES_ENABLED=true` (avoids sending images to a text-only stack).
 
 ---
 
