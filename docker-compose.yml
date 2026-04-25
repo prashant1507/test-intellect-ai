@@ -1,4 +1,8 @@
-# LLM/Keycloak on the host: use host.docker.internal (see extra_hosts).
+# - LLM on host: set LLM_*_URL to http://host.docker.internal:PORT/v1 and listen on 0.0.0.0
+#   (not only 127.0.0.1) so the container can reach the host. If connection refused, fix URL/port/firewall.
+# - Requirement mockup uploads: shown when LLM_VISION_URL is set (GET /api/config llm_vision_configured).
+# - Auto test / Playwright: use an image built with the project Dockerfile (Playwright+browsers) and rebuild
+#   after Dockerfile changes. Plain python-slim without `playwright install` will fail to launch the browser.
 services:
   test-intellect-ai:
     image: test-intellect-ai:1.0
@@ -28,6 +32,7 @@ services:
       AUTOMATION_WRITE_RUN_HTML: "true"
       AUTOMATION_RETENTION_DAYS: "20"
       AUTOMATION_SPIKE_PRERUN: "false"
+      AUTOMATION_HEADLESS: "true"
 
       USE_KEYCLOAK: "false"
       KEYCLOAK_URL: ""
@@ -46,7 +51,6 @@ services:
       LLM_VISION_MODEL: "qwen/qwen3-vl-30b"
       LLM_VISION_ACCESS_TOKEN: ""
 
-      LLM_REQUIREMENT_IMAGES_ENABLED: "false"
       LLM_REQUIREMENT_IMAGES_MAX_COUNT: "5"
       LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB: "300"
 

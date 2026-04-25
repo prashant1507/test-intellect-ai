@@ -152,3 +152,9 @@
 - Filter by Status and TAG
 - Dashboard
 - Sharable PDF file
+
+---
+
+### docker-compose
+
+- Headless will be enabled all the time

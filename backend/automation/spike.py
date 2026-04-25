@@ -30,6 +30,7 @@ from .prefs import (
     get_effective_automation_post_analysis,
     get_effective_automation_screenshot_on_pass,
     get_effective_automation_trace_file_generation,
+    get_run_environment_for_report,
 )
 from .store import (
     begin_run,
@@ -1024,6 +1025,7 @@ def _write_run_html(
     jira_id: str = "",
     tag: str = "",
     requirement_ticket_id: str = "",
+    run_environment: dict[str, Any] | None = None,
 ) -> str | None:
     if not bool(getattr(settings, "automation_write_run_html", True)):
         return None
@@ -1046,6 +1048,7 @@ def _write_run_html(
         requirement_ticket_id=requirement_ticket_id,
         analysis=analysis,
         trace_href=th,
+        run_environment=run_environment,
     )
     try:
         p.write_text(body, encoding="utf-8")
@@ -1100,12 +1103,14 @@ def _execute_spike_finalize(
     replace_run_steps(run_id, rel_steps)
     run_dir = art / run_id
     trace_rel = f"{run_id}/trace.zip"
+    run_environment = get_run_environment_for_report()
     summary = {
         "steps": rel_steps,
         "ok": ok,
         "url": u,
         "debug_logs": list(log),
         "analysis": analysis,
+        "run_environment": run_environment,
     }
     err_msg = None if ok else next(
         (s.get("err") for s in rel_steps if s.get("err")), "failed"
@@ -1129,6 +1134,7 @@ def _execute_spike_finalize(
             jira_id=jira_id,
             tag=tag,
             requirement_ticket_id=requirement_ticket_id,
+            run_environment=run_environment,
         )
         if report_url:
             summary["report_url"] = report_url

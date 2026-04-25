@@ -61,6 +61,7 @@ sets `SHOW_JIRA_MODE_UI` back to `true` so at least one mode stays available.
 | `AUTOMATION_WRITE_RUN_HTML` | `true`  | Write per-run HTML reports under the reports directory.                                             |
 | `AUTOMATION_RETENTION_DAYS` | `20`    | Prune data older than this many days (runs, artifacts, reports, history). `0` disables.             |
 | `AUTOMATION_SPIKE_PRERUN`   | `false` | If `true`, run Playwright locator pre-check (and optional repair) after a non-cached selector plan. |
+| `AUTOMATION_HEADLESS`        | *(omit)* | If **set** (`true` / `false`), forces Playwright headless and locks the “Headless” control in the Auto Tests env panel. **Docker:** set `true` (no display in the container). **Local dev:** **omit** to use the in-app on/off value (stored in the automation database). |
 
 ---
 
@@ -99,8 +100,8 @@ Non-secret hint: `GET /api/config` does not expose LLM URLs, models, or tokens.
 
 When **`LLM_VISION_URL` is set** (non-empty), the app treats a vision endpoint as available: multimodal **image/PDF** requests
 for test generation and the agentic pipeline use this URL and model, with **`LLM_VISION_ACCESS_TOKEN`** as Bearer (or the
-text token if the vision token is empty). The UI shows mockup upload and JIRA attachment **selection** only when
-`LLM_VISION_URL` is configured and requirement-image flags allow it (`GET /api/config` includes `llm_vision_configured`).
+text token if the vision token is empty). The UI shows mockup upload and JIRA attachment **selection** when
+`LLM_VISION_URL` is configured (`GET /api/config` includes `llm_vision_configured: true`).
 
 If **both** `LLM_VISION_URL` and `LLM_VISION_MODEL` are empty, the deployment is text-only: JIRA **still fetches** ticket
 attachments for display, but the user cannot select them for the LLM and cannot upload mockups for generation.
@@ -115,18 +116,16 @@ attachments for display, but the user cannot select them for the LLM and cannot 
 
 ## Requirement mockups / screenshots (LLM)
 
-| Variable                              | Example | Description                                                                                                                                     |
-|---------------------------------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------|
-| `LLM_REQUIREMENT_IMAGES_ENABLED`      | `false` | Server-side: allow building image/PDF payload for generate routes when a vision model is available and limits pass.                            |
-| `LLM_REQUIREMENT_IMAGES_MAX_COUNT`    | `5`     | Max number of files (uploads + selected JIRA attachments) per request.                                                                         |
-| `LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB` | `300`   | Max combined size of those files in MB.                                                                                                        |
+Uploads and JIRA attachment selection for generation require **`LLM_VISION_URL`** (and `LLM_VISION_MODEL`). Limits below apply whenever vision is configured.
 
-**UI:** The paste/JIRA **upload** row and JIRA **checkboxes** to include attachments are shown only when
-`llm_requirement_images_enabled` is true **and** `llm_vision_configured` is true (i.e. `LLM_VISION_URL` is set in the
-backend). JIRA can still list attachments without vision; they are not selectable for the LLM until vision is configured.
+| Variable                              | Example | Description                                                                                          |
+|---------------------------------------|---------|------------------------------------------------------------------------------------------------------|
+| `LLM_REQUIREMENT_IMAGES_MAX_COUNT`    | `5`     | Max number of files (uploads + selected JIRA attachments) per request.                             |
+| `LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB` | `300`   | Max combined size of those files in MB.                                                             |
 
-**Backend:** If `LLM_VISION_URL` is unset, generate routes merge **no** image bytes for the LLM even if
-`LLM_REQUIREMENT_IMAGES_ENABLED=true` (avoids sending images to a text-only stack).
+**UI:** The paste/JIRA **upload** row and JIRA **checkboxes** for the LLM are shown when `llm_vision_configured` is true. JIRA can still list attachments without vision; they are not selectable for generation until vision is configured.
+
+**Backend:** If `LLM_VISION_URL` is unset, generate routes merge **no** image bytes for the LLM.
 
 ---
 

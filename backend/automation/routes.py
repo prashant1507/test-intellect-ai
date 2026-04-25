@@ -169,9 +169,11 @@ class AutomationEnvOptionsIn(BaseModel):
 
 
 def _automation_env_payload() -> dict[str, Any]:
+    locked = settings.automation_headless is not None
     return {
         "automation_browser": get_effective_automation_browser(),
         "automation_headless": get_effective_automation_headless(),
+        "automation_headless_locked": locked,
         "automation_screenshot_on_pass": get_effective_automation_screenshot_on_pass(),
         "automation_trace_file_generation": get_effective_automation_trace_file_generation(),
         "automation_post_analysis": get_effective_automation_post_analysis(),
@@ -193,7 +195,8 @@ def automation_set_browser(body: AutomationBrowserIn) -> dict[str, Any]:
 
 @router.post("/env-options")
 def automation_set_env_options(body: AutomationEnvOptionsIn) -> dict[str, Any]:
-    set_automation_kv("headless", "1" if body.automation_headless else "0")
+    if settings.automation_headless is None:
+        set_automation_kv("headless", "1" if body.automation_headless else "0")
     set_automation_kv("screenshot_on_pass", "1" if body.automation_screenshot_on_pass else "0")
     set_automation_kv("trace_file_generation", "1" if body.automation_trace_file_generation else "0")
     set_automation_kv("default_timeout_ms", str(int(body.automation_default_timeout_ms)))

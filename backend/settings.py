@@ -37,7 +37,6 @@ class Settings(BaseSettings):
         "show_paste_requirements_mode_ui",
         "show_auto_tests_ui",
         "use_keycloak",
-        "llm_requirement_images_enabled",
         "automation_spike_prerun",
         "automation_post_analysis",
         "automation_write_run_html",
@@ -83,7 +82,6 @@ class Settings(BaseSettings):
     llm_vision_url: str = ""
     llm_vision_model: str = ""
     llm_vision_access_token: str = ""
-    llm_requirement_images_enabled: bool = False
     llm_requirement_images_max_count: int = 5
     llm_requirement_images_max_total_mb: int = 200
     paste_mode_priorities: str = ""
@@ -98,6 +96,15 @@ class Settings(BaseSettings):
     automation_reports_dir: str = "data/automation/reports"
     automation_retention_days: int = 20
     automation_spike_prerun: bool = True
+    automation_headless: bool | None = None
+    @field_validator("automation_headless", mode="before")
+    @classmethod
+    def _automation_headless_opt(cls, v: object) -> object:
+        if v is None:
+            return None
+        if isinstance(v, str) and not (v or "").strip():
+            return None
+        return _env_bool(v)
     @field_validator("automation_db_path", mode="before")
     @classmethod
     def _automation_db_path(cls, v: object) -> str:

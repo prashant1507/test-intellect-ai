@@ -1,4 +1,9 @@
 # syntax=docker/dockerfile:1
+#
+# Python + browsers: use mcr.microsoft.com/playwright/python (not …/playwright:… without /python/,
+# which is the Node image). Tag should match the pip package in requirements.txt.
+# As of Playwright 1.58, mcr publishes e.g. v1.58.0-noble; there is no playwright/python:v1.58.2-noble
+# yet — use v1.58.2-noble only for the Node image, or bump this tag when Microsoft publishes it.
 
 FROM node:20-alpine AS frontend
 WORKDIR /build
@@ -7,7 +12,7 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM python:3.12-slim
+FROM mcr.microsoft.com/playwright/python:v1.58.0-noble
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1

@@ -10,7 +10,10 @@ from settings import settings
 from . import cancel
 from . import suite_state
 from .errors import SpikeUserError
-from .prefs import get_effective_automation_parallel_execution
+from .prefs import (
+    get_effective_automation_parallel_execution,
+    get_run_environment_for_report,
+)
 from .run_report_html import render_batch_report_html
 from .spike import run_automation_spike
 from .store import (
@@ -156,6 +159,7 @@ def _run_one_suite_case(
         "requirement_ticket_id": str(c.get("requirement_ticket_id") or ""),
         "tag": str(c.get("tag") or ""),
         "trace_href": trace_href,
+        "run_environment": get_run_environment_for_report(),
     }
     return results_item, batch_item
 

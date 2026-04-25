@@ -625,6 +625,71 @@ def _html_hero_landing_single() -> str:
     )
 
 
+def _bool_yn(b: object) -> str:
+    if isinstance(b, bool):
+        return "Yes" if b else "No"
+    return "—"
+
+
+def _ms_pretty(n: int) -> str:
+    n = int(n)
+    if n >= 1000 and n % 1000 == 0:
+        return f"{n // 1000}s ({n} ms)"
+    return f"{n} ms"
+
+
+def _html_environment_section(
+    run_environment: dict[str, Any] | None, *, for_landing: bool = True
+) -> str:
+    if not run_environment or not isinstance(run_environment, dict):
+        return ""
+    d = run_environment
+    h_b = d.get("headless")
+    if isinstance(h_b, bool) and d.get("headless_locked"):
+        h_line = f'{_e("Yes" if h_b else "No")} <span class="report-env-locked">{_e("(AUTOMATION_HEADLESS)")}</span>'
+    elif isinstance(h_b, bool):
+        h_line = _e(_bool_yn(h_b))
+    else:
+        h_line = "—"
+    rows: list[tuple[str, str]] = [
+        ("Browser", _e(str(d.get("browser", "") or "—"))),
+        ("Headless", h_line),
+        (
+            "Default timeout",
+            _e(_ms_pretty(int(d.get("default_timeout_ms", 0) or 0))),
+        ),
+        (
+            "Screenshot on pass",
+            _e(_bool_yn(d.get("screenshot_on_pass"))),
+        ),
+        (
+            "Generate trace file",
+            _e(_bool_yn(d.get("trace_file_generation"))),
+        ),
+        (
+            "Post-run analysis",
+            _e(_bool_yn(d.get("post_run_analysis"))),
+        ),
+        (
+            "Locator prerun (spike)",
+            _e(_bool_yn(d.get("spike_prerun"))),
+        ),
+        (
+            "Parallel execution (default)",
+            _e(str(int(d.get("parallel_execution", 1) or 1))),
+        ),
+    ]
+    inner = "".join(f"<dt>{_e(lab)}</dt><dd>{val}</dd>" for lab, val in rows)
+    extra = " report-section--env-landing" if for_landing else ""
+    return (
+        f'<section class="report-section report-section--env{extra}" aria-label="Environment">'
+        f'<h2 class="section-title"><span class="title-accent">Environment</span></h2>'
+        f'<dl class="report-meta report-meta--env">'
+        f"{inner}"
+        f"</dl></section>"
+    )
+
+
 def _html_hero_landing_suite() -> str:
     return (
         '<div class="report-landing-hero report-landing-hero--extent">'
@@ -634,9 +699,16 @@ def _html_hero_landing_suite() -> str:
     )
 
 
-def _html_landing_page_single(ok: bool, steps: list, *, tag: str = "") -> str:
+def _html_landing_page_single(
+    ok: bool,
+    steps: list,
+    *,
+    tag: str = "",
+    run_environment: dict[str, Any] | None = None,
+) -> str:
     inner = (
         _html_hero_landing_single()
+        + _html_environment_section(run_environment, for_landing=True)
         + _html_section_case_dashboard(ok, steps)
         + _html_tag_breakdown_for_single_case((tag or "").strip(), ok, steps)
     )
@@ -798,6 +870,7 @@ def _build_case_content_html(
     analysis: str = "",
     trace_href: str | None = None,
     embed_portable: bool = True,
+    run_environment: dict[str, Any] | None = None,
 ) -> str:
     h = _e(title or "Spike")
     u = _e(url)
@@ -832,6 +905,7 @@ def _build_case_content_html(
         trace_block = ""
     log_txt = _e("\n".join(log[-200:]))
     result_mod = "pass" if ok else "fail"
+    env_block = _html_environment_section(run_environment, for_landing=False)
     return f"""<header class="report-header">
   <div class="report-header-top">
     <div class="report-header-row">
@@ -848,6 +922,7 @@ def _build_case_content_html(
     <dt>Run ID</dt><dd><code class="report-id">{_e(run_id)}</code></dd>
   </dl>
 </header>
+{env_block}
 <section class="report-section"><h2 class="section-title section-title--steps"><span class="title-accent">Test Steps</span></h2>
 <div class="bdd-wrap">{bdd_pre}</div>
 </section>
@@ -1649,6 +1724,17 @@ code.report-id{{
   padding:1rem 1.15rem 1.2rem;
   margin-bottom:1rem;
 }}
+.report-section--env-landing{{
+  margin-bottom:0.9rem;
+}}
+.report-meta--env{{
+  margin:0;
+}}
+.report-env-locked{{
+  font-size:0.88em;
+  color:var(--muted);
+  font-style:italic;
+}}
 .section-title{{
   font-size:0.95rem;
   font-weight:600;
@@ -2155,10 +2241,13 @@ def render_spike_run_html(
     analysis: str = "",
     trace_href: str | None = None,
     embed_portable: bool = True,
+    run_environment: dict[str, Any] | None = None,
 ) -> str:
     jt = (jira_id or "").strip()
     ttag = (tag or "").strip()
-    landing = _html_landing_page_single(ok, steps, tag=ttag)
+    landing = _html_landing_page_single(
+        ok, steps, tag=ttag, run_environment=run_environment
+    )
     case_block = _build_case_content_html(
         run_id,
         title,
@@ -2173,6 +2262,7 @@ def render_spike_run_html(
         analysis=analysis,
         trace_href=trace_href,
         embed_portable=embed_portable,
+        run_environment=None,
     )
     st = _case_nav_data_status({"ok": ok, "steps": steps})
     nav_case_cls = _nav_st_classes(st)
@@ -2270,6 +2360,8 @@ def render_batch_report_html(
             trace_href = th.strip()
         else:
             trace_href = None
+        re_env = c.get("run_environment")
+        run_env_for_case = re_env if isinstance(re_env, dict) else None
         case_block = _build_case_content_html(
             run_id,
             t,
@@ -2284,6 +2376,7 @@ def render_batch_report_html(
             analysis=analysis,
             trace_href=trace_href,
             embed_portable=embed_portable,
+            run_environment=run_env_for_case,
         )
         cst = _case_nav_data_status(c)
         ncls = _nav_st_classes(cst)

@@ -1490,6 +1490,10 @@ export function AutomationSpikeSectionCards({
                     on: !!env.automation_headless,
                     patchOn: { automation_headless: true },
                     patchOff: { automation_headless: false },
+                    lockRow: env.automation_headless_locked === true,
+                    labelInfo: env.automation_headless_locked
+                      ? "Set by AUTOMATION_HEADLESS on the server."
+                      : null,
                   },
                   {
                     name: "automation-opt-screenshot",
@@ -1498,6 +1502,8 @@ export function AutomationSpikeSectionCards({
                     on: !!env.automation_screenshot_on_pass,
                     patchOn: { automation_screenshot_on_pass: true },
                     patchOff: { automation_screenshot_on_pass: false },
+                    lockRow: false,
+                    labelInfo: null,
                   },
                   {
                     name: "automation-opt-trace",
@@ -1506,54 +1512,79 @@ export function AutomationSpikeSectionCards({
                     on: !!env.automation_trace_file_generation,
                     patchOn: { automation_trace_file_generation: true },
                     patchOff: { automation_trace_file_generation: false },
+                    lockRow: false,
+                    labelInfo: null,
                   },
-                ].map(({ name, label, labelledBy, on, patchOn, patchOff }) => (
-                  <Fragment key={name}>
-                    <span className="automation-spike-env-grid-label" id={labelledBy}>
-                      {label}
-                    </span>
-                    <div className="automation-spike-env-grid-control">
-                      <div
-                        className="automation-spike-env-bool-radios"
-                        role="radiogroup"
-                        aria-labelledby={labelledBy}
+                ].map(
+                  ({
+                    name,
+                    label,
+                    labelledBy,
+                    on,
+                    patchOn,
+                    patchOff,
+                    lockRow,
+                    labelInfo,
+                  }) => (
+                    <Fragment key={name}>
+                      <span
+                        className="automation-spike-env-grid-label"
+                        id={labelledBy}
                       >
-                        <label className="automation-spike-env-bool-radio">
-                          <input
-                            type="radio"
-                            name={name}
-                            value="0"
-                            checked={!on}
-                            onChange={() => onEnvOptionsChange(patchOff)}
-                            disabled={
-                              browserSaving ||
-                              envOptionsSaving ||
-                              suiteBusy ||
-                              spikeRunBusy
-                            }
-                          />
-                          <span>Off</span>
-                        </label>
-                        <label className="automation-spike-env-bool-radio">
-                          <input
-                            type="radio"
-                            name={name}
-                            value="1"
-                            checked={on}
-                            onChange={() => onEnvOptionsChange(patchOn)}
-                            disabled={
-                              browserSaving ||
-                              envOptionsSaving ||
-                              suiteBusy ||
-                              spikeRunBusy
-                            }
-                          />
-                          <span>On</span>
-                        </label>
+                        {labelInfo ? (
+                          <span className="label-with-info">
+                            <span>{label}</span>
+                            <FieldInfo text={labelInfo} />
+                          </span>
+                        ) : (
+                          label
+                        )}
+                      </span>
+                      <div className="automation-spike-env-grid-control">
+                        <div
+                          className="automation-spike-env-bool-radios"
+                          role="radiogroup"
+                          aria-labelledby={labelledBy}
+                        >
+                          <label className="automation-spike-env-bool-radio">
+                            <input
+                              type="radio"
+                              name={name}
+                              value="0"
+                              checked={!on}
+                              onChange={() => onEnvOptionsChange(patchOff)}
+                              disabled={
+                                browserSaving ||
+                                envOptionsSaving ||
+                                suiteBusy ||
+                                spikeRunBusy ||
+                                lockRow
+                              }
+                            />
+                            <span>Off</span>
+                          </label>
+                          <label className="automation-spike-env-bool-radio">
+                            <input
+                              type="radio"
+                              name={name}
+                              value="1"
+                              checked={on}
+                              onChange={() => onEnvOptionsChange(patchOn)}
+                              disabled={
+                                browserSaving ||
+                                envOptionsSaving ||
+                                suiteBusy ||
+                                spikeRunBusy ||
+                                lockRow
+                              }
+                            />
+                            <span>On</span>
+                          </label>
+                        </div>
                       </div>
-                    </div>
-                  </Fragment>
-                ))}
+                    </Fragment>
+                  ),
+                )}
                 <span
                   className="automation-spike-env-grid-label"
                   id="automation-env-opt-parallel"

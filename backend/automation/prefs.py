@@ -27,6 +27,9 @@ def _get_bool_from_kv_or_default(kv_key: str, default: bool) -> bool:
 
 
 def get_effective_automation_headless() -> bool:
+    o = getattr(settings, "automation_headless", None)
+    if o is not None:
+        return bool(o)
     return _get_bool_from_kv_or_default("headless", _DEFAULT_HEADLESS)
 
 
@@ -70,3 +73,17 @@ def get_effective_automation_default_timeout_ms() -> int:
 def get_effective_automation_parallel_execution() -> int:
     d = min(max(int(settings.automation_parallel_execution), 1), 4)
     return _int_from_kv_parsed("parallel_execution", 1, 4, on_missing=d, on_bad=d)
+
+
+def get_run_environment_for_report() -> dict[str, str | int | bool]:
+    return {
+        "browser": get_effective_automation_browser(),
+        "headless": get_effective_automation_headless(),
+        "headless_locked": settings.automation_headless is not None,
+        "default_timeout_ms": int(get_effective_automation_default_timeout_ms()),
+        "screenshot_on_pass": get_effective_automation_screenshot_on_pass(),
+        "trace_file_generation": get_effective_automation_trace_file_generation(),
+        "post_run_analysis": get_effective_automation_post_analysis(),
+        "spike_prerun": bool(getattr(settings, "automation_spike_prerun", True)),
+        "parallel_execution": int(get_effective_automation_parallel_execution()),
+    }

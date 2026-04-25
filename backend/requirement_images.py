@@ -95,7 +95,7 @@ def merge_and_validate(
         if uploads or jira_parts:
             raise HTTPException(
                 status_code=400,
-                detail="Requirement images are disabled (LLM_REQUIREMENT_IMAGES_ENABLED=false).",
+                detail="LLM_VISION_URL must be set to use requirement images or attachments for generation.",
             )
         return []
     combined: list[tuple[str, str, bytes]] = []

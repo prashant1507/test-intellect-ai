@@ -305,7 +305,6 @@ class ConfigResponse(BaseModel):
     keycloak_realm: str = ""
     keycloak_client_id: str = ""
     keycloak_idle_timeout_minutes: int = 5
-    llm_requirement_images_enabled: bool = False
     llm_requirement_images_max_count: int = 5
     llm_requirement_images_max_total_mb: int = 200
     llm_vision_configured: bool = False
@@ -670,7 +669,7 @@ def _merge_req_validated(
     jira_parts: list[tuple[str, str, bytes]],
 ) -> list[tuple[str, str, bytes]]:
     return merge_and_validate(
-        enabled=True,
+        enabled=_llm_vision_configured(),
         max_count=settings.llm_requirement_images_max_count,
         max_total_bytes=settings.llm_requirement_images_max_total_mb * 1024 * 1024,
         uploads=uploads,
@@ -678,17 +677,18 @@ def _merge_req_validated(
     )
 
 
-def _require_req_images_enabled(files: list, attachment_ids: list | None) -> None:
-    if settings.llm_requirement_images_enabled:
+def _require_vision_for_requirement_files(files: list, attachment_ids: list | None) -> None:
+    if _llm_vision_configured():
         return
     if files or attachment_ids:
-        raise HTTPException(status_code=400, detail="Requirement images are disabled.")
+        raise HTTPException(
+            status_code=400,
+            detail="LLM_VISION_URL must be set to send requirement images or JIRA attachments to the model.",
+        )
 
 
 async def _merge_req_images_jira(body: GenerateIn, files: list[UploadFile]) -> list[tuple[str, str, bytes]]:
-    _require_req_images_enabled(files, list(body.attachment_ids or []))
-    if not settings.llm_requirement_images_enabled:
-        return []
+    _require_vision_for_requirement_files(files, list(body.attachment_ids or []))
     if not _llm_vision_configured():
         return []
     uploads = await _upload_tuples(files)
@@ -697,9 +697,7 @@ async def _merge_req_images_jira(body: GenerateIn, files: list[UploadFile]) -> l
 
 
 async def _merge_req_images_paste(files: list[UploadFile]) -> list[tuple[str, str, bytes]]:
-    _require_req_images_enabled(files, None)
-    if not settings.llm_requirement_images_enabled:
-        return []
+    _require_vision_for_requirement_files(files, None)
     if not _llm_vision_configured():
         return []
     uploads = await _upload_tuples(files)
@@ -829,7 +827,6 @@ def get_config():
         keycloak_realm=_strip(s.keycloak_realm),
         keycloak_client_id=_strip(s.keycloak_client_id),
         keycloak_idle_timeout_minutes=s.keycloak_idle_timeout_minutes,
-        llm_requirement_images_enabled=s.llm_requirement_images_enabled,
         llm_requirement_images_max_count=s.llm_requirement_images_max_count,
         llm_requirement_images_max_total_mb=s.llm_requirement_images_max_total_mb,
         llm_vision_configured=_llm_vision_configured(),
