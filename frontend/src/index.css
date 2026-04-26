@@ -2780,6 +2780,14 @@ input.automation-spike-env-timeout-input::-webkit-inner-spin-button {
   color: #ca8a04;
 }
 
+.automation-spike-run-history-status--skipped {
+  color: #94a3b8;
+}
+
+[data-theme="light"] .automation-spike-run-history-status--skipped {
+  color: #64748b;
+}
+
 .automation-spike-bdd-view-body {
   margin: 0;
   padding: 0.65rem 0.75rem;

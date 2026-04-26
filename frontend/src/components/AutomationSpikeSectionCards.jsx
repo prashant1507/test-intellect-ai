@@ -2457,6 +2457,7 @@ export function AutomationSpikeSectionCards({
                         let statusMod = "automation-spike-run-history-status--fail";
                         if (u === "PASS") statusMod = "automation-spike-run-history-status--pass";
                         else if (u === "ABORTED") statusMod = "automation-spike-run-history-status--aborted";
+                        else if (u === "SKIPPED") statusMod = "automation-spike-run-history-status--skipped";
                         return (
                           <tr key={`${String(row.run_id ?? "")}-${t}-${hi}`}>
                             <td>{formatHistoryDate(t)}</td>

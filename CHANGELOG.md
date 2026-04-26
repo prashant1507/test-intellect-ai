@@ -141,5 +141,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 ## [2.2.1]
 
+### Added
+- Added SKIPPED in HTML REPORT
+- Added SKIPPED in Execution History
+
 ### Changed
 - Fixed issue with JIRA_PASSWORD set in .env

@@ -356,19 +356,21 @@ def _all_steps_skipped(steps: list) -> bool:
 
 def _single_case_pass_fail_skip(ok: bool, steps: list) -> tuple[int, int, int]:
     if ok:
-        return (1, 0, 0)
+        return 1, 0, 0
     if _all_steps_skipped(steps):
-        return (0, 0, 1)
-    return (0, 1, 0)
+        return 0, 0, 1
+    return 0, 1, 0
 
 
 def _case_badge_from_status(ok: bool, case_status: str | None) -> tuple[str, str]:
     u = (case_status or "").strip().upper()
     if u == "ABORTED":
-        return ("ABORTED", "aborted")
+        return "ABORTED", "aborted"
+    if u == "SKIPPED":
+        return "SKIPPED", "skipped"
     if ok:
-        return ("PASS", "pass")
-    return ("FAIL", "fail")
+        return "PASS", "pass"
+    return "FAIL", "fail"
 
 
 def _case_nav_data_status(c: dict[str, Any]) -> str:
@@ -1006,7 +1008,7 @@ _REPORT_HEAD = """
   --extent-pass:#26a69a;
   --extent-fail:#ef5350;
   --extent-aborted:#f59e0b;
-  --extent-skip:#ffb74d;
+  --extent-skip:#94a3b8;
   --extent-bar:#1b5e20;
   --extent-bar2:#00897b;
 }}
@@ -1037,7 +1039,7 @@ _REPORT_HEAD = """
   --extent-pass:#00897b;
   --extent-fail:#e53935;
   --extent-aborted:#d97706;
-  --extent-skip:#fb8c00;
+  --extent-skip:#64748b;
   --extent-bar:#2e7d32;
   --extent-bar2:#00695c;
 }}
@@ -1367,7 +1369,7 @@ body{{
 .report-dash-hbar-f--pass{{background:linear-gradient(90deg,#22c55e,#4ade80);}}
 .report-dash-hbar-f--fail{{background:linear-gradient(90deg,#dc2626,#f87171);}}
 .report-dash-hbar-f--aborted{{background:linear-gradient(90deg,#f59e0b,#fbbf24);}}
-.report-dash-hbar-f--skip{{background:linear-gradient(90deg,#d97706,#fbbf24);}}
+.report-dash-hbar-f--skip{{background:linear-gradient(90deg,#475569,#94a3b8);}}
 .report-dash-hbar-f--unk{{background:linear-gradient(90deg,#64748b,#94a3b8);}}
 .report-dash-hbar-n{{
   text-align:right;
@@ -1723,6 +1725,11 @@ body{{
   background:rgba(217,119,6,.1);
   color:#d97706;
   border:1px solid color-mix(in srgb, #d97706 35%, transparent);
+}}
+.result-badge--skipped{{
+  background:var(--skip-bg);
+  color:var(--skip);
+  border:1px solid color-mix(in srgb, var(--skip) 35%, transparent);
 }}
 .report-meta{{
   display:grid;
@@ -2391,7 +2398,7 @@ def render_batch_report_html(
             log = [log] if log.strip() else []
         if not isinstance(log, list):
             log = [str(log)]
-        analysis = str(c.get("analysis") or "")
+        analysis = str(c.get("analysis") or c.get("error") or "")
         jira = str(c.get("jira_id") or "")
         req_tid = str(c.get("requirement_ticket_id") or "")
         tag = str(c.get("tag") or "")

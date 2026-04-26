@@ -125,6 +125,7 @@
     - View test case
     - run single test 
     - check analytics. will save analytic from last run only
+    - If a test is skipped then in history it will show skipped but run and analystics will show status of last run (fail or pass)
     - execution history
     - delete test from saved list
     - running test will have a green dot and will come in focus automatically

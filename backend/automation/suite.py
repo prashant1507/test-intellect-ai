@@ -104,6 +104,7 @@ def _run_one_suite_case(
         except SpikeUserError as e:
             can_msg = cancel.cancel_message().strip()
             em = str(e).strip()
+            elogs = list(getattr(e, "logs", None) or [])
             if em == can_msg:
                 st = "ABORTED"
                 rid = str(getattr(e, "run_id", "") or "")
@@ -111,6 +112,7 @@ def _run_one_suite_case(
                     "error": em,
                     "status": "aborted",
                     "run_id": rid,
+                    "debug_logs": elogs,
                 }
             else:
                 st = "FAIL"
@@ -119,6 +121,7 @@ def _run_one_suite_case(
                     "error": em,
                     "status": "failed",
                     "run_id": rid,
+                    "debug_logs": elogs,
                 }
         except Exception as e:  # noqa: BLE001
             st = "FAIL"
@@ -154,11 +157,59 @@ def _run_one_suite_case(
         "case_status": st,
         "steps": r.get("steps") or [],
         "debug_logs": r.get("debug_logs") or [],
-        "analysis": str(r.get("analysis") or ""),
+        "analysis": str(r.get("analysis") or r.get("error") or ""),
         "jira_id": str(c.get("jira_id") or ""),
         "requirement_ticket_id": str(c.get("requirement_ticket_id") or ""),
         "tag": str(c.get("tag") or ""),
         "trace_href": trace_href,
+        "run_environment": get_run_environment_for_report(),
+    }
+    return results_item, batch_item
+
+
+def _suite_skip_not_run_entry(
+    c: dict[str, Any],
+    *,
+    d_url: str,
+    single_target: bool,
+    reason: str,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    cid = str(c.get("id") or "")
+    t = c.get("title") or "Untitled"
+    saved_u = str(c.get("url") or "").strip()
+    if single_target and d_url:
+        u_run = d_url
+    else:
+        u_run = saved_u or d_url
+    if cid:
+        append_suite_case_run_history(cid, "", "SKIPPED")
+    results_item = {
+        "case_id": cid,
+        "title": t,
+        "result": "SKIPPED",
+        "run_id": "",
+        "status": "skipped",
+    }
+    batch_item = {
+        "run_id": "",
+        "title": t,
+        "bdd": str(c.get("bdd") or ""),
+        "url": u_run,
+        "ok": False,
+        "case_status": "SKIPPED",
+        "steps": [
+            {
+                "step_text": "Not executed",
+                "pass": False,
+                "err": reason,
+            }
+        ],
+        "debug_logs": [],
+        "analysis": "",
+        "jira_id": str(c.get("jira_id") or ""),
+        "requirement_ticket_id": str(c.get("requirement_ticket_id") or ""),
+        "tag": str(c.get("tag") or ""),
+        "trace_href": None,
         "run_environment": get_run_environment_for_report(),
     }
     return results_item, batch_item
@@ -202,6 +253,7 @@ def run_suite_sequential(
     use_pool = parallel > 1 and len(to_run) > 1
 
     if not use_pool:
+        ran = 0
         for c in to_run:
             if cancel.is_stop_all_suite():
                 break
@@ -212,6 +264,17 @@ def run_suite_sequential(
             )
             results.append(ri)
             batch_cases.append(bi)
+            ran += 1
+        if cancel.is_stop_all_suite():
+            for c in to_run[ran:]:
+                ri, bi = _suite_skip_not_run_entry(
+                    c,
+                    d_url=d_url,
+                    single_target=single_target,
+                    reason="Skipped (Suite run stopped)",
+                )
+                results.append(ri)
+                batch_cases.append(bi)
     else:
         n = min(parallel, len(to_run))
         res_slots: list[dict[str, Any] | None] = [None] * len(to_run)
@@ -251,8 +314,21 @@ def run_suite_sequential(
         for j in range(len(to_run)):
             if res_slots[j] is not None:
                 results.append(res_slots[j])
-            if batch_slots[j] is not None:
                 batch_cases.append(batch_slots[j])
+            else:
+                reason = (
+                    "Skipped (Suite run stopped)"
+                    if cancel.is_stop_all_suite()
+                    else "skipped (not run)"
+                )
+                ri, bi = _suite_skip_not_run_entry(
+                    to_run[j],
+                    d_url=d_url,
+                    single_target=single_target,
+                    reason=reason,
+                )
+                results.append(ri)
+                batch_cases.append(bi)
     if batch_cases:
         body = render_batch_report_html(report_id, batch_cases)
     else:
