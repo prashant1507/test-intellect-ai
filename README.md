@@ -327,12 +327,14 @@ flowchart TB
 
 ### Audit
 
-- Logged actions (fetch, generate, push, etc.); filter; **export as PDF** (UI).
+- Logged actions (fetch, generate, JIRA push, **Auto Test suite** save/update/delete, etc.); filter; **export as PDF**
+  (UI). **Ticket ID** in the list can link to JIRA when a site URL is set and the value looks like an issue key.
 
 ### Auth & dev
 
 - **Keycloak** OIDC optional for UI/API; idle timeout hint in UI.
-- **Mock (`MOCK=true`):** no real JIRA HTTP, fixture text; no audit on generate; no memory save on generate.
+- **Mock (`MOCK=true`):** no real JIRA HTTP, fixture text; no audit on generate or on suite save/update/delete; no memory
+  save on generate.
 
 ### UX
 
@@ -436,8 +438,8 @@ lone `KEYCLOAK=` flag) must be `true` to enable Keycloak. See [docker-compose.ym
 
 ## Notes
 
-- **Mock Mode:** No audit writes from generate; no history saves from generate. Audit user column is empty without
-  Keycloak
+- **Mock Mode:** No audit writes from generate or from suite save/update/delete; no history saves from generate. Audit
+  user column is empty without Keycloak
 - **JIRA Test Project:** After generating tests, configuring the test project and using **+** can pull priorities from
   JIRA depending on setup
 - Make sure to use model that supports vision in order to use feature to pass mockups to LLM

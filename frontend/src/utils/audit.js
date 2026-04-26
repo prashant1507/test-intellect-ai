@@ -12,6 +12,12 @@ const AUDIT_ACTION = {
   logged_out: "Logged Out",
 };
 
+const AUTOMATION_SUITE_ID_ACTIONS = [
+  { pattern: /^Deleted (.+?) from Auto Test suite$/i, op: "Deleted" },
+  { pattern: /^Saved (.+?) to Auto Test suite$/i, op: "Saved" },
+  { pattern: /^Updated (.+?) to Auto Test suite$/i, op: "Updated" },
+];
+
 function normalizeTestCreateKey(a) {
   const s = String(a).trim();
   let m = /^Created Test (.+)$/.exec(s);
@@ -67,29 +73,15 @@ export function auditActionParts(a) {
   ) {
     return { type: "plain", text: raw };
   }
-  const suiteDel = /^Deleted (.+?) from Auto Test suite$/i.exec(raw);
-  if (suiteDel) {
-    return {
-      type: "automation_suite_id",
-      op: "Deleted",
-      testId: suiteDel[1].trim() || "—",
-    };
-  }
-  const suiteSave = /^Saved (.+?) to Auto Test suite$/i.exec(raw);
-  if (suiteSave) {
-    return {
-      type: "automation_suite_id",
-      op: "Saved",
-      testId: suiteSave[1].trim() || "—",
-    };
-  }
-  const suiteUp = /^Updated (.+?) to Auto Test suite$/i.exec(raw);
-  if (suiteUp) {
-    return {
-      type: "automation_suite_id",
-      op: "Updated",
-      testId: suiteUp[1].trim() || "—",
-    };
+  for (const { pattern, op } of AUTOMATION_SUITE_ID_ACTIONS) {
+    const m = pattern.exec(raw);
+    if (m) {
+      return {
+        type: "automation_suite_id",
+        op,
+        testId: m[1].trim() || "—",
+      };
+    }
   }
   return { type: "plain", text: a };
 }

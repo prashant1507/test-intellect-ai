@@ -342,13 +342,15 @@ class SuiteCaseIn(BaseModel):
         return s if s in ("ui", "api") else "ui"
 
 
-def _suite_audit_ticket_id(body: SuiteCaseIn, fallback: str) -> str:
-    jid = (body.jira_id or "").strip()
-    if jid:
-        return jid
-    req = (body.requirement_ticket_id or "").strip()
-    if req:
-        return req
+def _automation_suite_audit_ticket_id(
+    jira_id: str, requirement_ticket_id: str, fallback: str
+) -> str:
+    j = (jira_id or "").strip()
+    if j:
+        return j
+    r = (requirement_ticket_id or "").strip()
+    if r:
+        return r
     return (fallback or "").strip()
 
 
@@ -361,16 +363,6 @@ def _automation_suite_audit_action(suite_save: bool, body: SuiteCaseIn) -> str:
     if tid:
         return f"Updated {tid} to Auto Test suite"
     return "Updated to Auto Test suite"
-
-
-def _suite_audit_ticket_id_from_row(row: dict, fallback: str) -> str:
-    jid = (str(row.get("jira_id") or "")).strip()
-    if jid:
-        return jid
-    req = (str(row.get("requirement_ticket_id") or "")).strip()
-    if req:
-        return req
-    return (fallback or "").strip()
 
 
 def _automation_suite_delete_audit_action(row: dict) -> str:
@@ -411,7 +403,11 @@ def automation_suite_add(body: SuiteCaseIn, kc: Kc) -> dict[str, str]:
         spike_type=body.spike_type,
     )
     _maybe_automation_audit(
-        kc, _suite_audit_ticket_id(body, cid), _automation_suite_audit_action(True, body)
+        kc,
+        _automation_suite_audit_ticket_id(
+            body.jira_id, body.requirement_ticket_id, cid
+        ),
+        _automation_suite_audit_action(True, body),
     )
     return {"id": cid, "ok": "true"}
 
@@ -447,7 +443,9 @@ def automation_suite_update(case_id: str, body: SuiteCaseIn, kc: Kc) -> dict[str
     ):
         raise HTTPException(status_code=404, detail="not found")
     _maybe_automation_audit(
-        kc, _suite_audit_ticket_id(body, t), _automation_suite_audit_action(False, body)
+        kc,
+        _automation_suite_audit_ticket_id(body.jira_id, body.requirement_ticket_id, t),
+        _automation_suite_audit_action(False, body),
     )
     return {"id": t, "ok": "true"}
 
@@ -461,7 +459,13 @@ def automation_suite_delete(case_id: str, kc: Kc) -> dict[str, str]:
     if not delete_suite_case(t):
         raise HTTPException(status_code=404, detail="not found")
     _maybe_automation_audit(
-        kc, _suite_audit_ticket_id_from_row(old, t), _automation_suite_delete_audit_action(old)
+        kc,
+        _automation_suite_audit_ticket_id(
+            str(old.get("jira_id") or ""),
+            str(old.get("requirement_ticket_id") or ""),
+            t,
+        ),
+        _automation_suite_delete_audit_action(old),
     )
     return {"ok": "true"}
 

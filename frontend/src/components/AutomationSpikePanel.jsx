@@ -15,24 +15,13 @@ import {
 } from "./AutomationRunStepScreenshot";
 import { normalizeTagCsv } from "../utils/tagCsv";
 import { parseBddStepLines } from "../utils/bddStepLines";
-
-function suiteTagWithTestType(testType, tagInput) {
-  return normalizeTagCsv(
-    [testType, tagInput].filter((s) => String(s || "").trim()).join(", "),
-  );
-}
-
-function stripLeadingTestTypeFromTag(tagCsv, spikeType) {
-  const t = (spikeType || "ui").toLowerCase() === "api" ? "api" : "ui";
-  const parts = String(tagCsv || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter((s) => s.length);
-  if (parts.length && parts[0].toLowerCase() === t) {
-    return parts.slice(1).join(", ");
-  }
-  return String(tagCsv || "").trim();
-}
+import {
+  deriveTestTypeAndSpikeFromPrefill,
+  stripLeadingTestTypeFromTag,
+  suiteApiPayloadFromForm,
+  suiteApiPayloadFromPrefillCase,
+  suiteApiPayloadsEqual,
+} from "../utils/automationSuitePayload";
 
 function spikeRunStatusDisplay(status) {
   const s = String(status || "").toLowerCase();
@@ -48,74 +37,6 @@ function RunStatusPill({ status }) {
       {label}
     </span>
   );
-}
-
-function suiteCaseToSuitePayloadFromPrefill(pc) {
-  if (!pc) return null;
-  const titleT = String(pc.title ?? "").trim();
-  const reqT = String(pc.requirementTicketId ?? "").trim();
-  const jiraT = String(pc.jiraId ?? "").trim();
-  const bdd0 = String(pc.bdd ?? "");
-  const stRaw = String(
-    pc.spike_type ?? pc.spikeType ?? "",
-  )
-    .trim()
-    .toLowerCase();
-  let testType = "UI";
-  let spikeForTag = "ui";
-  if (stRaw === "api") {
-    testType = "API";
-    spikeForTag = "api";
-  } else if (stRaw === "ui") {
-    testType = "UI";
-    spikeForTag = "ui";
-  } else {
-    const tagCsv = String(pc.tag ?? "");
-    const first = tagCsv
-      .split(",")
-      .map((s) => s.trim().toLowerCase())
-      .find((s) => s.length);
-    if (first === "api") {
-      testType = "API";
-      spikeForTag = "api";
-    } else if (first === "ui") {
-      testType = "UI";
-      spikeForTag = "ui";
-    } else {
-      testType = "UI";
-      spikeForTag = "ui";
-    }
-  }
-  const tagStripped = stripLeadingTestTypeFromTag(
-    String(pc.tag ?? ""),
-    spikeForTag,
-  );
-  return {
-    title: titleT,
-    bdd: bdd0,
-    jira_id: jiraT,
-    requirement_ticket_id: reqT,
-    tag: suiteTagWithTestType(testType, tagStripped),
-    spike_type: testType === "API" ? "api" : "ui",
-  };
-}
-
-function formToSuiteApiPayload(
-  title,
-  bdd,
-  requirementTicketId,
-  jiraId,
-  testType,
-  tag,
-) {
-  return {
-    title: title.trim(),
-    bdd,
-    jira_id: jiraId.trim(),
-    requirement_ticket_id: requirementTicketId.trim(),
-    tag: suiteTagWithTestType(testType, tag),
-    spike_type: testType === "API" ? "api" : "ui",
-  };
 }
 
 export function AutomationSpikePanel({
@@ -161,7 +82,7 @@ export function AutomationSpikePanel({
 
   const suiteApiPayloadCurrent = useMemo(
     () =>
-      formToSuiteApiPayload(
+      suiteApiPayloadFromForm(
         title,
         bdd,
         requirementTicketId,
@@ -179,21 +100,32 @@ export function AutomationSpikePanel({
     if (pid == null || String(pid).trim() !== String(editingSuiteCaseId)) {
       return null;
     }
-    return suiteCaseToSuitePayloadFromPrefill(prefillFromCase);
+    return suiteApiPayloadFromPrefillCase(prefillFromCase);
   }, [editingSuiteCaseId, prefillAt, prefillFromCase]);
 
   const maySubmitSuiteUpdate = useMemo(() => {
     if (!editingSuiteCaseId) return true;
     if (!suiteApiPayloadWhenEditLoaded) return true;
-    return (
-      JSON.stringify(suiteApiPayloadWhenEditLoaded) !==
-      JSON.stringify(suiteApiPayloadCurrent)
+    return !suiteApiPayloadsEqual(
+      suiteApiPayloadWhenEditLoaded,
+      suiteApiPayloadCurrent,
     );
   }, [
     editingSuiteCaseId,
     suiteApiPayloadWhenEditLoaded,
     suiteApiPayloadCurrent,
   ]);
+
+  const runSaveSuiteSuccessFlash = useCallback(() => {
+    if (saveSuiteSuccessFlashRef.current) {
+      clearTimeout(saveSuiteSuccessFlashRef.current);
+    }
+    setSaveSuiteSuccessFlash(true);
+    saveSuiteSuccessFlashRef.current = setTimeout(() => {
+      setSaveSuiteSuccessFlash(false);
+      saveSuiteSuccessFlashRef.current = null;
+    }, 500);
+  }, []);
 
   const resetAutomationForm = useCallback(() => {
     setTitle("");
@@ -249,46 +181,16 @@ export function AutomationSpikePanel({
 
   useEffect(() => {
     if (prefillAt < 1 || !prefillFromCase) return;
-    setTitle(String(prefillFromCase.title ?? ""));
-    setRequirementTicketId(
-      String(prefillFromCase.requirementTicketId ?? "").trim(),
-    );
-    setJiraId(String(prefillFromCase.jiraId ?? "").trim());
-    setBdd(String(prefillFromCase.bdd ?? ""));
-    setUrl(String(prefillFromCase.url ?? ""));
-    const stRaw = String(
-      prefillFromCase.spike_type ?? prefillFromCase.spikeType ?? "",
-    )
-      .trim()
-      .toLowerCase();
-    let spikeForTag = "ui";
-    if (stRaw === "api") {
-      setTestType("API");
-      spikeForTag = "api";
-    } else if (stRaw === "ui") {
-      setTestType("UI");
-      spikeForTag = "ui";
-    } else {
-      const tagCsv = String(prefillFromCase.tag ?? "");
-      const first = tagCsv
-        .split(",")
-        .map((s) => s.trim().toLowerCase())
-        .find((s) => s.length);
-      if (first === "api") {
-        setTestType("API");
-        spikeForTag = "api";
-      } else if (first === "ui") {
-        setTestType("UI");
-        spikeForTag = "ui";
-      } else {
-        setTestType("UI");
-        spikeForTag = "ui";
-      }
-    }
-    setTag(
-      stripLeadingTestTypeFromTag(String(prefillFromCase.tag ?? ""), spikeForTag),
-    );
-    const eid = prefillFromCase.id ?? prefillFromCase.caseId;
+    const pc = prefillFromCase;
+    setTitle(String(pc.title ?? ""));
+    setRequirementTicketId(String(pc.requirementTicketId ?? "").trim());
+    setJiraId(String(pc.jiraId ?? "").trim());
+    setBdd(String(pc.bdd ?? ""));
+    setUrl(String(pc.url ?? ""));
+    const { testType: tt, spikeForTag } = deriveTestTypeAndSpikeFromPrefill(pc);
+    setTestType(tt);
+    setTag(stripLeadingTestTypeFromTag(String(pc.tag ?? ""), spikeForTag));
+    const eid = pc.id ?? pc.caseId;
     setEditingSuiteCaseId(
       eid != null && String(eid).trim() ? String(eid).trim() : null,
     );
@@ -394,13 +296,15 @@ export function AutomationSpikePanel({
       return;
     }
     const payload = {
-      title: titleT,
-      bdd,
+      ...suiteApiPayloadFromForm(
+        title,
+        bdd,
+        requirementTicketId,
+        jiraId,
+        testType,
+        tag,
+      ),
       url: "",
-      jira_id: jiraT,
-      requirement_ticket_id: reqT,
-      tag: suiteTagWithTestType(testType, tag),
-      spike_type: testType === "API" ? "api" : "ui",
     };
     try {
       if (editingSuiteCaseId) {
@@ -411,14 +315,7 @@ export function AutomationSpikePanel({
         );
         resetAutomationForm();
         bumpLists();
-        if (saveSuiteSuccessFlashRef.current) {
-          clearTimeout(saveSuiteSuccessFlashRef.current);
-        }
-        setSaveSuiteSuccessFlash(true);
-        saveSuiteSuccessFlashRef.current = setTimeout(() => {
-          setSaveSuiteSuccessFlash(false);
-          saveSuiteSuccessFlashRef.current = null;
-        }, 500);
+        runSaveSuiteSuccessFlash();
         return;
       }
       const { cases } = await api("/automation/suite");
@@ -452,14 +349,7 @@ export function AutomationSpikePanel({
       await api("/automation/suite", "POST", payload);
       resetAutomationForm();
       bumpLists();
-      if (saveSuiteSuccessFlashRef.current) {
-        clearTimeout(saveSuiteSuccessFlashRef.current);
-      }
-      setSaveSuiteSuccessFlash(true);
-      saveSuiteSuccessFlashRef.current = setTimeout(() => {
-        setSaveSuiteSuccessFlash(false);
-        saveSuiteSuccessFlashRef.current = null;
-      }, 500);
+      runSaveSuiteSuccessFlash();
     } catch (e) {
       const m = e?.message || String(e);
       if (m.includes("already exists")) setSaveSuiteInfo(m);

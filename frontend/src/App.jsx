@@ -11,6 +11,7 @@ import {
   ThemeToggle,
 } from "./components/common";
 import { AuditActionCell } from "./components/AuditActionCell";
+import { AuditTableTicketIdCell } from "./components/AuditTableTicketIdCell";
 import { LinkedJiraTestsBlock, LinkedJiraWorkBlock, RequirementAttachmentsInline } from "./components/LinkedJiraLists";
 import { MemoryDetailContent } from "./components/Memory";
 import { MainTestCasesPanel } from "./components/MainTestCasesPanel";
@@ -27,7 +28,6 @@ import {
   AUDIT_USER_EMPTY,
   auditActionLabel,
   downloadAuditPdf,
-  jiraBrowseHref,
 } from "./utils/audit";
 import {
   fmtReqMarkdown,
@@ -2160,27 +2160,10 @@ export default function App() {
                             <td>{row.username || "—"}</td>
                             <td>{row.jira_username ? String(row.jira_username) : "—"}</td>
                             <td>
-                              {row.ticket_id === "AUTH" ? (
-                                <span className="audit-context-muted">—</span>
-                              ) : (() => {
-                                const tid = String(row.ticket_id ?? "");
-                                const linkHref =
-                                  jiraUrl?.trim() &&
-                                  isLikelyJiraIssueKey(tid) &&
-                                  jiraBrowseHref(jiraUrl, tid);
-                                return linkHref ? (
-                                  <a
-                                    href={linkHref}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="audit-issue-link"
-                                  >
-                                    <code className="audit-ticket">{tid}</code>
-                                  </a>
-                                ) : (
-                                  <code className="audit-ticket">{tid}</code>
-                                );
-                              })()}
+                              <AuditTableTicketIdCell
+                                ticketId={row.ticket_id}
+                                jiraUrl={jiraUrl}
+                              />
                             </td>
                             <td>
                               <AuditActionCell action={row.action} jiraBaseUrl={jiraUrl} />
