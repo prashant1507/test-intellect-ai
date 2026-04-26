@@ -2146,7 +2146,7 @@ export default function App() {
                     <table className="audit-table">
                       <thead>
                         <tr>
-                          <th scope="col">Date &amp; time</th>
+                          <th scope="col">Date &amp; Time</th>
                           <th scope="col">User</th>
                           <th scope="col">JIRA User</th>
                           <th scope="col">Ticket ID</th>

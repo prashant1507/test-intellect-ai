@@ -939,7 +939,7 @@ def _build_case_content_html(
     </div>
   </div>
   <dl class="report-meta">
-    <dt>Date &amp; time</dt><dd class="report-datetime">{report_dt}</dd>
+    <dt>Date &amp; Time</dt><dd class="report-datetime">{report_dt}</dd>
     <dt>Requirement ticket</dt><dd class="report-jira">{req_e}</dd>
     <dt>Test ID</dt><dd class="report-jira">{jira_e}</dd>
     <dt>Tags</dt><dd class="report-jira">{tag_e}</dd>
