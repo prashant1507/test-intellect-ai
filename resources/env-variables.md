@@ -35,7 +35,7 @@ sets `SHOW_JIRA_MODE_UI` back to `true` so at least one mode stays available.
 |-----------------------------------|-----------------------------|-------------------------------------------------------------------------------|
 | `JIRA_URL`                        | *(empty)*                   | Jira site base URL (e.g. `https://your-domain.atlassian.net`).                |
 | `JIRA_USERNAME`                   | *(empty)*                   | Jira user (often email) for API auth.                                         |
-| `JIRA_PASSWORD`                   | *(empty)*                   | API token or password (Atlassian Cloud: prefer API token).                    |
+| `JIRA_PASSWORD`                   | *(empty)*                   | API token or password (Atlassian Cloud: prefer API token). If set, JIRA calls work with an empty UI password; the secret is never exposed via `/api/config`. |
 | `JIRA_TEST_PROJECT_KEY`           | *(empty)*                   | Project key for creating test issues (e.g. `QA`).                             |
 | `JIRA_TEST_ISSUE_TYPE`            | `Test`                      | Issue type name for test issues.                                              |
 | `JIRA_TEST_LINK_TYPE`             | `Relates`                   | Link type name when linking tests to the requirement.                         |

@@ -59,6 +59,7 @@ export default function App() {
   const [jiraUrl, setJiraUrl] = useState(readStoredJiraUrl);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [jiraPasswordFromEnv, setJiraPasswordFromEnv] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [ticketId, setTicketId] = useState("");
   const [jiraTestProject, setJiraTestProject] = useState("");
@@ -138,6 +139,11 @@ export default function App() {
   const [historyJiraTicketId, setHistoryJiraTicketId] = useState("");
   const inputModeRef = useRef(inputMode);
   const [memoryPanel, setMemoryPanel] = useState(null);
+
+  const jiraPasswordOk = useMemo(
+    () => Boolean(mock || password.trim() || jiraPasswordFromEnv),
+    [mock, password, jiraPasswordFromEnv],
+  );
 
   useEffect(() => {
     inputModeRef.current = inputMode;
@@ -747,8 +753,8 @@ export default function App() {
         if (!bulkQuiet) setErr(msg);
         return false;
       }
-      if (!jiraUrl.trim() || !username || !password) {
-        const msg = "Fill JIRA URL, username, and password.";
+      if (!jiraUrl.trim() || !username || !jiraPasswordOk) {
+        const msg = "Fill JIRA URL, username, and password (or set JIRA_PASSWORD on the server).";
         if (!bulkQuiet) setErr(msg);
         return false;
       }
@@ -891,6 +897,7 @@ export default function App() {
       jiraUrl,
       username,
       password,
+      jiraPasswordOk,
       ticketId,
       key,
       jiraTestProject,
@@ -916,8 +923,15 @@ export default function App() {
 
   const syncAllJiraBulk = useCallback(async () => {
     const shown = filterTestsByChip(tests);
-    if (mock || inputMode !== "jira" || !normTicketId(key || ticketId) || !jiraUrl.trim() || !username || !password) {
-      setErr("Use JIRA mode and fill URL, ticket, username, and password.");
+    if (
+      mock ||
+      inputMode !== "jira" ||
+      !normTicketId(key || ticketId) ||
+      !jiraUrl.trim() ||
+      !username ||
+      !jiraPasswordOk
+    ) {
+      setErr("Use JIRA mode and fill URL, ticket, username, and password (or set JIRA_PASSWORD on the server).");
       return;
     }
     if (!jiraTestProject.trim()) {
@@ -1022,6 +1036,7 @@ export default function App() {
     jiraUrl,
     username,
     password,
+    jiraPasswordOk,
     jiraTestProject,
     pushTestToJira,
     filterTestsByChip,
@@ -1147,8 +1162,15 @@ export default function App() {
   );
 
   const startBulkSync = useCallback(() => {
-    if (mock || inputMode !== "jira" || !normTicketId(key || ticketId) || !jiraUrl.trim() || !String(username || "").trim() || !password) {
-      setErr("Use JIRA mode and fill URL, ticket, username, and password.");
+    if (
+      mock ||
+      inputMode !== "jira" ||
+      !normTicketId(key || ticketId) ||
+      !jiraUrl.trim() ||
+      !String(username || "").trim() ||
+      !jiraPasswordOk
+    ) {
+      setErr("Use JIRA mode and fill URL, ticket, username, and password (or set JIRA_PASSWORD on the server).");
       return;
     }
     if (!jiraTestProject.trim()) {
@@ -1170,6 +1192,7 @@ export default function App() {
     jiraUrl,
     username,
     password,
+    jiraPasswordOk,
     jiraTestProject,
     tests,
     tcFilter,
@@ -1193,6 +1216,7 @@ export default function App() {
         if (typeof c.default_jira_url === "string" && c.default_jira_url.trim())
           setJiraUrl(c.default_jira_url.trim());
         if (c.default_username) setUsername(c.default_username);
+        setJiraPasswordFromEnv(Boolean(c.jira_password_configured));
         if (typeof c.default_jira_test_project_key === "string") setJiraTestProject(c.default_jira_test_project_key);
         try {
           if (
@@ -1692,7 +1716,7 @@ export default function App() {
     }
   };
 
-  const canSubmit = jiraUrl.trim() && ticketId.trim() && username.trim() && password;
+  const canSubmit = jiraUrl.trim() && ticketId.trim() && username.trim() && jiraPasswordOk;
   const canGenerateJira =
     !!req &&
     normTicketId(ticketId) === normTicketId(key);
@@ -1739,7 +1763,7 @@ export default function App() {
   const jiraPushConfigIncomplete =
     !jiraUrl.trim() ||
     !String(username || "").trim() ||
-    !password ||
+    !jiraPasswordOk ||
     !jiraTestProject.trim();
 
   const runTestCaseInAutoMode = useCallback(
@@ -2588,7 +2612,7 @@ export default function App() {
                 <div>
                   <label htmlFor="password" className="label-with-info">
                     <span>JIRA Password / Token</span>
-                    <FieldInfo text="Account password or API token." />
+                    <FieldInfo text="Account password or API token. Leave empty if JIRA_PASSWORD is set on the server (the value is never shown in the browser)." />
                   </label>
                   <div className="input-with-toggle">
                     <input
@@ -2597,12 +2621,14 @@ export default function App() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       autoComplete="current-password"
-                      required
-                      aria-required="true"
+                      required={!jiraPasswordFromEnv}
+                      aria-required={!jiraPasswordFromEnv ? "true" : "false"}
                       aria-describedby="hint-pw"
                     />
                     <span id="hint-pw" className="sr-only">
-                      Account password or API token.
+                      {jiraPasswordFromEnv
+                        ? "Optional: server has JIRA_PASSWORD; enter here only to override."
+                        : "Account password or API token."}
                     </span>
                     <button
                       type="button"

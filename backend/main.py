@@ -74,6 +74,22 @@ def _strip(s: str) -> str:
     return (s or "").strip()
 
 
+def _effective_jira_password(sent: str) -> str:
+    return (sent or "").strip() or _strip(settings.jira_password)
+
+
+def _require_jira_password(sent: str) -> str:
+    pw = _effective_jira_password(sent)
+    if settings.mock:
+        return pw
+    if not pw:
+        raise HTTPException(
+            status_code=400,
+            detail="JIRA password or API token is required (enter it in the UI or set JIRA_PASSWORD in the server .env).",
+        )
+    return pw
+
+
 def _validate_tc_bounds(min_test_cases: int, max_test_cases: int) -> None:
     if 0 < max_test_cases < min_test_cases:
         raise ValueError("max_test_cases must be >= min_test_cases, or 0 for no maximum")
@@ -82,7 +98,7 @@ def _validate_tc_bounds(min_test_cases: int, max_test_cases: int) -> None:
 class TicketIn(BaseModel):
     jira_url: str = Field(..., min_length=1)
     username: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=1)
+    password: str = ""
     ticket_id: str = Field(..., min_length=1)
     jira_test_issue_type: str = ""
 
@@ -142,7 +158,7 @@ async def _load_ticket_linked_jira(body: TicketIn, key: str) -> tuple[list, list
         return [], [], empty
     ju = body.jira_url.strip()
     user = body.username
-    pw = body.password
+    pw = _require_jira_password(body.password)
     tt = _jira_test_issue_type_from_body(body)
     linked: list = []
     try:
@@ -188,7 +204,7 @@ async def _fetch_issue_attachments(body: TicketIn, key: str) -> list:
             fetch_issue_attachment_meta,
             body.jira_url.strip(),
             body.username,
-            body.password,
+            _require_jira_password(body.password),
             key,
         )
     except Exception:
@@ -272,7 +288,7 @@ class AutomationSkeletonIn(BaseModel):
 class PushTestToJiraIn(BaseModel):
     jira_url: str = Field(..., min_length=1)
     username: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=1)
+    password: str = ""
     requirement_key: str = Field(..., min_length=1)
     test_project_key: str = ""
     jira_test_issue_type: str = ""
@@ -284,13 +300,14 @@ class PushTestToJiraIn(BaseModel):
 class JiraPrioritiesIn(BaseModel):
     jira_url: str = Field(..., min_length=1)
     username: str = Field(..., min_length=1)
-    password: str = Field(..., min_length=1)
+    password: str = ""
     test_project_key: str = ""
 
 
 class ConfigResponse(BaseModel):
     default_jira_url: str = ""
     default_username: str = ""
+    jira_password_configured: bool = False
     default_jira_test_project_key: str = ""
     default_jira_test_issue_type: str = "Test"
     default_jira_link_type: str = "Relates"
@@ -356,12 +373,13 @@ def _diff(a: dict, b: dict) -> str | None:
 
 async def _fetch_jira(body: TicketIn) -> tuple[str, dict]:
     key = norm_issue_key(body.ticket_id)
+    pw = _require_jira_password(body.password)
     try:
         raw = await asyncio.to_thread(
             fetch_issue,
             body.jira_url.strip(),
             body.username,
-            body.password,
+            pw,
             key,
         )
     except RequestException as e:
@@ -392,7 +410,7 @@ async def _maybe_fetch_jira_priority_names_for_generate(body: GenerateIn) -> lis
             fetch_priorities,
             body.jira_url.strip(),
             body.username,
-            body.password,
+            _require_jira_password(body.password),
         )
         names = [str(p.get("name") or "").strip() for p in pri if str(p.get("name") or "").strip()]
         return names if names else None
@@ -638,7 +656,7 @@ async def _jira_attachment_parts_for_generate(body: TicketIn, ids: list[str]) ->
         return []
     ju = body.jira_url.strip()
     user = body.username
-    pw = body.password
+    pw = _require_jira_password(body.password)
     key = norm_issue_key(body.ticket_id)
     meta = await asyncio.to_thread(fetch_issue_attachment_meta, ju, user, pw, key)
     allowed = {str(x.get("id")) for x in meta if isinstance(x, dict)}
@@ -801,6 +819,7 @@ def get_config():
     return ConfigResponse(
         default_jira_url=_strip(s.jira_url),
         default_username=_strip(s.jira_username),
+        jira_password_configured=bool(_strip(s.jira_password)),
         default_jira_test_project_key=_strip(s.jira_test_project_key),
         default_jira_test_issue_type=_strip(s.jira_test_issue_type) or "Test",
         default_jira_link_type=_strip(s.jira_test_link_type) or "Relates",
@@ -838,7 +857,7 @@ async def jira_priorities(body: JiraPrioritiesIn, kc: Kc):
             fetch_priorities,
             body.jira_url.strip(),
             body.username,
-            body.password,
+            _require_jira_password(body.password),
         )
     except RequestException as e:
         raise _jira_request_http_exception(e) from e
@@ -863,7 +882,7 @@ async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
                 update_test_case_in_jira,
                 body.jira_url.strip(),
                 body.username,
-                body.password,
+                _require_jira_password(body.password),
                 existing,
                 tc_jira,
             )
@@ -884,7 +903,7 @@ async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
             push_test_case_to_jira,
             body.jira_url.strip(),
             body.username,
-            body.password,
+            _require_jira_password(body.password),
             rk,
             tpk,
             tc_jira,
@@ -933,7 +952,7 @@ async def jira_attachment_download(body: AttachmentDownloadIn, _kc: Kc):
             download_attachment_for_ticket,
             body.jira_url.strip(),
             body.username,
-            body.password,
+            _require_jira_password(body.password),
             body.attachment_id.strip(),
             key,
         )

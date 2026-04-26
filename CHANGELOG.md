@@ -137,3 +137,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Minor improvements
 - Updated docker-compose.yml
+
+---
+## [2.2.1]
+
+### Changed
+- Fixed issue iwth JIRA_PASSWORD set in .env

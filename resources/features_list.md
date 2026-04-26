@@ -6,6 +6,7 @@
 - Fetched and Generated content will not rest if switch between 
   - JIRA MODE and AUTO TEST MODE
   - PASTE REQUIREMENT MODE and AUTO TEST MODE
+- If JIRA_PASSWORD is set in `.env`, then still in UI nothing will dispalye as its password
 
 ---
 
