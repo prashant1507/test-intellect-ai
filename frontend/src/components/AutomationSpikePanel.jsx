@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
   FieldInfo,
@@ -20,6 +20,18 @@ function suiteTagWithTestType(testType, tagInput) {
   return normalizeTagCsv(
     [testType, tagInput].filter((s) => String(s || "").trim()).join(", "),
   );
+}
+
+function stripLeadingTestTypeFromTag(tagCsv, spikeType) {
+  const t = (spikeType || "ui").toLowerCase() === "api" ? "api" : "ui";
+  const parts = String(tagCsv || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length);
+  if (parts.length && parts[0].toLowerCase() === t) {
+    return parts.slice(1).join(", ");
+  }
+  return String(tagCsv || "").trim();
 }
 
 function spikeRunStatusDisplay(status) {
@@ -46,6 +58,7 @@ export function AutomationSpikePanel({
   traceFileGeneration = true,
   prefillAt = 0,
   prefillFromCase = null,
+  onClearAutomationPrefill,
 }) {
   const [title, setTitle] = useState("");
   const [bdd, setBdd] = useState("");
@@ -73,9 +86,30 @@ export function AutomationSpikePanel({
   const [saveSuiteSuccessFlash, setSaveSuiteSuccessFlash] = useState(false);
   const [testType, setTestType] = useState("UI");
   const [saveTestTypeInvalid, setSaveTestTypeInvalid] = useState(false);
+  const [editingSuiteCaseId, setEditingSuiteCaseId] = useState(null);
   const testTypeFirstRadioRef = useRef(null);
 
   const bddStepLines = useMemo(() => parseBddStepLines(bdd), [bdd]);
+
+  const resetAutomationForm = useCallback(() => {
+    setTitle("");
+    setBdd("");
+    setUrl("");
+    setRequirementTicketId("");
+    setJiraId("");
+    setTag("");
+    setTestType("UI");
+    setEditingSuiteCaseId(null);
+    setSaveScenarioInvalid(false);
+    setSaveBddInvalid(false);
+    setSaveTestTypeInvalid(false);
+    setStartUrlInvalid(false);
+    setStartScenarioInvalid(false);
+    setStartBddInvalid(false);
+    setSaveSuiteInfo("");
+    setSaveSuiteErr("");
+    onClearAutomationPrefill?.();
+  }, [onClearAutomationPrefill]);
 
   const bumpLists = () => {
     onListsChanged?.();
@@ -117,22 +151,43 @@ export function AutomationSpikePanel({
     );
     setJiraId(String(prefillFromCase.jiraId ?? "").trim());
     setBdd(String(prefillFromCase.bdd ?? ""));
+    setUrl(String(prefillFromCase.url ?? ""));
     const stRaw = String(
       prefillFromCase.spike_type ?? prefillFromCase.spikeType ?? "",
     )
       .trim()
       .toLowerCase();
-    if (stRaw === "api") setTestType("API");
-    else if (stRaw === "ui") setTestType("UI");
-    else {
+    let spikeForTag = "ui";
+    if (stRaw === "api") {
+      setTestType("API");
+      spikeForTag = "api";
+    } else if (stRaw === "ui") {
+      setTestType("UI");
+      spikeForTag = "ui";
+    } else {
       const tagCsv = String(prefillFromCase.tag ?? "");
       const first = tagCsv
         .split(",")
         .map((s) => s.trim().toLowerCase())
         .find((s) => s.length);
-      if (first === "api") setTestType("API");
-      else if (first === "ui") setTestType("UI");
+      if (first === "api") {
+        setTestType("API");
+        spikeForTag = "api";
+      } else if (first === "ui") {
+        setTestType("UI");
+        spikeForTag = "ui";
+      } else {
+        setTestType("UI");
+        spikeForTag = "ui";
+      }
     }
+    setTag(
+      stripLeadingTestTypeFromTag(String(prefillFromCase.tag ?? ""), spikeForTag),
+    );
+    const eid = prefillFromCase.id ?? prefillFromCase.caseId;
+    setEditingSuiteCaseId(
+      eid != null && String(eid).trim() ? String(eid).trim() : null,
+    );
     setSaveScenarioInvalid(false);
     setSaveBddInvalid(false);
     setStartScenarioInvalid(false);
@@ -232,7 +287,34 @@ export function AutomationSpikePanel({
       });
       return;
     }
+    const payload = {
+      title: titleT,
+      bdd,
+      url: "",
+      jira_id: jiraT,
+      requirement_ticket_id: reqT,
+      tag: suiteTagWithTestType(testType, tag),
+      spike_type: testType === "API" ? "api" : "ui",
+    };
     try {
+      if (editingSuiteCaseId) {
+        await api(
+          `/automation/suite/${encodeURIComponent(editingSuiteCaseId)}`,
+          "PUT",
+          { ...payload, html_dom: "" },
+        );
+        resetAutomationForm();
+        bumpLists();
+        if (saveSuiteSuccessFlashRef.current) {
+          clearTimeout(saveSuiteSuccessFlashRef.current);
+        }
+        setSaveSuiteSuccessFlash(true);
+        saveSuiteSuccessFlashRef.current = setTimeout(() => {
+          setSaveSuiteSuccessFlash(false);
+          saveSuiteSuccessFlashRef.current = null;
+        }, 500);
+        return;
+      }
       const { cases } = await api("/automation/suite");
       const list = cases || [];
       if (jiraT) {
@@ -261,15 +343,8 @@ export function AutomationSpikePanel({
         );
         return;
       }
-      await api("/automation/suite", "POST", {
-        title: titleT,
-        bdd,
-        url: "",
-        jira_id: jiraT,
-        requirement_ticket_id: reqT,
-        tag: suiteTagWithTestType(testType, tag),
-        spike_type: testType === "API" ? "api" : "ui",
-      });
+      await api("/automation/suite", "POST", payload);
+      resetAutomationForm();
       bumpLists();
       if (saveSuiteSuccessFlashRef.current) {
         clearTimeout(saveSuiteSuccessFlashRef.current);
@@ -388,7 +463,7 @@ export function AutomationSpikePanel({
         </div>
         <div className="automation-spike-field-col">
           <label htmlFor="automation-spike-tag" className="label-with-info">
-            <span>Tag (Optional)</span>
+            <span>Tag</span>
             <FieldInfo text="Comma-separated (e.g. Smoke, Regression, Login). Test Type is added when you save to suite." />
           </label>
           <input
@@ -535,7 +610,7 @@ export function AutomationSpikePanel({
           onClick={saveToSuite}
           disabled={formLocked}
         >
-          Save to Suite
+          {editingSuiteCaseId ? "Update to Suite" : "Save to Suite"}
         </button>
       </div>
       {saveSuiteInfo ? (

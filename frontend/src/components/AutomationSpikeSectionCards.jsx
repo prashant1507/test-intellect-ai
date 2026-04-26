@@ -439,7 +439,17 @@ function lastRunStatusToClassSuffix(status) {
   return "fail";
 }
 
-function SuiteCaseRow({ c, runDisabled, onView, onRun, onAnalysis, onHistory, onDelete, isRunningInSuite }) {
+function SuiteCaseRow({
+  c,
+  runDisabled,
+  onView,
+  onEdit,
+  onRun,
+  onAnalysis,
+  onHistory,
+  onDelete,
+  isRunningInSuite,
+}) {
   const hasSuiteAnalysis = Boolean(String(c.last_suite_analysis ?? "").trim());
   const runColor = lastRunStatusToClassSuffix(c.last_suite_run_status);
   return (
@@ -456,6 +466,30 @@ function SuiteCaseRow({ c, runDisabled, onView, onRun, onAnalysis, onHistory, on
         <SuiteCaseJiraScenarioLine c={c} />
       </span>
       <div className="automation-spike-suite-item-actions">
+        <FloatingTooltip text="Edit this test case.">
+          <button
+            type="button"
+            className="tc-edit-icon-btn"
+            onClick={() => onEdit(c)}
+            disabled={runDisabled}
+            aria-label="Edit test case"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M12 20h9" />
+              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+            </svg>
+          </button>
+        </FloatingTooltip>
         <FloatingTooltip text="View test steps">
           <button
             type="button"
@@ -564,6 +598,7 @@ export function AutomationSpikeSectionCards({
   automationRetentionDays = null,
   auditModalOpen = false,
   onDismissAudit,
+  onEditSuiteCase,
 }) {
   const [suiteCases, setSuiteCases] = useState([]);
   const [selectors, setSelectors] = useState([]);
@@ -1748,9 +1783,7 @@ export function AutomationSpikeSectionCards({
             <div className="automation-saved-suite-run-filters-body">
             <div className="automation-saved-suite-run-filters-field">
               <div className="automation-saved-suite-run-filters-field-head">
-                <span className="automation-saved-suite-run-filters-k">
-                  Tag <span className="automation-saved-suite-run-filters-hint">(Optional)</span>
-                </span>
+                <span className="automation-saved-suite-run-filters-k">Tag</span>
                 <span className="label-with-info automation-saved-suite-run-filters-or-with-info">
                   <span className="automation-saved-suite-run-filters-pill">OR match</span>
                   <FieldInfo text="A test runs if it has at least one of these tags (OR)." />
@@ -1859,9 +1892,7 @@ export function AutomationSpikeSectionCards({
             </div>
             <div className="automation-saved-suite-run-filters-field">
               <div className="automation-saved-suite-run-filters-field-head">
-                <span className="automation-saved-suite-run-filters-k">
-                  JIRA ID <span className="automation-saved-suite-run-filters-hint">(Optional)</span>
-                </span>
+                <span className="automation-saved-suite-run-filters-k">JIRA ID</span>
                 <span className="label-with-info automation-saved-suite-run-filters-or-with-info">
                   <span className="automation-saved-suite-run-filters-pill">OR match</span>
                   <FieldInfo text="A test runs if its JIRA key matches one of these (OR)." />
@@ -2171,6 +2202,7 @@ export function AutomationSpikeSectionCards({
                     )}
                     runDisabled={suiteBusy || spikeRunBusy}
                     onView={openSuiteBddView}
+                    onEdit={onEditSuiteCase ?? (() => {})}
                     onRun={openRunOneCase}
                     onAnalysis={openSuiteAnalysis}
                     onHistory={openSuiteHistory}

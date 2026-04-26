@@ -125,3 +125,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Minor improvements
 - Updated docker-compose.yml
+
+---
+## [2.2.0]
+
+### Added
+- Added edit button in 'Auto Test' mode for saved test case
+- Added ABORTED graph in HTML report
+
+### Changed
+- Minor improvements
+- Updated docker-compose.yml

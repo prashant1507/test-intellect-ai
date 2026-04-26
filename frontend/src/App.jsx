@@ -117,6 +117,9 @@ export default function App() {
   const [automationSpikeRunBusy, setAutomationSpikeRunBusy] = useState(false);
   const [automationSpikePrefillAt, setAutomationSpikePrefillAt] = useState(0);
   const [automationSpikePrefill, setAutomationSpikePrefill] = useState(null);
+  const clearAutomationSpikePrefill = useCallback(() => {
+    setAutomationSpikePrefill(null);
+  }, []);
   const [automationSuiteRunBusy, setAutomationSuiteRunBusy] = useState(false);
   const [automationRetentionDays, setAutomationRetentionDays] = useState(null);
   const [showAuditUi, setShowAuditUi] = useState(true);
@@ -1756,6 +1759,30 @@ export default function App() {
     [showAutoTestsUi, mainRequirementKey],
   );
 
+  const onEditSuiteCase = useCallback(
+    (suiteCase) => {
+      if (!showAutoTestsUi) return;
+      setInputMode("automation");
+      inputModeRef.current = "automation";
+      const spikeType =
+        String(suiteCase?.spike_type || "ui").toLowerCase() === "api"
+          ? "api"
+          : "ui";
+      setAutomationSpikePrefill({
+        id: suiteCase?.id,
+        title: suiteCase?.title ?? "",
+        bdd: suiteCase?.bdd ?? "",
+        url: suiteCase?.url ?? "",
+        jiraId: suiteCase?.jira_id ?? "",
+        requirementTicketId: suiteCase?.requirement_ticket_id ?? "",
+        tag: suiteCase?.tag ?? "",
+        spike_type: spikeType,
+      });
+      setAutomationSpikePrefillAt((n) => n + 1);
+    },
+    [showAutoTestsUi],
+  );
+
   const memoryPushTicketId =
     memoryPanel?.phase === "ok" ? normTicketId(memoryPanel.ticket_id) || null : null;
 
@@ -2510,6 +2537,7 @@ export default function App() {
                   }
                   prefillAt={automationSpikePrefillAt}
                   prefillFromCase={automationSpikePrefill}
+                  onClearAutomationPrefill={clearAutomationSpikePrefill}
                 />
               </div>
             ) : null}
@@ -2790,6 +2818,7 @@ export default function App() {
                 automationRetentionDays={automationRetentionDays}
                 auditModalOpen={auditModalOpen}
                 onDismissAudit={() => setAuditModalOpen(false)}
+                onEditSuiteCase={onEditSuiteCase}
               />
             </div>
           ) : null}
@@ -2887,7 +2916,7 @@ export default function App() {
                   ) : null}
                   {inputMode === "jira" && reqFetchMeta.hadSavedMemory && !diff ? (
                     <p className="meta req-fetch-hint" role="status">
-                      No text changes vs last saved history for this ticket.
+                      No requirement changes vs last saved history for this ticket.
                     </p>
                   ) : null}
                 </>

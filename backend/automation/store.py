@@ -331,9 +331,15 @@ def get_suite_case(case_id: str) -> dict[str, Any] | None:
         c.close()
 
 
-def would_duplicate_suite_case(title: str, jira_id: str) -> str | None:
+def would_duplicate_suite_case(
+    title: str,
+    jira_id: str,
+    *,
+    exclude_case_id: str | None = None,
+) -> str | None:
     t = (title or "").strip() or "Untitled"
     j = (jira_id or "").strip()
+    ex = (exclude_case_id or "").strip()
     c = _connect()
     try:
         if j:
@@ -343,8 +349,9 @@ def would_duplicate_suite_case(title: str, jira_id: str) -> str | None:
                 WHERE jira_id IS NOT NULL
                   AND TRIM(COALESCE(jira_id, '')) != ''
                   AND LOWER(TRIM(jira_id)) = LOWER(?)
+                  AND (TRIM(?) = '' OR id != ?)
                 """,
-                (j,),
+                (j, ex, ex),
             ).fetchone()
             if r:
                 return "A saved suite case with this Test ID already exists."
@@ -354,8 +361,9 @@ def would_duplicate_suite_case(title: str, jira_id: str) -> str | None:
                 SELECT 1 FROM automation_suite_cases
                 WHERE (jira_id IS NULL OR TRIM(COALESCE(jira_id, '')) = '')
                   AND TRIM(title) = ?
+                  AND (TRIM(?) = '' OR id != ?)
                 """,
-                (t,),
+                (t, ex, ex),
             ).fetchone()
             if r:
                 return "A saved suite case with this scenario name already exists."
@@ -412,6 +420,56 @@ def add_suite_case(
     finally:
         c.close()
     return cid
+
+
+def update_suite_case(
+    case_id: str,
+    title: str,
+    bdd: str,
+    url: str,
+    html_dom: str,
+    *,
+    jira_id: str = "",
+    tag: str = "",
+    requirement_ticket_id: str = "",
+    spike_type: str = "ui",
+) -> bool:
+    tid = (case_id or "").strip()
+    if not tid:
+        return False
+    jira = (jira_id or "").strip() or None
+    ta = normalize_tag_csv(tag) or None
+    reqt = (requirement_ticket_id or "").strip() or None
+    stp = (spike_type or "ui").strip().lower()
+    if stp not in ("ui", "api"):
+        stp = "ui"
+    h = (html_dom or "").strip() or None
+    c = _connect()
+    try:
+        if not c.execute("SELECT 1 FROM automation_suite_cases WHERE id=?", (tid,)).fetchone():
+            return False
+        c.execute(
+            """
+            UPDATE automation_suite_cases
+            SET title=?, bdd=?, url=?, html_dom=?, jira_id=?, tag=?, requirement_ticket_id=?, spike_type=?
+            WHERE id=?
+            """,
+            (
+                title.strip() or "Untitled",
+                bdd,
+                url.strip(),
+                h,
+                jira,
+                ta,
+                reqt,
+                stp,
+                tid,
+            ),
+        )
+        c.commit()
+        return True
+    finally:
+        c.close()
 
 
 def delete_suite_case(case_id: str) -> bool:

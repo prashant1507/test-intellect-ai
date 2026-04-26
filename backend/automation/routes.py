@@ -36,6 +36,7 @@ from .store import (
     list_suite_case_run_history,
     list_suite_cases,
     set_automation_kv,
+    update_suite_case,
     would_duplicate_suite_case,
 )
 from . import suite_state
@@ -357,6 +358,39 @@ def automation_suite_add(body: SuiteCaseIn) -> dict[str, str]:
         spike_type=body.spike_type,
     )
     return {"id": cid, "ok": "true"}
+
+
+@router.put("/suite/{case_id}")
+def automation_suite_update(case_id: str, body: SuiteCaseIn) -> dict[str, str]:
+    t = _parse_suite_case_id(case_id)
+    old = get_suite_case(t)
+    if old is None:
+        raise HTTPException(status_code=404, detail="not found")
+    dup = would_duplicate_suite_case(
+        (body.title or "").strip(),
+        body.jira_id,
+        exclude_case_id=t,
+    )
+    if dup:
+        raise HTTPException(status_code=409, detail=dup)
+    in_html = (body.html_dom or "").strip()
+    if in_html:
+        html_f = in_html
+    else:
+        html_f = (str(old.get("html_dom") or "").strip()) or ""
+    if not update_suite_case(
+        t,
+        (body.title or "").strip(),
+        body.bdd,
+        body.url.strip(),
+        html_f,
+        jira_id=body.jira_id,
+        tag=body.tag,
+        requirement_ticket_id=body.requirement_ticket_id,
+        spike_type=body.spike_type,
+    ):
+        raise HTTPException(status_code=404, detail="not found")
+    return {"id": t, "ok": "true"}
 
 
 @router.delete("/suite/{case_id}")

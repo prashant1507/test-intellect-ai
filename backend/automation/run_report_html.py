@@ -362,6 +362,15 @@ def _single_case_pass_fail_skip(ok: bool, steps: list) -> tuple[int, int, int]:
     return (0, 1, 0)
 
 
+def _case_badge_from_status(ok: bool, case_status: str | None) -> tuple[str, str]:
+    u = (case_status or "").strip().upper()
+    if u == "ABORTED":
+        return ("ABORTED", "aborted")
+    if ok:
+        return ("PASS", "pass")
+    return ("FAIL", "fail")
+
+
 def _case_nav_data_status(c: dict[str, Any]) -> str:
     raw = c.get("case_status") or c.get("result") or ""
     u = str(raw).strip().upper()
@@ -543,21 +552,33 @@ def _html_extent_topbar(*, copy_id: str = "", copy_label: str = "Copy id") -> st
     )
 
 
-def _html_extent_donut(passed: int, failed: int, skipped: int = 0) -> str:
+def _html_extent_donut(
+    passed: int,
+    failed: int,
+    skipped: int = 0,
+    *,
+    aborted: int = 0,
+) -> str:
     p = max(0, int(passed))
     f = max(0, int(failed))
+    ab = max(0, int(aborted))
     sk = max(0, int(skipped))
-    total = p + f + sk
+    total = p + f + ab + sk
     if total <= 0:
         return ""
     pp = 100.0 * p / total
     fp = 100.0 * f / total
+    abp = 100.0 * ab / total
     skp = 100.0 * sk / total
-    cap = f"Pass {p} ({pp:.0f}%), Fail {f} ({fp:.0f}%), Skipped {sk} ({skp:.0f}%)"
+    cap = (
+        f"Pass {p} ({pp:.0f}%), Fail {f} ({fp:.0f}%), "
+        f"Aborted {ab} ({abp:.0f}%), Skipped {sk} ({skp:.0f}%)"
+    )
     return (
         f'<div class="report-extent-donut-wrap" role="img" '
         f'aria-label="{_e(cap)}" title="{_e(cap)}">'
-        f'<div class="report-extent-donut" style="--pct-pass:{pp:.2f};--pct-fail:{fp:.2f};--pct-skip:{skp:.2f}">'
+        f'<div class="report-extent-donut" style="--pct-pass:{pp:.2f};--pct-fail:{fp:.2f};'
+        f'--pct-aborted:{abp:.2f};--pct-skip:{skp:.2f}">'
         f'<div class="report-extent-donut-hole">'
         f'<span class="report-extent-donut-total">{_e(str(total))}</span>'
         f'<span class="report-extent-donut-lbl">tests</span>'
@@ -748,21 +769,21 @@ def _html_tag_breakdown_for_single_case(tag_raw: str, ok: bool, steps: list) -> 
 
 def _aggregate_cases_by_tag(
     cases: list[dict[str, Any]],
-) -> list[tuple[str, int, int]]:
-    d: defaultdict[str, list[int]] = defaultdict(lambda: [0, 0])
+) -> list[tuple[str, int, int, int, int]]:
+    d: defaultdict[str, list[int]] = defaultdict(lambda: [0, 0, 0, 0])
+    bucket_idx = {"pass": 0, "fail": 1, "aborted": 2, "skipped": 3}
     for c in cases:
         toks = parse_tag_tokens(str(c.get("tag") or ""))
         if not toks:
             toks = ["—"]
         else:
             toks = list(dict.fromkeys(toks))
+        b = _case_nav_data_status(c)
+        i = bucket_idx.get(b, 1)
         for lab in toks:
-            if c.get("ok"):
-                d[lab][0] += 1
-            else:
-                d[lab][1] += 1
+            d[lab][i] += 1
     return sorted(
-        ((k, v[0], v[1]) for k, v in d.items()),
+        ((k, v[0], v[1], v[2], v[3]) for k, v in d.items()),
         key=lambda t: (t[0] == "—", t[0].lower()),
     )
 
@@ -772,11 +793,13 @@ def _html_tag_breakdown_for_suite(cases: list[dict[str, Any]]) -> str:
         return ""
     rows = _aggregate_cases_by_tag(cases)
     blocks: list[str] = []
-    for label, cpass, cfail in rows:
-        max_c = max(cpass, cfail, 1)
+    for label, cpass, cfail, cabort, cskip in rows:
+        max_c = max(cpass, cfail, cabort, cskip, 1)
         bar_rows = [
             _html_dash_hbar_row("Pass", cpass, max_c, "pass"),
             _html_dash_hbar_row("Fail", cfail, max_c, "fail"),
+            _html_dash_hbar_row("Aborted", cabort, max_c, "aborted"),
+            _html_dash_hbar_row("Skipped", cskip, max_c, "skip"),
         ]
         t = _e(label)
         a = _e("Tag: " + label)
@@ -797,35 +820,37 @@ def _html_tag_breakdown_for_suite(cases: list[dict[str, Any]]) -> str:
 
 def _html_suite_run_dashboard(cases: list[dict[str, Any]]) -> str:
     n_case = len(cases)
-    cpass = sum(1 for c in cases if c.get("ok"))
-    cfail = sum(
-        1
-        for c in cases
-        if not c.get("ok") and not _all_steps_skipped(c.get("steps") or [])
-    )
-    cskip = sum(
-        1
-        for c in cases
-        if not c.get("ok") and _all_steps_skipped(c.get("steps") or [])
-    )
-    if cpass + cfail + cskip != n_case:
-        cfail = n_case - cpass - cskip
-    max_c = max(cpass, cfail, cskip, 1)
+    cpass = sum(1 for c in cases if _case_nav_data_status(c) == "pass")
+    cfail = sum(1 for c in cases if _case_nav_data_status(c) == "fail")
+    cabort = sum(1 for c in cases if _case_nav_data_status(c) == "aborted")
+    cskip = sum(1 for c in cases if _case_nav_data_status(c) == "skipped")
+    max_c = max(cpass, cfail, cabort, cskip, 1)
     bar_rows = [
         _html_dash_hbar_row("Pass", cpass, max_c, "pass"),
         _html_dash_hbar_row("Fail", cfail, max_c, "fail"),
+        _html_dash_hbar_row("Aborted", cabort, max_c, "aborted"),
     ]
     if cskip:
         bar_rows.append(_html_dash_hbar_row("Skipped", cskip, max_c, "skip"))
-    donut = _html_extent_donut(cpass, cfail, cskip)
-    if cskip:
-        kpi = (
+    donut = _html_extent_donut(cpass, cfail, cskip, aborted=cabort)
+    kpi_skip = (
+        (
             f'<div class="report-dash-kpi report-dash-kpi--extent">'
             f'<span class="report-dash-kpi-v report-dash-kpi-v--skip">{_e(str(cskip))}</span>'
             f'<span class="report-dash-kpi-l">Skipped</span></div>'
         )
-    else:
-        kpi = ""
+        if cskip
+        else ""
+    )
+    kpi_ab = (
+        (
+            f'<div class="report-dash-kpi report-dash-kpi--extent">'
+            f'<span class="report-dash-kpi-v report-dash-kpi-v--aborted">{_e(str(cabort))}</span>'
+            f'<span class="report-dash-kpi-l">Aborted</span></div>'
+        )
+        if cabort
+        else ""
+    )
     return (
         f'<section class="report-dash report-dash--suite report-dash--extent" aria-label="Test Status">'
         f'<h2 class="section-title"><span class="title-accent">Test Status</span></h2>'
@@ -838,7 +863,7 @@ def _html_suite_run_dashboard(cases: list[dict[str, Any]]) -> str:
         f'<span class="report-dash-kpi-l">Passed</span></div>'
         f'<div class="report-dash-kpi report-dash-kpi--extent"><span class="report-dash-kpi-v report-dash-kpi-v--bad">{_e(str(cfail))}</span>'
         f'<span class="report-dash-kpi-l">Failed</span></div>'
-        f"{kpi}"
+        f"{kpi_ab}{kpi_skip}"
         f"</div></div>"
         f'<div class="report-dash-bars">{"".join(bar_rows)}</div>'
         f"</section>"
@@ -871,6 +896,7 @@ def _build_case_content_html(
     trace_href: str | None = None,
     embed_portable: bool = True,
     run_environment: dict[str, Any] | None = None,
+    case_status: str | None = None,
 ) -> str:
     h = _e(title or "Spike")
     u = _e(url)
@@ -879,7 +905,7 @@ def _build_case_content_html(
     _tag_list = parse_tag_tokens(tag)
     tag_e = _e(" · ".join(_tag_list)) if _tag_list else "—"
     report_dt = _e(_format_report_datetime())
-    overall = "PASS" if ok else "FAIL"
+    overall, result_mod = _case_badge_from_status(ok, case_status)
     bdd_pre = _format_bdd_to_html(bdd)
     step_html = _step_blocks_html(
         run_id, bdd, steps, embed_portable=embed_portable
@@ -904,7 +930,6 @@ def _build_case_content_html(
     else:
         trace_block = ""
     log_txt = _e("\n".join(log[-200:]))
-    result_mod = "pass" if ok else "fail"
     env_block = _html_environment_section(run_environment, for_landing=False)
     return f"""<header class="report-header">
   <div class="report-header-top">
@@ -980,6 +1005,7 @@ _REPORT_HEAD = """
   --mono:ui-monospace,"SFMono-Regular","SF Mono",Menlo,Consolas,monospace;
   --extent-pass:#26a69a;
   --extent-fail:#ef5350;
+  --extent-aborted:#f59e0b;
   --extent-skip:#ffb74d;
   --extent-bar:#1b5e20;
   --extent-bar2:#00897b;
@@ -1010,6 +1036,7 @@ _REPORT_HEAD = """
   --shadow:0 1px 2px rgba(15,23,42,.06),0 4px 12px rgba(15,23,42,.05);
   --extent-pass:#00897b;
   --extent-fail:#e53935;
+  --extent-aborted:#d97706;
   --extent-skip:#fb8c00;
   --extent-bar:#2e7d32;
   --extent-bar2:#00695c;
@@ -1339,6 +1366,7 @@ body{{
 }}
 .report-dash-hbar-f--pass{{background:linear-gradient(90deg,#22c55e,#4ade80);}}
 .report-dash-hbar-f--fail{{background:linear-gradient(90deg,#dc2626,#f87171);}}
+.report-dash-hbar-f--aborted{{background:linear-gradient(90deg,#f59e0b,#fbbf24);}}
 .report-dash-hbar-f--skip{{background:linear-gradient(90deg,#d97706,#fbbf24);}}
 .report-dash-hbar-f--unk{{background:linear-gradient(90deg,#64748b,#94a3b8);}}
 .report-dash-hbar-n{{
@@ -1480,7 +1508,8 @@ body{{
 }}
 .report-extent-donut{{
   --a1:calc(var(--pct-pass)*3.6deg);
-  --a2:calc((var(--pct-pass)+var(--pct-fail))*3.6deg);
+  --a2:calc((var(--pct-pass) + var(--pct-fail))*3.6deg);
+  --a3:calc((var(--pct-pass) + var(--pct-fail) + var(--pct-aborted))*3.6deg);
   width:7.25rem;
   height:7.25rem;
   border-radius:50%;
@@ -1490,7 +1519,8 @@ body{{
   background:conic-gradient(
     var(--extent-pass) 0deg var(--a1),
     var(--extent-fail) var(--a1) var(--a2),
-    var(--extent-skip) var(--a2) 360deg
+    var(--extent-aborted) var(--a2) var(--a3),
+    var(--extent-skip) var(--a3) 360deg
   );
   box-shadow:0 2px 10px rgba(0,0,0,.2);
 }}
@@ -1538,6 +1568,7 @@ body{{
   box-shadow:0 1px 0 rgba(255,255,255,.04);
 }}
 .report-dash-kpi-v--skip{{color:var(--extent-skip);}}
+.report-dash-kpi-v--aborted{{color:var(--extent-aborted);}}
 @media (max-width:28rem){{
   .report-dash-row{{flex-direction:column;align-items:stretch;}}
   .report-extent-donut-wrap{{justify-content:flex-start;}}
@@ -1682,6 +1713,16 @@ body{{
   background:var(--fail-bg);
   color:var(--fail-line);
   border:1px solid color-mix(in srgb, var(--fail-line) 35%, transparent);
+}}
+.result-badge--aborted{{
+  background:rgba(245,158,11,.14);
+  color:#f59e0b;
+  border:1px solid color-mix(in srgb, #f59e0b 38%, transparent);
+}}
+[data-theme="light"] .result-badge--aborted{{
+  background:rgba(217,119,6,.1);
+  color:#d97706;
+  border:1px solid color-mix(in srgb, #d97706 35%, transparent);
 }}
 .report-meta{{
   display:grid;
@@ -2362,6 +2403,8 @@ def render_batch_report_html(
             trace_href = None
         re_env = c.get("run_environment")
         run_env_for_case = re_env if isinstance(re_env, dict) else None
+        cs_raw = c.get("case_status")
+        case_st = str(cs_raw).strip() if cs_raw is not None else None
         case_block = _build_case_content_html(
             run_id,
             t,
@@ -2377,6 +2420,7 @@ def render_batch_report_html(
             trace_href=trace_href,
             embed_portable=embed_portable,
             run_environment=run_env_for_case,
+            case_status=case_st or None,
         )
         cst = _case_nav_data_status(c)
         ncls = _nav_st_classes(cst)

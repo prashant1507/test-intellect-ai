@@ -20,6 +20,7 @@ from prompts import (
 )
 from settings import settings
 
+from . import cancel
 from .bdd import parse_bdd_structured, parse_bdd_step_lines
 from .run_report_html import render_spike_run_html
 from .errors import SpikeUserError
@@ -206,8 +207,6 @@ def _playwright_run_locator_action(
 
 
 def _raise_if_spike_cancelled(log: list[str]) -> None:
-    from . import cancel
-
     if cancel.is_stop_one_spike() or cancel.is_stop_all_suite():
         _l(log, "Run cancelled (user).")
         raise SpikeUserError(cancel.cancel_message(), logs=log)
@@ -1330,12 +1329,17 @@ def run_automation_spike(
     except SpikeUserError as e:
         setattr(e, "run_id", run_id)
         _l(e.logs, f"SpikeUserError: {e}")
+        is_abort = str(e).strip() == cancel.cancel_message().strip()
         update_run(
             run_id,
-            status="failed",
+            status="aborted" if is_abort else "failed",
             error=str(e),
             trace_path=None,
-            summary={"err": str(e), "debug_logs": list(e.logs)},
+            summary={
+                "err": str(e),
+                "debug_logs": list(e.logs),
+                "aborted": is_abort,
+            },
             used_cache=False,
         )
         raise
@@ -1351,8 +1355,6 @@ def run_automation_spike(
         )
         raise SpikeUserError(str(e), logs=log) from e
     finally:
-        from . import cancel
-
         cancel.clear_stop_one_spike()
 
 

@@ -134,6 +134,7 @@
     - Stop all test in suite
     - Download report
     - View last report
+    - Edit test case - will allow user to edit existing test case in 'Start Test' form
 - Supports both UI and API 
 - Environment changes will be save din DB
 - Artifacts will be deleted after `AUTOMATION_RETENTION_DAYS` days
