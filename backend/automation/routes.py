@@ -4,13 +4,15 @@ import json
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import asyncio
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
+from audit_store import append_audit
+from keycloak_auth import claims_username, get_keycloak_claims
 from settings import settings
 
 from . import cancel
@@ -43,6 +45,19 @@ from . import suite_state
 from .suite import run_suite_sequential
 
 router = APIRouter(prefix="/automation", tags=["automation"])
+
+Kc = Annotated[dict | None, Depends(get_keycloak_claims)]
+
+
+def _maybe_automation_audit(kc: dict | None, ticket_id: str, action: str) -> None:
+    if settings.mock:
+        return
+    u = claims_username(kc) if settings.use_keycloak and kc else ""
+    t = (ticket_id or "").strip()
+    a = (action or "").strip()
+    if not t or not a:
+        return
+    append_audit(u, t, a, None)
 
 _UUID_36 = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z"
@@ -327,6 +342,44 @@ class SuiteCaseIn(BaseModel):
         return s if s in ("ui", "api") else "ui"
 
 
+def _suite_audit_ticket_id(body: SuiteCaseIn, fallback: str) -> str:
+    jid = (body.jira_id or "").strip()
+    if jid:
+        return jid
+    req = (body.requirement_ticket_id or "").strip()
+    if req:
+        return req
+    return (fallback or "").strip()
+
+
+def _automation_suite_audit_action(suite_save: bool, body: SuiteCaseIn) -> str:
+    tid = (body.jira_id or "").strip()
+    if suite_save:
+        if tid:
+            return f"Saved {tid} to Auto Test suite"
+        return "Saved to Auto Test suite"
+    if tid:
+        return f"Updated {tid} to Auto Test suite"
+    return "Updated to Auto Test suite"
+
+
+def _suite_audit_ticket_id_from_row(row: dict, fallback: str) -> str:
+    jid = (str(row.get("jira_id") or "")).strip()
+    if jid:
+        return jid
+    req = (str(row.get("requirement_ticket_id") or "")).strip()
+    if req:
+        return req
+    return (fallback or "").strip()
+
+
+def _automation_suite_delete_audit_action(row: dict) -> str:
+    tid = (str(row.get("jira_id") or "")).strip()
+    if tid:
+        return f"Deleted {tid} from Auto Test suite"
+    return "Deleted from Auto Test suite"
+
+
 @router.get("/suite")
 def automation_suite_list() -> dict[str, Any]:
     return {"cases": list_suite_cases()}
@@ -341,7 +394,7 @@ def automation_suite_case_run_history(case_id: str) -> dict[str, Any]:
 
 
 @router.post("/suite")
-def automation_suite_add(body: SuiteCaseIn) -> dict[str, str]:
+def automation_suite_add(body: SuiteCaseIn, kc: Kc) -> dict[str, str]:
     dup = would_duplicate_suite_case(
         (body.title or "").strip(), body.jira_id
     )
@@ -357,11 +410,14 @@ def automation_suite_add(body: SuiteCaseIn) -> dict[str, str]:
         requirement_ticket_id=body.requirement_ticket_id,
         spike_type=body.spike_type,
     )
+    _maybe_automation_audit(
+        kc, _suite_audit_ticket_id(body, cid), _automation_suite_audit_action(True, body)
+    )
     return {"id": cid, "ok": "true"}
 
 
 @router.put("/suite/{case_id}")
-def automation_suite_update(case_id: str, body: SuiteCaseIn) -> dict[str, str]:
+def automation_suite_update(case_id: str, body: SuiteCaseIn, kc: Kc) -> dict[str, str]:
     t = _parse_suite_case_id(case_id)
     old = get_suite_case(t)
     if old is None:
@@ -390,14 +446,23 @@ def automation_suite_update(case_id: str, body: SuiteCaseIn) -> dict[str, str]:
         spike_type=body.spike_type,
     ):
         raise HTTPException(status_code=404, detail="not found")
+    _maybe_automation_audit(
+        kc, _suite_audit_ticket_id(body, t), _automation_suite_audit_action(False, body)
+    )
     return {"id": t, "ok": "true"}
 
 
 @router.delete("/suite/{case_id}")
-def automation_suite_delete(case_id: str) -> dict[str, str]:
+def automation_suite_delete(case_id: str, kc: Kc) -> dict[str, str]:
     t = _parse_suite_case_id(case_id)
+    old = get_suite_case(t)
+    if old is None:
+        raise HTTPException(status_code=404, detail="not found")
     if not delete_suite_case(t):
         raise HTTPException(status_code=404, detail="not found")
+    _maybe_automation_audit(
+        kc, _suite_audit_ticket_id_from_row(old, t), _automation_suite_delete_audit_action(old)
+    )
     return {"ok": "true"}
 
 

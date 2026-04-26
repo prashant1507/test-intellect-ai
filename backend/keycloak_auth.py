@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 import jwt
+from fastapi import Header, HTTPException
 from jwt import PyJWKClient
 
 from settings import settings
@@ -37,3 +38,15 @@ def verify_keycloak_token(token: str) -> dict:
 
 def claims_username(claims: dict) -> str:
     return str(claims.get("preferred_username") or claims.get("email") or claims.get("sub") or "unknown")
+
+
+def get_keycloak_claims(authorization: str | None = Header(None)) -> dict | None:
+    if not settings.use_keycloak:
+        return None
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Authentication required")
+    token = authorization[7:].strip()
+    try:
+        return verify_keycloak_token(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token") from None

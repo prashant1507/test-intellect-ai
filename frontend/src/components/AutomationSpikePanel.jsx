@@ -50,6 +50,74 @@ function RunStatusPill({ status }) {
   );
 }
 
+function suiteCaseToSuitePayloadFromPrefill(pc) {
+  if (!pc) return null;
+  const titleT = String(pc.title ?? "").trim();
+  const reqT = String(pc.requirementTicketId ?? "").trim();
+  const jiraT = String(pc.jiraId ?? "").trim();
+  const bdd0 = String(pc.bdd ?? "");
+  const stRaw = String(
+    pc.spike_type ?? pc.spikeType ?? "",
+  )
+    .trim()
+    .toLowerCase();
+  let testType = "UI";
+  let spikeForTag = "ui";
+  if (stRaw === "api") {
+    testType = "API";
+    spikeForTag = "api";
+  } else if (stRaw === "ui") {
+    testType = "UI";
+    spikeForTag = "ui";
+  } else {
+    const tagCsv = String(pc.tag ?? "");
+    const first = tagCsv
+      .split(",")
+      .map((s) => s.trim().toLowerCase())
+      .find((s) => s.length);
+    if (first === "api") {
+      testType = "API";
+      spikeForTag = "api";
+    } else if (first === "ui") {
+      testType = "UI";
+      spikeForTag = "ui";
+    } else {
+      testType = "UI";
+      spikeForTag = "ui";
+    }
+  }
+  const tagStripped = stripLeadingTestTypeFromTag(
+    String(pc.tag ?? ""),
+    spikeForTag,
+  );
+  return {
+    title: titleT,
+    bdd: bdd0,
+    jira_id: jiraT,
+    requirement_ticket_id: reqT,
+    tag: suiteTagWithTestType(testType, tagStripped),
+    spike_type: testType === "API" ? "api" : "ui",
+  };
+}
+
+function formToSuiteApiPayload(
+  title,
+  bdd,
+  requirementTicketId,
+  jiraId,
+  testType,
+  tag,
+) {
+  return {
+    title: title.trim(),
+    bdd,
+    jira_id: jiraId.trim(),
+    requirement_ticket_id: requirementTicketId.trim(),
+    tag: suiteTagWithTestType(testType, tag),
+    spike_type: testType === "API" ? "api" : "ui",
+  };
+}
+
 export function AutomationSpikePanel({
   api,
   onListsChanged,
@@ -90,6 +158,42 @@ export function AutomationSpikePanel({
   const testTypeFirstRadioRef = useRef(null);
 
   const bddStepLines = useMemo(() => parseBddStepLines(bdd), [bdd]);
+
+  const suiteApiPayloadCurrent = useMemo(
+    () =>
+      formToSuiteApiPayload(
+        title,
+        bdd,
+        requirementTicketId,
+        jiraId,
+        testType,
+        tag,
+      ),
+    [title, bdd, requirementTicketId, jiraId, testType, tag],
+  );
+
+  const suiteApiPayloadWhenEditLoaded = useMemo(() => {
+    if (!editingSuiteCaseId) return null;
+    if (prefillAt < 1 || !prefillFromCase) return null;
+    const pid = prefillFromCase.id ?? prefillFromCase.caseId;
+    if (pid == null || String(pid).trim() !== String(editingSuiteCaseId)) {
+      return null;
+    }
+    return suiteCaseToSuitePayloadFromPrefill(prefillFromCase);
+  }, [editingSuiteCaseId, prefillAt, prefillFromCase]);
+
+  const maySubmitSuiteUpdate = useMemo(() => {
+    if (!editingSuiteCaseId) return true;
+    if (!suiteApiPayloadWhenEditLoaded) return true;
+    return (
+      JSON.stringify(suiteApiPayloadWhenEditLoaded) !==
+      JSON.stringify(suiteApiPayloadCurrent)
+    );
+  }, [
+    editingSuiteCaseId,
+    suiteApiPayloadWhenEditLoaded,
+    suiteApiPayloadCurrent,
+  ]);
 
   const resetAutomationForm = useCallback(() => {
     setTitle("");
@@ -219,6 +323,8 @@ export function AutomationSpikePanel({
   }, [result?.run_id, result?.steps]);
 
   const formLocked = busy || suiteRunBusy;
+  const saveSuiteButtonDisabled =
+    formLocked || (editingSuiteCaseId && !maySubmitSuiteUpdate);
 
   const run = async () => {
     setErr("");
@@ -608,7 +714,7 @@ export function AutomationSpikePanel({
               : "secondary"
           }
           onClick={saveToSuite}
-          disabled={formLocked}
+          disabled={saveSuiteButtonDisabled}
         >
           {editingSuiteCaseId ? "Update to Suite" : "Save to Suite"}
         </button>

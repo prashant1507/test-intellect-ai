@@ -34,5 +34,13 @@ export function AuditActionCell({ action, jiraBaseUrl }) {
       </span>
     );
   }
+  if (parts.type === "automation_suite_id") {
+    return (
+      <span className="audit-action-cell">
+        {parts.op} <AuditIssueKeyLink issueKey={parts.testId} jiraBaseUrl={jiraBaseUrl} />{" "}
+        {parts.op === "Deleted" ? "from Auto Test suite" : "to Auto Test suite"}
+      </span>
+    );
+  }
   return <>{parts.text}</>;
 }

@@ -11,7 +11,6 @@
 Web app that pulls JIRA requirements (or paste text), uses OpenAI-compatible APIs to generate Gherkin-style test cases,
 push to JIRA, and run UI/API automation.
 
-
 Optionally:
 
 - Save runs per ticket in SQLite
@@ -282,7 +281,7 @@ flowchart TB
 
 ## Features
 
-### Modes (toggle via `.env` / `GET /api/config`)
+### Modes (toggle via `.env`)
 
 - **JIRA:** Fetch ticket (ADF/wiki/HTML → text).
 - **Paste Requirements:** Generate from text/Markdown, no JIRA.
@@ -397,7 +396,8 @@ local LLM or cloud API; with **`MOCK=true`**, JIRA can be dummy values.
 2. Point [docker-compose.yml](docker-compose.yml) at the image, then `docker compose up`
 3. UI is typically at `http://127.0.0.1:8001`
 
-Containers often set `LLM_TEXT_URL` → `http://host.docker.internal:...` to reach the host’s LM Studio. `USE_KEYCLOAK` (not a
+Containers often set `LLM_TEXT_URL` → `http://host.docker.internal:...` to reach the host’s LM Studio. `USE_KEYCLOAK` (
+not a
 lone `KEYCLOAK=` flag) must be `true` to enable Keycloak. See [docker-compose.yml](docker-compose.yml) for
 `KEYCLOAK_INTERNAL_URL` defaults.
 
@@ -408,24 +408,27 @@ lone `KEYCLOAK=` flag) must be `true` to enable Keycloak. See [docker-compose.ym
 <details>
 <summary><strong>API overview</strong></summary>
 
-| Method | Path                                | Purpose                                                                                               |
-|--------|-------------------------------------|-------------------------------------------------------------------------------------------------------|
-| `GET`  | `/api/config`                       | UI defaults: JIRA defaults, `mock`, feature flags, Keycloak client fields, idle timeout (no secrets). |
-| `GET`  | `/api/memory/list`                  | Saved tickets list (Keycloak: `Authorization: Bearer`).                                               |
-| `GET`  | `/api/memory/item/{ticket_id}`      | Saved `requirements` + `test_cases`.                                                                  |
-| `POST` | `/api/memory/update-test-cases`     | Persist test case list updates.                                                                       |
-| `POST` | `/api/memory/save-after-edit`       | Save after edit.                                                                                      |
-| `GET`  | `/api/audit/list`                   | Audit rows.                                                                                           |
-| `POST` | `/api/audit/auth`                   | Login/logout (Keycloak).                                                                              |
-| `POST` | `/api/fetch-ticket`                 | JIRA issue → `requirements`.                                                                          |
-| `POST` | `/api/generate-tests`               | JIRA path: generate, optional memory diff, save flags, min/max cases.                                 |
-| `POST` | `/api/generate-from-paste`          | Paste path: `description`, optional `title`, `memory_key`.                                            |
-| `POST` | `/api/jira/priorities`              | JIRA priorities (names + icon URLs).                                                                  |
-| `POST` | `/api/jira/push-test-case`          | Create/update test + link.                                                                            |
-| `POST` | `/api/generate-automation-skeleton` | LLM automation code skeleton for a test case.                                                         |
+| Method   | Path                                | Purpose                                                                                                                           |
+|----------|-------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
+| `GET`    | `/api/config`                       | UI defaults: JIRA defaults, `mock`, feature flags, Keycloak client fields, idle timeout (no secrets).                             |
+| `GET`    | `/api/memory/list`                  | Saved tickets list (Keycloak: `Authorization: Bearer`).                                                                           |
+| `GET`    | `/api/memory/item/{ticket_id}`      | Saved `requirements` + `test_cases`.                                                                                              |
+| `POST`   | `/api/memory/update-test-cases`     | Persist test case list updates.                                                                                                   |
+| `POST`   | `/api/memory/save-after-edit`       | Save after edit.                                                                                                                  |
+| `GET`    | `/api/audit/list`                   | Audit rows.                                                                                                                       |
+| `POST`   | `/api/audit/auth`                   | Login/logout (Keycloak).                                                                                                          |
+| `POST`   | `/api/fetch-ticket`                 | JIRA issue → `requirements`.                                                                                                      |
+| `POST`   | `/api/generate-tests`               | JIRA path: generate, optional memory diff, save flags, min/max cases.                                                             |
+| `POST`   | `/api/generate-from-paste`          | Paste path: `description`, optional `title`, `memory_key`.                                                                        |
+| `POST`   | `/api/jira/priorities`              | JIRA priorities (names + icon URLs).                                                                                              |
+| `POST`   | `/api/jira/push-test-case`          | Create/update test + link.                                                                                                        |
+| `POST`   | `/api/generate-automation-skeleton` | LLM automation code skeleton for a test case.                                                                                     |
+| `POST`   | `/api/automation/suite`             | Add a saved Auto Test case. With Keycloak, requires `Authorization: Bearer`; on success, writes **audit** (not when `MOCK=true`). |
+| `PUT`    | `/api/automation/suite/{case_id}`   | Update a saved case. Same auth and **audit** rules as `POST` suite.                                                               |
+| `DELETE` | `/api/automation/suite/{case_id}`   | Remove a saved case. Same auth and **audit** rules as `POST` suite.                                                               |
 
-**Automation** routes: suite CRUD, spike run, stop, reports, etc. — `backend/main.py` + `backend/automation/routes.py` (
-all under `/api/...`).
+**Automation** (other paths): list suite, run spike, stop, suite batch run, reports, artifacts, selectors, etc. — see
+`backend/automation/routes.py` (all under `/api/automation/...`).
 
 </details>
 
@@ -443,7 +446,9 @@ all under `/api/...`).
 - View Report will show the report from 'Start Test' as well
 - 'Run Test Case' button will be enabled when `SHOW_AUTO_TESTS_UI=true`
 - System will keep automation artifacts for last 20 days
-- If `LLM_VISION_URL` is not set, the **Upload mockups** UI and the **include attachment** checkboxes for generation are hidden; JIRA can still list ticket attachments. See [resources/env-variables.md](resources/env-variables.md) for details.
+- If `LLM_VISION_URL` is not set, the **Upload mockups** UI and the **include attachment** checkboxes for generation are
+  hidden; JIRA can still list ticket attachments. See [resources/env-variables.md](resources/env-variables.md) for
+  details.
 - If a step is passed using screenshot from Vision model then the record will not be saved in 'aved Selectors'
 
 ---

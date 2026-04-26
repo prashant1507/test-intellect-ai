@@ -5,6 +5,9 @@ const AUDIT_ACTION = {
   generate_test_cases: "Generated Tests",
   generate_test_cases_agentic: "Generated Tests",
   memory_update_test_cases: "Update saved history (priorities)",
+  automation_suite_save: "Saved to Auto Test suite",
+  automation_suite_update: "Updated to Auto Test suite",
+  automation_suite_delete: "Deleted from Auto Test suite",
   logged_in: "Logged In",
   logged_out: "Logged Out",
 };
@@ -57,6 +60,37 @@ export function auditActionParts(a) {
   }
   const key = normalizeTestCreateKey(a);
   if (key) return { type: "test_create", key: key.toUpperCase() };
+  if (
+    raw === "Saved to Auto Test suite" ||
+    raw === "Updated to Auto Test suite" ||
+    raw === "Deleted from Auto Test suite"
+  ) {
+    return { type: "plain", text: raw };
+  }
+  const suiteDel = /^Deleted (.+?) from Auto Test suite$/i.exec(raw);
+  if (suiteDel) {
+    return {
+      type: "automation_suite_id",
+      op: "Deleted",
+      testId: suiteDel[1].trim() || "—",
+    };
+  }
+  const suiteSave = /^Saved (.+?) to Auto Test suite$/i.exec(raw);
+  if (suiteSave) {
+    return {
+      type: "automation_suite_id",
+      op: "Saved",
+      testId: suiteSave[1].trim() || "—",
+    };
+  }
+  const suiteUp = /^Updated (.+?) to Auto Test suite$/i.exec(raw);
+  if (suiteUp) {
+    return {
+      type: "automation_suite_id",
+      op: "Updated",
+      testId: suiteUp[1].trim() || "—",
+    };
+  }
   return { type: "plain", text: a };
 }
 
@@ -65,6 +99,12 @@ export const auditActionLabel = (a) => {
   if (p.type === "test_create") return `Created ${p.key}`;
   if (p.type === "test_update") return `Updated ${p.key}`;
   if (p.type === "test_edit") return `Edited ${p.key}`;
+  if (p.type === "automation_suite_id") {
+    if (p.op === "Deleted") {
+      return `${p.op} ${p.testId} from Auto Test suite`;
+    }
+    return `${p.op} ${p.testId} to Auto Test suite`;
+  }
   return p.text;
 };
 

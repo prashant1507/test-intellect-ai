@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
@@ -51,7 +51,7 @@ from memory_store import (
     save,
 )
 from key_norm import norm_issue_key
-from keycloak_auth import claims_username, verify_keycloak_token
+from keycloak_auth import claims_username, get_keycloak_claims
 from requirement_images import merge_and_validate
 from automation import routes as automation_routes
 from automation.prefs import (
@@ -576,18 +576,6 @@ async def lifespan(_: FastAPI):
     except Exception as e:
         _LOG.warning("Automation retention prune failed: %s", e)
     yield
-
-
-def get_keycloak_claims(authorization: str | None = Header(None)) -> dict | None:
-    if not settings.use_keycloak:
-        return None
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Authentication required")
-    token = authorization[7:].strip()
-    try:
-        return verify_keycloak_token(token)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid or expired token") from None
 
 
 Kc = Annotated[dict | None, Depends(get_keycloak_claims)]

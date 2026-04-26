@@ -27,6 +27,7 @@ import {
   AUDIT_USER_EMPTY,
   auditActionLabel,
   downloadAuditPdf,
+  jiraBrowseHref,
 } from "./utils/audit";
 import {
   fmtReqMarkdown,
@@ -2161,9 +2162,25 @@ export default function App() {
                             <td>
                               {row.ticket_id === "AUTH" ? (
                                 <span className="audit-context-muted">—</span>
-                              ) : (
-                                <code className="audit-ticket">{row.ticket_id}</code>
-                              )}
+                              ) : (() => {
+                                const tid = String(row.ticket_id ?? "");
+                                const linkHref =
+                                  jiraUrl?.trim() &&
+                                  isLikelyJiraIssueKey(tid) &&
+                                  jiraBrowseHref(jiraUrl, tid);
+                                return linkHref ? (
+                                  <a
+                                    href={linkHref}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="audit-issue-link"
+                                  >
+                                    <code className="audit-ticket">{tid}</code>
+                                  </a>
+                                ) : (
+                                  <code className="audit-ticket">{tid}</code>
+                                );
+                              })()}
                             </td>
                             <td>
                               <AuditActionCell action={row.action} jiraBaseUrl={jiraUrl} />

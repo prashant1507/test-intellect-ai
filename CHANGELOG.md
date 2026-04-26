@@ -132,6 +132,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Added edit button in 'Auto Test' mode for saved test case
 - Added ABORTED graph in HTML report
+- Added save, delete and update action in Audit Records from Auto Tests mode
 
 ### Changed
 - Minor improvements

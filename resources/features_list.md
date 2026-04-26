@@ -25,6 +25,7 @@
 - Edited
 - Updated
 - Created
+- Auto test - edit, save, delete
 
 ---
 
