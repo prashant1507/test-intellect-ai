@@ -65,6 +65,55 @@ function buildEnvOptionsBody(envObj, patch) {
   };
 }
 
+function envBoolToggleRows(env) {
+  if (!env || typeof env !== "object") return [];
+  return [
+    {
+      name: "automation-opt-headless",
+      label: "Headless",
+      labelledBy: "automation-env-opt-headless",
+      on: !!env.automation_headless,
+      patchOn: { automation_headless: true },
+      patchOff: { automation_headless: false },
+      lockRow: env.automation_headless_locked === true,
+      labelInfo: env.automation_headless_locked
+        ? "Set by AUTOMATION_HEADLESS on the server."
+        : null,
+    },
+    {
+      name: "automation-opt-screenshot",
+      label: "Screenshots on Pass",
+      labelledBy: "automation-env-opt-screenshot",
+      on: !!env.automation_screenshot_on_pass,
+      patchOn: { automation_screenshot_on_pass: true },
+      patchOff: { automation_screenshot_on_pass: false },
+      lockRow: false,
+      labelInfo: null,
+    },
+    {
+      name: "automation-opt-trace",
+      label: "Generate Trace File",
+      labelledBy: "automation-env-opt-trace",
+      on: !!env.automation_trace_file_generation,
+      patchOn: { automation_trace_file_generation: true },
+      patchOff: { automation_trace_file_generation: false },
+      lockRow: false,
+      labelInfo: null,
+    },
+  ];
+}
+
+const AUTOMATION_BROWSER_OPTIONS = [
+  { value: "chromium", label: "Chromium" },
+  { value: "chrome", label: "Chrome" },
+  { value: "firefox", label: "Firefox" },
+  { value: "msedge", label: "Edge" },
+];
+
+const BROWSER_RADIO_VALUES = AUTOMATION_BROWSER_OPTIONS.map((o) => o.value);
+
+const PARALLEL_EXECUTION_CHOICES = [1, 2, 3, 4];
+
 const SKIP_PREV_FAIL_ERR = /^skipped \(previous step failed\)$/i;
 
 function stepIsPass(step) {
@@ -586,8 +635,6 @@ function SuiteCaseRow({
   );
 }
 
-const BROWSER_RADIO_VALUES = ["chromium", "chrome", "firefox", "msedge"];
-
 export function AutomationSpikeSectionCards({
   api,
   env,
@@ -816,6 +863,13 @@ export function AutomationSpikeSectionCards({
       }
     },
     [api, env, onAutomationEnv],
+  );
+
+  const runOrSuiteBusy = suiteBusy || spikeRunBusy;
+  const envFieldsLocked = browserSaving || envOptionsSaving || runOrSuiteBusy;
+  const parallelExecutionValue = useMemo(
+    () => defaultParallelFromEnv(env && typeof env === "object" ? env : {}),
+    [env],
   );
 
   const refreshLists = useCallback(async () => {
@@ -1467,286 +1521,6 @@ export function AutomationSpikeSectionCards({
         <div className="head automation-spike-metric-head">
           <h2>
             <span className="label-with-info">
-              <span>Environment</span>
-              <FieldInfo text="Saved in the automation database." />
-            </span>
-          </h2>
-        </div>
-        {env && typeof env === "object" ? (
-          <div className="automation-spike-env-inset">
-            <div className="automation-spike-env-text" role="status">
-              <div
-                className="automation-spike-env-grid"
-                aria-label="Automation environment"
-              >
-                    <span
-                      className="automation-spike-env-grid-label"
-                      id="automation-env-browser-label"
-                    >
-                      Browser
-                    </span>
-                <div className="automation-spike-env-grid-control">
-                  <div
-                    className="automation-spike-browser-radios"
-                    role="radiogroup"
-                    aria-labelledby="automation-env-browser-label"
-                  >
-                    {[
-                      { value: "chromium", label: "Chromium" },
-                      { value: "chrome", label: "Chrome" },
-                      { value: "firefox", label: "Firefox" },
-                      { value: "msedge", label: "Edge" },
-                    ].map(({ value, label }) => (
-                      <label key={value} className="automation-spike-browser-radio">
-                        <input
-                          type="radio"
-                          name="automation-spike-browser"
-                          value={value}
-                          checked={effectiveBrowser === value}
-                          onChange={onBrowserRadioChange}
-                          disabled={
-                            browserSaving ||
-                            envOptionsSaving ||
-                            suiteBusy ||
-                            spikeRunBusy
-                          }
-                        />
-                        <span>{label}</span>
-                      </label>
-                    ))}
-                  </div>
-                  {browserSaving ? <Spinner /> : null}
-                </div>
-                {[
-                  {
-                    name: "automation-opt-headless",
-                    label: "Headless",
-                    labelledBy: "automation-env-opt-headless",
-                    on: !!env.automation_headless,
-                    patchOn: { automation_headless: true },
-                    patchOff: { automation_headless: false },
-                    lockRow: env.automation_headless_locked === true,
-                    labelInfo: env.automation_headless_locked
-                      ? "Set by AUTOMATION_HEADLESS on the server."
-                      : null,
-                  },
-                  {
-                    name: "automation-opt-screenshot",
-                    label: "Screenshots on Pass",
-                    labelledBy: "automation-env-opt-screenshot",
-                    on: !!env.automation_screenshot_on_pass,
-                    patchOn: { automation_screenshot_on_pass: true },
-                    patchOff: { automation_screenshot_on_pass: false },
-                    lockRow: false,
-                    labelInfo: null,
-                  },
-                  {
-                    name: "automation-opt-trace",
-                    label: "Generate Trace File",
-                    labelledBy: "automation-env-opt-trace",
-                    on: !!env.automation_trace_file_generation,
-                    patchOn: { automation_trace_file_generation: true },
-                    patchOff: { automation_trace_file_generation: false },
-                    lockRow: false,
-                    labelInfo: null,
-                  },
-                ].map(
-                  ({
-                    name,
-                    label,
-                    labelledBy,
-                    on,
-                    patchOn,
-                    patchOff,
-                    lockRow,
-                    labelInfo,
-                  }) => (
-                    <Fragment key={name}>
-                      <span
-                        className="automation-spike-env-grid-label"
-                        id={labelledBy}
-                      >
-                        {labelInfo ? (
-                          <span className="label-with-info">
-                            <span>{label}</span>
-                            <FieldInfo text={labelInfo} />
-                          </span>
-                        ) : (
-                          label
-                        )}
-                      </span>
-                      <div className="automation-spike-env-grid-control">
-                        <div
-                          className="automation-spike-env-bool-radios"
-                          role="radiogroup"
-                          aria-labelledby={labelledBy}
-                        >
-                          <label className="automation-spike-env-bool-radio">
-                            <input
-                              type="radio"
-                              name={name}
-                              value="0"
-                              checked={!on}
-                              onChange={() => onEnvOptionsChange(patchOff)}
-                              disabled={
-                                browserSaving ||
-                                envOptionsSaving ||
-                                suiteBusy ||
-                                spikeRunBusy ||
-                                lockRow
-                              }
-                            />
-                            <span>Off</span>
-                          </label>
-                          <label className="automation-spike-env-bool-radio">
-                            <input
-                              type="radio"
-                              name={name}
-                              value="1"
-                              checked={on}
-                              onChange={() => onEnvOptionsChange(patchOn)}
-                              disabled={
-                                browserSaving ||
-                                envOptionsSaving ||
-                                suiteBusy ||
-                                spikeRunBusy ||
-                                lockRow
-                              }
-                            />
-                            <span>On</span>
-                          </label>
-                        </div>
-                      </div>
-                    </Fragment>
-                  ),
-                )}
-                <span
-                  className="automation-spike-env-grid-label"
-                  id="automation-env-opt-parallel"
-                >
-                  <span className="label-with-info">
-                    <span>Parallel Execution</span>
-                    <FieldInfo text="Number of parallel tests to be executed in the saved suite (Run all). 1 = one at a time." />
-                  </span>
-                </span>
-                <div className="automation-spike-env-grid-control">
-                  <div
-                    className="automation-spike-browser-radios automation-spike-parallel-radios"
-                    role="radiogroup"
-                    aria-labelledby="automation-env-opt-parallel"
-                  >
-                    {[1, 2, 3, 4].map((n) => {
-                      const cur =
-                        typeof env.automation_parallel_execution === "number" &&
-                        env.automation_parallel_execution >= 1 &&
-                        env.automation_parallel_execution <= 4
-                          ? env.automation_parallel_execution
-                          : 1;
-                      return (
-                        <label key={n} className="automation-spike-browser-radio">
-                          <input
-                            type="radio"
-                            name="automation-spike-parallel"
-                            value={String(n)}
-                            checked={cur === n}
-                            onChange={() =>
-                              void onEnvOptionsChange({ automation_parallel_execution: n })
-                            }
-                            disabled={
-                              browserSaving ||
-                              envOptionsSaving ||
-                              suiteBusy ||
-                              spikeRunBusy
-                            }
-                          />
-                          <span>{n}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-                <span
-                  className="automation-spike-env-grid-label"
-                  id="automation-env-opt-timeout"
-                >
-                  <span className="label-with-info">
-                    <span>Default Timeout (ms)</span>
-                    <FieldInfo text="Playwright default action timeout. Range 1000–600000." />
-                  </span>
-                </span>
-                <div className="automation-spike-env-grid-control">
-                  <input
-                    type="number"
-                    min={1000}
-                    max={600000}
-                    step={1000}
-                    className="automation-spike-env-timeout-input"
-                    id="automation-env-default-timeout-ms"
-                    aria-labelledby="automation-env-opt-timeout"
-                    value={
-                      automationTimeoutDraft !== null
-                        ? automationTimeoutDraft
-                        : String(
-                            typeof env.automation_default_timeout_ms === "number"
-                              ? env.automation_default_timeout_ms
-                              : 30000,
-                          )
-                    }
-                    onChange={(e) => setAutomationTimeoutDraft(e.target.value)}
-                    onBlur={() => {
-                      const cur =
-                        typeof env.automation_default_timeout_ms === "number"
-                          ? env.automation_default_timeout_ms
-                          : 30000;
-                      const raw =
-                        automationTimeoutDraft !== null
-                          ? automationTimeoutDraft
-                          : String(cur);
-                      setAutomationTimeoutDraft(null);
-                      const v = parseInt(String(raw).trim(), 10);
-                      if (Number.isNaN(v)) return;
-                      const clamped = Math.min(600000, Math.max(1000, v));
-                      if (clamped !== cur) {
-                        void onEnvOptionsChange({
-                          automation_default_timeout_ms: clamped,
-                        });
-                      }
-                    }}
-                    disabled={
-                      browserSaving || envOptionsSaving || suiteBusy || spikeRunBusy
-                    }
-                  />
-                </div>
-                {browserErr ? (
-                  <p
-                    className="automation-spike-err automation-spike-env-grid-alert"
-                    role="alert"
-                  >
-                    {browserErr}
-                  </p>
-                ) : null}
-                {envOptionsErr ? (
-                  <p
-                    className="automation-spike-err automation-spike-env-grid-alert automation-spike-env-options-err"
-                    role="alert"
-                  >
-                    {envOptionsErr}
-                  </p>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="automation-spike-env-inset">
-            <p className="automation-spike-muted">No environment data.</p>
-          </div>
-        )}
-      </div>
-
-      <div className="card section-card">
-        <div className="head automation-spike-metric-head">
-          <h2>
-            <span className="label-with-info">
               <span>Saved Suite</span>
               <FieldInfo text="Saves test scenarios. 'Run All' runs every case in order." />
             </span>
@@ -2088,7 +1862,7 @@ export function AutomationSpikeSectionCards({
                     type="button"
                     className="primary automation-spike-suite-run-all-icon"
                     onClick={openRunAllDialog}
-                    disabled={suiteBusy || suiteCases.length === 0 || spikeRunBusy}
+                    disabled={runOrSuiteBusy || suiteCases.length === 0}
                     aria-busy={suiteBusy || undefined}
                     aria-label={suiteBusy ? "Running suite…" : "Run all tests in the saved suite"}
                   >
@@ -2200,7 +1974,7 @@ export function AutomationSpikeSectionCards({
                       suiteRunningCaseIds.length > 0 &&
                         suiteRunningCaseIds.some((id) => String(c.id) === String(id)),
                     )}
-                    runDisabled={suiteBusy || spikeRunBusy}
+                    runDisabled={runOrSuiteBusy}
                     onView={openSuiteBddView}
                     onEdit={onEditSuiteCase ?? (() => {})}
                     onRun={openRunOneCase}
@@ -2211,6 +1985,215 @@ export function AutomationSpikeSectionCards({
                 ))}
               </ul>
             </ResizableScrollClip>
+          </div>
+        )}
+      </div>
+      <div className="card section-card">
+        <div className="head automation-spike-metric-head">
+          <h2>
+            <span className="label-with-info">
+              <span>Environment</span>
+              <FieldInfo text="Saved in the automation database." />
+            </span>
+          </h2>
+        </div>
+        {env && typeof env === "object" ? (
+          <div className="automation-spike-env-inset">
+            <div className="automation-spike-env-text" role="status">
+              <div
+                className="automation-spike-env-grid"
+                aria-label="Automation environment"
+              >
+                    <span
+                      className="automation-spike-env-grid-label"
+                      id="automation-env-browser-label"
+                    >
+                      Browser
+                    </span>
+                <div className="automation-spike-env-grid-control">
+                  <div
+                    className="automation-spike-browser-radios"
+                    role="radiogroup"
+                    aria-labelledby="automation-env-browser-label"
+                  >
+                    {AUTOMATION_BROWSER_OPTIONS.map(({ value, label }) => (
+                      <label key={value} className="automation-spike-browser-radio">
+                        <input
+                          type="radio"
+                          name="automation-spike-browser"
+                          value={value}
+                          checked={effectiveBrowser === value}
+                          onChange={onBrowserRadioChange}
+                          disabled={envFieldsLocked}
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                  {browserSaving ? <Spinner /> : null}
+                </div>
+                {envBoolToggleRows(env).map(
+                  ({
+                    name,
+                    label,
+                    labelledBy,
+                    on,
+                    patchOn,
+                    patchOff,
+                    lockRow,
+                    labelInfo,
+                  }) => (
+                    <Fragment key={name}>
+                      <span
+                        className="automation-spike-env-grid-label"
+                        id={labelledBy}
+                      >
+                        {labelInfo ? (
+                          <span className="label-with-info">
+                            <span>{label}</span>
+                            <FieldInfo text={labelInfo} />
+                          </span>
+                        ) : (
+                          label
+                        )}
+                      </span>
+                      <div className="automation-spike-env-grid-control">
+                        <div
+                          className="automation-spike-env-bool-radios"
+                          role="radiogroup"
+                          aria-labelledby={labelledBy}
+                        >
+                          <label className="automation-spike-env-bool-radio">
+                            <input
+                              type="radio"
+                              name={name}
+                              value="0"
+                              checked={!on}
+                              onChange={() => onEnvOptionsChange(patchOff)}
+                              disabled={envFieldsLocked || lockRow}
+                            />
+                            <span>Off</span>
+                          </label>
+                          <label className="automation-spike-env-bool-radio">
+                            <input
+                              type="radio"
+                              name={name}
+                              value="1"
+                              checked={on}
+                              onChange={() => onEnvOptionsChange(patchOn)}
+                              disabled={envFieldsLocked || lockRow}
+                            />
+                            <span>On</span>
+                          </label>
+                        </div>
+                      </div>
+                    </Fragment>
+                  ),
+                )}
+                <span
+                  className="automation-spike-env-grid-label"
+                  id="automation-env-opt-parallel"
+                >
+                  <span className="label-with-info">
+                    <span>Parallel Execution</span>
+                    <FieldInfo text="Number of parallel tests to be executed in the saved suite (Run all). 1 = one at a time." />
+                  </span>
+                </span>
+                <div className="automation-spike-env-grid-control">
+                  <div
+                    className="automation-spike-browser-radios automation-spike-parallel-radios"
+                    role="radiogroup"
+                    aria-labelledby="automation-env-opt-parallel"
+                  >
+                    {PARALLEL_EXECUTION_CHOICES.map((n) => (
+                      <label key={n} className="automation-spike-browser-radio">
+                        <input
+                          type="radio"
+                          name="automation-spike-parallel"
+                          value={String(n)}
+                          checked={parallelExecutionValue === n}
+                          onChange={() =>
+                            void onEnvOptionsChange({ automation_parallel_execution: n })
+                          }
+                          disabled={envFieldsLocked}
+                        />
+                        <span>{n}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+                <span
+                  className="automation-spike-env-grid-label"
+                  id="automation-env-opt-timeout"
+                >
+                  <span className="label-with-info">
+                    <span>Default Timeout (ms)</span>
+                    <FieldInfo text="Playwright default action timeout. Range 1000–600000." />
+                  </span>
+                </span>
+                <div className="automation-spike-env-grid-control">
+                  <input
+                    type="number"
+                    min={1000}
+                    max={600000}
+                    step={1000}
+                    className="automation-spike-env-timeout-input"
+                    id="automation-env-default-timeout-ms"
+                    aria-labelledby="automation-env-opt-timeout"
+                    value={
+                      automationTimeoutDraft !== null
+                        ? automationTimeoutDraft
+                        : String(
+                            typeof env.automation_default_timeout_ms === "number"
+                              ? env.automation_default_timeout_ms
+                              : 30000,
+                          )
+                    }
+                    onChange={(e) => setAutomationTimeoutDraft(e.target.value)}
+                    onBlur={() => {
+                      const cur =
+                        typeof env.automation_default_timeout_ms === "number"
+                          ? env.automation_default_timeout_ms
+                          : 30000;
+                      const raw =
+                        automationTimeoutDraft !== null
+                          ? automationTimeoutDraft
+                          : String(cur);
+                      setAutomationTimeoutDraft(null);
+                      const v = parseInt(String(raw).trim(), 10);
+                      if (Number.isNaN(v)) return;
+                      const clamped = Math.min(600000, Math.max(1000, v));
+                      if (clamped !== cur) {
+                        void onEnvOptionsChange({
+                          automation_default_timeout_ms: clamped,
+                        });
+                      }
+                    }}
+                    disabled={envFieldsLocked}
+                  />
+                </div>
+                {browserErr ? (
+                  <p
+                    className="automation-spike-err automation-spike-env-grid-alert"
+                    role="alert"
+                  >
+                    {browserErr}
+                  </p>
+                ) : null}
+                {envOptionsErr ? (
+                  <p
+                    className="automation-spike-err automation-spike-env-grid-alert automation-spike-env-options-err"
+                    role="alert"
+                  >
+                    {envOptionsErr}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="automation-spike-env-inset">
+            <p className="automation-spike-muted">No environment data.</p>
           </div>
         )}
       </div>

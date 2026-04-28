@@ -2710,6 +2710,14 @@ input.automation-spike-env-timeout-input::-webkit-inner-spin-button {
   color: var(--text);
 }
 
+.automation-spike-suite-analysis-modal .automation-spike-suite-analysis-text,
+.automation-spike-analysis-panel .automation-spike-suite-analysis-text {
+  min-height: min(15vh, 15rem);
+  max-height: min(62vh, 42rem);
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
 .automation-spike-suite-analysis-modal .modal-dialog-tc-edit-body {
   max-height: min(88dvh, 56rem);
   max-height: min(88vh, 56rem);
