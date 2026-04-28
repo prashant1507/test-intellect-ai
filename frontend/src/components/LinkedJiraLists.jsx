@@ -168,7 +168,9 @@ export function LinkedJiraTestsBlock({ rows, heading }) {
             summary={summary}
             headExtras={
               <>
-                {p || pUrl ? <PriorityTag priority={p} iconUrl={pUrl || undefined} /> : null}
+                {p || pUrl ? (
+                  <PriorityTag priority={p} iconUrl={pUrl || undefined} fromJiraIssue />
+                ) : null}
                 {st ? <span className="linked-jira-tests-status">{st}</span> : null}
               </>
             }

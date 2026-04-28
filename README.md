@@ -451,7 +451,8 @@ lone `KEYCLOAK=` flag) must be `true` to enable Keycloak. See [docker-compose.ym
 - If `LLM_VISION_URL` is not set, the **Upload mockups** UI and the **include attachment** checkboxes for generation are
   hidden; JIRA can still list ticket attachments. See [resources/env-variables.md](resources/env-variables.md) for
   details.
-- If a step is passed using screenshot from Vision model then the record will not be saved in 'aved Selectors'
+- If a step is passed using screenshot from Vision model then the record will not be saved in 'Saved Selectors'
+- JIRA will fetch the template of Test Project each `JIRA_CREATEMETA_TEST_TTL_SECONDS`
 
 ---
 

@@ -57,6 +57,28 @@ export function changeStatusLabel(raw) {
   return raw ? String(raw) : "New";
 }
 
+export function changeStatusTooltip(_key) {
+  return "";
+}
+
+export function prioritySourceTooltip(tc) {
+  if (!tc || typeof tc !== "object") return "";
+  const pri = String(tc.priority ?? "").trim();
+  if (!pri) return "";
+  return tc.jira_existing
+    ? "Priority fetched from JIRA"
+    : "Priority from AI";
+}
+
+export function severitySourceTooltip(tc) {
+  if (!tc || typeof tc !== "object") return "";
+  const sev = String(tc.severity ?? "").trim();
+  if (!sev) return "";
+  return tc.jira_existing
+    ? "Severity fetched from JIRA"
+    : "Severity from AI";
+}
+
 export function tcStatusSlug(raw) {
   const s = String(raw || "new").toLowerCase().replace(/_/g, "-");
   return ["new", "updated", "unchanged"].includes(s) ? s : "new";

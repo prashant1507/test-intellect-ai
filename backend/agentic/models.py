@@ -12,6 +12,7 @@ class TestCaseItem(BaseModel):
     steps: list[str]
     change_status: str = "new"
     priority: str
+    severity: str = ""
 
 
 class GenerationEnvelope(BaseModel):

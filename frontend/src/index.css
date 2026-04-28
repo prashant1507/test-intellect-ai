@@ -5097,6 +5097,10 @@ a.linked-jira-tests-key {
   color: var(--muted);
 }
 
+.tc-priority-label {
+  min-width: 0;
+}
+
 .meta {
   font-size: 0.8rem;
   color: var(--muted);

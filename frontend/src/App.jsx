@@ -46,6 +46,7 @@ import {
 } from "./utils/jiraPushFingerprint";
 import { loadJiraPushedMap, persistJiraPushedMap } from "./utils/jiraPushedStorage";
 import { remapTestCasePriority } from "./utils/jiraPriorityRemap";
+import { remapTestCaseSeverity } from "./utils/jiraSeverityRemap";
 import { normalizeLinkedJiraFromApi } from "./utils/linkedJiraPayload";
 import { readStoredJiraLinkType, readStoredJiraTestIssueType, readStoredJiraUrl } from "./utils/storage";
 import { isAnyGenBusy, isJiraGenBusy, isPasteGenBusy } from "./utils/generationBusy";
@@ -792,15 +793,21 @@ export default function App() {
           jiraPriorityCacheRef.current = null;
           jiraPriorityCacheKeyRef.current = "";
           const meta = await ensureJiraPrioritiesMeta();
-          if (meta?.priorities?.length) {
+          if (meta?.priorities?.length || meta?.severities?.length) {
+            const applyRemaps = (t) => {
+              let x = t;
+              if (meta?.priorities?.length) x = remapTestCasePriority(x, meta);
+              if (meta?.severities?.length) x = remapTestCaseSeverity(x, meta);
+              return x;
+            };
             if (scope === "main" && Array.isArray(testsSnapshot) && testsSnapshot.length > 0) {
-              const remapped = testsSnapshot.map((t) => remapTestCasePriority(t, meta));
+              const remapped = testsSnapshot.map((t) => applyRemaps(t));
               remappedForMemory = remapped;
               setTests(remapped);
               testsRef.current = remapped;
-              tcToSend = remapped[idx] ?? remapTestCasePriority(tc, meta);
+              tcToSend = remapped[idx] ?? applyRemaps(tc);
             } else {
-              tcToSend = remapTestCasePriority(tc, meta);
+              tcToSend = applyRemaps(tc);
             }
           }
         } catch {}

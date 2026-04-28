@@ -42,6 +42,8 @@ sets `SHOW_JIRA_MODE_UI` back to `true` so at least one mode stays available.
 | `JIRA_LINK_INWARD_IS_REQUIREMENT` | `true`                      | Whether the inward end of the link is treated as the requirement.             |
 | `JIRA_VERIFY_SSL`                 | `false`                     | If `true`, verify TLS for Jira HTTPS. Use `false` only for self-signed / dev. |
 | `JIRA_LINKED_WORK_ISSUE_TYPES`    | `Story,Improvement,Feature` | Comma-separated types for **Linked work**-style lists in the UI.              |
+| `JIRA_CREATEMETA_TEST_TTL_SECONDS` | `3600`                     | TTL in seconds for cached JIRA **createmeta** used when pushing **test** issues (`data/jira_createmeta_cache.json`). `0` disables disk cache (always queries JIRA). Updated when TTL expires combined with relevant JIRA interactions; not during **Fetch Requirements** alone. |
+| `JIRA_TEST_SEVERITY_FIELD_ID` | *(empty)* | Optional custom field id for **Severity** when create metadata does not expose a field named `Severity`. |
 
 ---
 
@@ -142,3 +144,4 @@ Uploads and JIRA attachment selection for generation require **`LLM_VISION_URL`*
 | Variable                | Example                                | Description                                                                                |
 |-------------------------|----------------------------------------|--------------------------------------------------------------------------------------------|
 | `PASTE_MODE_PRIORITIES` | `'Highest, High, Medium, Low, Lowest'` | Comma-separated priority labels for **paste** mode (and fallbacks as implemented in code). |
+| `PASTE_MODE_SEVERITIES` | `'Blocker, Critical, Major, Minor, Trivial'` | Comma-separated severity labels for **paste** mode and semantic mapping to JIRA **Severity**. |

@@ -16,6 +16,7 @@ from ai_client import (
     _norm,
     build_generation_user_prompt,
     build_multimodal_user_content,
+    resolve_severity_allowed_for_generation,
     score_test_cases_0_10,
 )
 from prompts import (
@@ -115,7 +116,7 @@ def _coerce_raw_case(c: object) -> dict:
         return {}
     d = {k: v for k, v in c.items()}
     d["steps"] = _coerce_steps_value(d.get("steps"))
-    for k in ("description", "preconditions", "expected_result", "change_status", "priority"):
+    for k in ("description", "preconditions", "expected_result", "change_status", "priority", "severity"):
         if k in d and d[k] is not None and not isinstance(d[k], str):
             d[k] = str(d[k])
     return d
@@ -137,6 +138,7 @@ class AgentState(TypedDict, total=False):
     requirements: dict
     generation_prompt: str
     allowed_priorities: list[str]
+    allowed_severities: list[str]
     min_test_cases: int
     max_test_cases: int
     max_rounds: int
@@ -181,8 +183,9 @@ def _bounds_ok(n: int, state: AgentState) -> bool:
 
 
 def _cases_from_env(env: GenerationEnvelope, state: AgentState) -> list[dict]:
-    allowed = state.get("allowed_priorities") or ["Medium"]
-    return [_norm(c.model_dump(), allowed_priorities=allowed) for c in env.test_cases]
+    pri = state.get("allowed_priorities") or ["Medium"]
+    sev = state.get("allowed_severities") or resolve_severity_allowed_for_generation(False, None)
+    return [_norm(c.model_dump(), allowed_priorities=pri, allowed_severities=sev) for c in env.test_cases]
 
 
 def _deterministic_quality_issues(env: GenerationEnvelope, state: AgentState) -> list[str]:
@@ -191,6 +194,7 @@ def _deterministic_quality_issues(env: GenerationEnvelope, state: AgentState) ->
         min_test_cases=int(state.get("min_test_cases") or 1),
         max_test_cases=int(state.get("max_test_cases") or 0),
         allowed_priorities=state.get("allowed_priorities") or ["Medium"],
+        allowed_severities=state.get("allowed_severities") or resolve_severity_allowed_for_generation(False, None),
     )
 
 
@@ -211,10 +215,12 @@ def generate_node(state: AgentState) -> dict:
         lo = int(state.get("min_test_cases") or 1)
         hi = int(state.get("max_test_cases") or 10)
         hi_note = "no upper limit" if not hi else f"at most {hi}"
+        sev_list = state.get("allowed_severities") or resolve_severity_allowed_for_generation(False, None)
         user = (
             f"Requirements:\n{req}\n\n"
             f"Task: at least {lo} test case(s), {hi_note} total. "
             f"Priorities exactly one of: {', '.join(state['allowed_priorities'])}.\n"
+            f"Severities exactly one of: {', '.join(sev_list)}.\n"
         )
     else:
         user = gp
@@ -345,13 +351,17 @@ def merge_suggestions_node(state: AgentState) -> dict:
     if not sugs:
         return fail("no_suggestions")
     allowed = state.get("allowed_priorities") or ["Medium"]
+    allowed_sev = state.get("allowed_severities") or resolve_severity_allowed_for_generation(False, None)
     req = json.dumps(state["requirements"], ensure_ascii=False, indent=2)
     sug_block = "\n".join(f"- {s}" for s in sugs)
     pri = ", ".join(allowed)
+    sev = ", ".join(allowed_sev)
     user = (
         f"Requirements:\n{req}\n\n"
         f"Create exactly {len(sugs)} test case(s), one per suggestion:\n{sug_block}\n"
-        f"Priorities exactly one of: {pri}.\nReturn only JSON with key test_cases."
+        f"Priorities exactly one of: {pri}.\n"
+        f"Severities exactly one of: {sev}.\n"
+        f"Return only JSON with key test_cases."
     )
     imgs = state_payload_to_images(state.get("requirement_images"))
     msgs, has_imgs = _msgs_with_images(
@@ -374,8 +384,8 @@ def merge_suggestions_node(state: AgentState) -> dict:
         env_c = GenerationEnvelope.model_validate({"test_cases": raw_cases})
     except Exception as e:
         return fail(f"candidate_generation_failed: {e!s}"[:200])
-    candidates_norm = [_norm(c.model_dump(), allowed_priorities=allowed) for c in env_c.test_cases]
-    base_norm = [_norm(c.model_dump(), allowed_priorities=allowed) for c in env.test_cases]
+    candidates_norm = [_norm(c.model_dump(), allowed_priorities=allowed, allowed_severities=allowed_sev) for c in env_c.test_cases]
+    base_norm = [_norm(c.model_dump(), allowed_priorities=allowed, allowed_severities=allowed_sev) for c in env.test_cases]
     hi = int(state.get("max_test_cases") or 0)
     if hi:
         base_norm = base_norm[:hi]
@@ -435,8 +445,13 @@ def merge_suggestions_node(state: AgentState) -> dict:
     }
 
 
-def _final_cases_from_env(env: GenerationEnvelope, allowed: list[str], max_hi: int) -> list[dict]:
-    out = [_norm(c.model_dump(), allowed_priorities=allowed) for c in env.test_cases]
+def _final_cases_from_env(
+    env: GenerationEnvelope, allowed_pri: list[str], allowed_sev: list[str], max_hi: int
+) -> list[dict]:
+    out = [
+        _norm(c.model_dump(), allowed_priorities=allowed_pri, allowed_severities=allowed_sev)
+        for c in env.test_cases
+    ]
     if max_hi:
         out = out[:max_hi]
     return out
@@ -444,13 +459,14 @@ def _final_cases_from_env(env: GenerationEnvelope, allowed: list[str], max_hi: i
 
 def finalize_node(state: AgentState) -> dict:
     env = state.get("envelope")
-    allowed = state.get("allowed_priorities") or ["Medium"]
+    pri = state.get("allowed_priorities") or ["Medium"]
+    sev = state.get("allowed_severities") or resolve_severity_allowed_for_generation(False, None)
     vp = state.get("validation_passed")
     hi = int(state.get("max_test_cases") or 0)
     if env and vp is True:
-        return {"final_cases": _final_cases_from_env(env, allowed, hi), "error": None}
+        return {"final_cases": _final_cases_from_env(env, pri, sev, hi), "error": None}
     if env and vp is False:
-        out = _final_cases_from_env(env, allowed, hi)
+        out = _final_cases_from_env(env, pri, sev, hi)
         vr = state.get("validator")
         parts: list[str] = ["validation did not fully pass; returning best attempt"]
         if vr:
@@ -524,6 +540,7 @@ def run_pipeline(
     requirements: dict,
     *,
     allowed_priorities: list[str] | None = None,
+    allowed_severities: list[str] | None = None,
     min_test_cases: int = 1,
     max_test_cases: int = 10,
     max_rounds: int = 3,
@@ -533,12 +550,16 @@ def run_pipeline(
     requirement_images: list[tuple[str, str, bytes]] | None = None,
 ) -> dict:
     pri = allowed_priorities or ["Highest", "High", "Medium", "Low", "Lowest"]
+    sev = allowed_severities if allowed_severities is not None else resolve_severity_allowed_for_generation(
+        False, None
+    )
     gp = build_generation_user_prompt(
         requirements,
         prev,
         paste_mode=paste_mode,
         existing_jira_tests=existing_jira_tests,
         allowed_priorities=pri,
+        allowed_severities=sev,
         min_test_cases=min_test_cases,
         max_test_cases=max_test_cases,
     )
@@ -548,6 +569,7 @@ def run_pipeline(
         "requirements": requirements,
         "generation_prompt": gp,
         "allowed_priorities": pri,
+        "allowed_severities": sev,
         "min_test_cases": min_test_cases,
         "max_test_cases": max_test_cases,
         "max_rounds": max_rounds,

@@ -3,7 +3,7 @@ import { AutoTestRunIconButton, Copy, FloatingTooltip, Spinner } from "./common"
 import { JiraTestPushButton } from "./JiraTestPushButton";
 import { TestCaseBody } from "./TestCaseBody";
 import { TestCaseSummaryBadges } from "./TestCaseSummaryBadges";
-import { changeStatusLabel, fmtTestsMarkdown, tcStatusSlug } from "../utils/format";
+import { changeStatusLabel, changeStatusTooltip, fmtTestsMarkdown, tcStatusSlug } from "../utils/format";
 import { jiraPushFingerprint, resolvePushedJiraKey } from "../utils/jiraPushFingerprint";
 import { testCaseToSpikeBdd } from "../utils/testCase";
 
@@ -86,15 +86,16 @@ export function MainTestCasesPanel({
           <div className="filter-bar filter-bar--with-sync" role="toolbar" aria-label="Filter by change status">
             <div className="filter-bar-chips">
               {["all", "existing", "unchanged", "updated", "new"].map((f) => (
-                <button
-                  key={f}
-                  type="button"
-                  className={`chip ${tcFilter === f ? "active" : ""}`}
-                  onClick={() => onTcFilter(f)}
-                  aria-pressed={tcFilter === f}
-                >
-                  {f === "all" ? "All" : f === "existing" ? "Existing" : changeStatusLabel(f)}
-                </button>
+                <FloatingTooltip key={f} text={changeStatusTooltip(f)}>
+                  <button
+                    type="button"
+                    className={`chip ${tcFilter === f ? "active" : ""}`}
+                    onClick={() => onTcFilter(f)}
+                    aria-pressed={tcFilter === f}
+                  >
+                    {f === "all" ? "All" : f === "existing" ? "Existing" : changeStatusLabel(f)}
+                  </button>
+                </FloatingTooltip>
               ))}
             </div>
             {inputMode === "jira" ? (

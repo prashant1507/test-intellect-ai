@@ -18,14 +18,19 @@ from requests.exceptions import HTTPError, RequestException
 
 from jira_client import (
     build_ai_to_jira_priority_map,
+    build_ai_to_jira_severity_name_map,
     download_attachment_for_ticket,
     fetch_issue,
     fetch_issue_attachment_meta,
     fetch_linked_test_issues,
     fetch_linked_work_issues,
     fetch_priorities,
+    find_severity_field_id,
     format_jira_http_error,
+    get_issue_create_meta_fields_cached,
+    project_key_from_issue_key,
     push_test_case_to_jira,
+    severity_allowed_display_names,
     update_test_case_in_jira,
 )
 from agentic import run_agentic_pipeline_async
@@ -35,6 +40,7 @@ from ai_client import (
     merge_ai_cases_with_jira_existing,
     merge_test_cases_with_previous,
     resolve_priority_allowed_for_generation,
+    resolve_severity_allowed_for_generation,
     score_merged_test_cases,
     strip_test_case_diff_meta,
 )
@@ -150,6 +156,30 @@ def _jira_request_http_exception(e: RequestException) -> HTTPException:
         msg = str(e).strip() or "connection failed"
         detail = f"Could not reach JIRA. Check the site URL and your network.\n{msg}"
     return HTTPException(status_code=502, detail=detail)
+
+
+def _warm_jira_createmeta_cache(
+    jira_url: str,
+    username: str,
+    password: str,
+    test_project_key: str,
+    issue_type_name: str,
+) -> None:
+    tpk = (test_project_key or "").strip()
+    if not tpk:
+        return
+    it = (issue_type_name or "").strip() or settings.jira_test_issue_type or "Test"
+    it = it or "Test"
+    try:
+        get_issue_create_meta_fields_cached(
+            jira_url.strip(),
+            username,
+            password,
+            norm_issue_key(tpk),
+            it,
+        )
+    except Exception:
+        pass
 
 
 async def _load_ticket_linked_jira(body: TicketIn, key: str) -> tuple[list, list, str]:
@@ -387,7 +417,31 @@ async def _fetch_jira(body: TicketIn) -> tuple[str, dict]:
     return key, raw
 
 
-async def _jira_generate_context(body: GenerateIn) -> tuple[str, dict, dict | None, bool, list, list, str, list[str] | None]:
+async def _maybe_fetch_jira_severity_names_for_generate(body: GenerateIn) -> list[str] | None:
+    if not body.test_project_key.strip() or settings.mock:
+        return None
+    try:
+        meta = await asyncio.to_thread(
+            get_issue_create_meta_fields_cached,
+            body.jira_url.strip(),
+            body.username,
+            _require_jira_password(body.password),
+            norm_issue_key(body.test_project_key.strip()),
+            _jira_test_issue_type_from_body(body),
+        )
+        fid = find_severity_field_id(meta or {})
+        if not fid or not isinstance(meta, dict):
+            return None
+        fm = meta.get(fid)
+        names = severity_allowed_display_names(fm if isinstance(fm, dict) else None)
+        return names if names else None
+    except Exception:
+        return None
+
+
+async def _jira_generate_context(
+    body: GenerateIn,
+) -> tuple[str, dict, dict | None, bool, list, list, str, list[str] | None, list[str] | None]:
     key, req = await _fetch_jira(body)
     jira_entries, linked_work_raw, work_labels = await _load_ticket_linked_jira(body, key)
     prev = get_latest(key)
@@ -399,7 +453,8 @@ async def _jira_generate_context(body: GenerateIn) -> tuple[str, dict, dict | No
             prev = sp
             similar_used = True
     jira_names = await _maybe_fetch_jira_priority_names_for_generate(body)
-    return key, req, prev, similar_used, jira_entries, linked_work_raw, work_labels, jira_names
+    jira_sev = await _maybe_fetch_jira_severity_names_for_generate(body)
+    return key, req, prev, similar_used, jira_entries, linked_work_raw, work_labels, jira_names, jira_sev
 
 
 async def _maybe_fetch_jira_priority_names_for_generate(body: GenerateIn) -> list[str] | None:
@@ -470,17 +525,28 @@ async def _finalize_cases_after_llm(
     prev: dict | None,
     *,
     jira_entries: list | None,
-    allowed: list[str],
+    allowed_priorities: list[str],
+    allowed_severities: list[str],
     save_memory: bool,
     kc: dict | None,
     jira_username: str | None,
     audit_action: str,
 ) -> list:
     if jira_entries:
-        cases = merge_ai_cases_with_jira_existing(cases, jira_entries, allowed_priorities=allowed)
+        cases = merge_ai_cases_with_jira_existing(
+            cases,
+            jira_entries,
+            allowed_priorities=allowed_priorities,
+            allowed_severities=allowed_severities,
+        )
     prior_union = _prior_cases_union_for_merge(key, prev)
     if prior_union:
-        cases = merge_test_cases_with_previous(prior_union, cases, allowed_priorities=allowed)
+        cases = merge_test_cases_with_previous(
+            prior_union,
+            cases,
+            allowed_priorities=allowed_priorities,
+            allowed_severities=allowed_severities,
+        )
     await asyncio.to_thread(score_merged_test_cases, req, cases)
     if not settings.mock:
         if save_memory:
@@ -501,6 +567,7 @@ async def _generate_and_persist(
     *,
     paste_mode: bool = False,
     priority_labels: list[str] | None = None,
+    severity_labels: list[str] | None = None,
     jira_entries: list | None = None,
     linked_jira_work_entries: list | None = None,
     linked_jira_work_type_labels: str = "",
@@ -510,14 +577,16 @@ async def _generate_and_persist(
     max_rounds: int = 3,
 ) -> dict:
     req_diff = _diff(prev["requirements"], req) if prev else None
-    allowed = resolve_priority_allowed_for_generation(paste_mode, priority_labels)
+    allowed_p = resolve_priority_allowed_for_generation(paste_mode, priority_labels)
+    allowed_s = resolve_severity_allowed_for_generation(paste_mode, severity_labels)
     ej_llm = _existing_jira_tests_for_llm(jira_entries)
     agentic_out: dict | None = None
     try:
         if agentic:
             agentic_out = await run_agentic_pipeline_async(
                 requirements=req,
-                allowed_priorities=allowed,
+                allowed_priorities=allowed_p,
+                allowed_severities=allowed_s,
                 min_test_cases=min_test_cases,
                 max_test_cases=max_test_cases,
                 max_rounds=max_rounds,
@@ -531,7 +600,8 @@ async def _generate_and_persist(
             cases = await generate_test_cases(
                 req,
                 prev,
-                allowed_priorities=allowed,
+                allowed_priorities=allowed_p,
+                allowed_severities=allowed_s,
                 min_test_cases=min_test_cases,
                 max_test_cases=max_test_cases,
                 paste_mode=paste_mode,
@@ -546,7 +616,8 @@ async def _generate_and_persist(
         cases,
         prev,
         jira_entries=jira_entries,
-        allowed=allowed,
+        allowed_priorities=allowed_p,
+        allowed_severities=allowed_s,
         save_memory=save_memory,
         kc=kc,
         jira_username=jira_username,
@@ -711,12 +782,21 @@ async def _merge_req_images_paste(files: list[UploadFile]) -> list[tuple[str, st
 
 
 async def _jira_generate_route_kwargs(body: GenerateIn) -> tuple[str, dict, dict | None, bool, dict]:
-    key, req, prev, similar_used, jira_entries, linked_work_raw, work_labels, jira_names = await _jira_generate_context(
-        body
-    )
+    (
+        key,
+        req,
+        prev,
+        similar_used,
+        jira_entries,
+        linked_work_raw,
+        work_labels,
+        jira_names,
+        jira_sev_names,
+    ) = await _jira_generate_context(body)
     shared = dict(
         paste_mode=False,
         priority_labels=jira_names,
+        severity_labels=jira_sev_names,
         jira_entries=jira_entries,
         linked_jira_work_entries=linked_work_raw,
         linked_jira_work_type_labels=work_labels,
@@ -851,13 +931,25 @@ def get_config():
 @api.post("/jira/priorities")
 async def jira_priorities(body: JiraPrioritiesIn, kc: Kc):
     if settings.mock:
-        return {"priorities": [], "ai_to_jira_name": {}}
+        return {"priorities": [], "ai_to_jira_name": {}, "severities": [], "ai_to_jira_severity_name": {}}
+    pw = _require_jira_password(body.password)
+    tpk = (body.test_project_key or "").strip() or (settings.jira_test_project_key or "").strip()
+    itt = (settings.jira_test_issue_type or "Test").strip() or "Test"
+    if tpk:
+        await asyncio.to_thread(
+            _warm_jira_createmeta_cache,
+            body.jira_url.strip(),
+            body.username,
+            pw,
+            tpk,
+            itt,
+        )
     try:
         pri = await asyncio.to_thread(
             fetch_priorities,
             body.jira_url.strip(),
             body.username,
-            _require_jira_password(body.password),
+            pw,
         )
     except RequestException as e:
         raise _jira_request_http_exception(e) from e
@@ -866,7 +958,32 @@ async def jira_priorities(body: JiraPrioritiesIn, kc: Kc):
         {"id": p.get("id"), "name": p.get("name"), "iconUrl": p.get("iconUrl")}
         for p in pri
     ]
-    return {"priorities": client_pri, "ai_to_jira_name": ai_map}
+    out: dict = {
+        "priorities": client_pri,
+        "ai_to_jira_name": ai_map,
+        "severities": [],
+        "ai_to_jira_severity_name": {},
+    }
+    if tpk:
+        try:
+            meta = await asyncio.to_thread(
+                get_issue_create_meta_fields_cached,
+                body.jira_url.strip(),
+                body.username,
+                pw,
+                norm_issue_key(tpk),
+                itt,
+            )
+            fid = find_severity_field_id(meta or {})
+            if fid and isinstance(meta, dict):
+                fm = meta.get(fid)
+                snames = severity_allowed_display_names(fm if isinstance(fm, dict) else None)
+                if snames:
+                    out["severities"] = [{"name": n} for n in snames]
+                    out["ai_to_jira_severity_name"] = build_ai_to_jira_severity_name_map(snames)
+        except Exception:
+            pass
+    return out
 
 
 @api.post("/jira/push-test-case")
@@ -947,6 +1064,16 @@ async def jira_attachment_download(body: AttachmentDownloadIn, _kc: Kc):
     if settings.mock:
         raise HTTPException(status_code=400, detail="Attachments are not available in mock mode.")
     key = norm_issue_key(body.ticket_id)
+    pk = project_key_from_issue_key(key)
+    if pk:
+        await asyncio.to_thread(
+            _warm_jira_createmeta_cache,
+            body.jira_url.strip(),
+            body.username,
+            _require_jira_password(body.password),
+            pk,
+            _jira_test_issue_type_from_body(body),
+        )
     try:
         content, filename, ctype = await asyncio.to_thread(
             download_attachment_for_ticket,

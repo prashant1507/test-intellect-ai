@@ -55,6 +55,7 @@ class Settings(BaseSettings):
     jira_test_link_type: str = "Relates"
     jira_link_inward_is_requirement: bool = True
     jira_linked_work_issue_types: str = ""
+    jira_createmeta_test_ttl_seconds: int = 3600
     mock: bool = False
     show_memory_ui: bool = True
     show_audit_ui: bool = True
@@ -85,6 +86,8 @@ class Settings(BaseSettings):
     llm_requirement_images_max_count: int = 5
     llm_requirement_images_max_total_mb: int = 200
     paste_mode_priorities: str = ""
+    paste_mode_severities: str = ""
+    jira_test_severity_field_id: str = ""
     memory_similarity_threshold: float = 0.92
     show_auto_tests_ui: bool = True
     automation_post_analysis: bool = True
@@ -146,6 +149,14 @@ class Settings(BaseSettings):
             return 20
         n = int(v)
         return min(max(n, 0), 3650)
+
+    @field_validator("jira_createmeta_test_ttl_seconds", mode="before")
+    @classmethod
+    def _jira_createmeta_test_ttl_seconds(cls, v: object) -> int:
+        if v is None or (isinstance(v, str) and not str(v).strip()):
+            return 3600
+        n = int(v)
+        return max(n, 0)
 
     @model_validator(mode="after")
     def at_least_one_requirement_mode(self) -> "Settings":

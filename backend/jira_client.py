@@ -3,12 +3,20 @@ from __future__ import annotations
 import html as html_module
 import json
 import re
+import threading
+import time
+from pathlib import Path
+from datetime import datetime, timezone
+from urllib.parse import quote
 
 import requests
 import urllib3
 
 from key_norm import norm_issue_key
 from settings import settings
+
+_createmeta_cache_lock = threading.Lock()
+_CREATEMETA_CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "jira_createmeta_cache.json"
 
 
 def _requests_verify() -> bool:
@@ -107,6 +115,142 @@ def _priority_payload_for_issue(pick: dict) -> dict:
         return {"id": str(pid)}
     name = str(pick.get("name") or "").strip()
     return {"name": name} if name else {}
+
+
+def _severity_semantic_labels() -> list[str]:
+    raw = (settings.paste_mode_severities or "").strip()
+    if not raw:
+        return ["Blocker", "Critical", "Major", "Minor"]
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
+def severity_display_from_issue_field(val: object) -> str:
+    if isinstance(val, dict):
+        for k in ("value", "name"):
+            x = val.get(k)
+            if isinstance(x, str) and x.strip():
+                return x.strip()
+        if val.get("id") is not None:
+            return str(val.get("id")).strip()
+    return str(val or "").strip()
+
+
+def severity_allowed_display_names(meta_field: dict | None) -> list[str]:
+    if not isinstance(meta_field, dict):
+        return []
+    av = meta_field.get("allowedValues")
+    if not isinstance(av, list):
+        return []
+    out: list[str] = []
+    for o in av:
+        if not isinstance(o, dict):
+            continue
+        d = severity_display_from_issue_field(o)
+        if d:
+            out.append(d)
+    return out
+
+
+def find_severity_field_id(meta_fields: dict[str, dict]) -> str | None:
+    ov = (settings.jira_test_severity_field_id or "").strip()
+    if ov:
+        return ov if ov in meta_fields else None
+    for fid, fm in meta_fields.items():
+        if isinstance(fm, dict) and str(fm.get("name") or "").strip().casefold() == "severity":
+            return str(fid)
+    return None
+
+
+def build_ai_to_jira_severity_map(allowed_options: list[dict]) -> dict[str, str]:
+    labels = _severity_semantic_labels()
+    if not labels or not allowed_options:
+        return {}
+    n = len(allowed_options)
+    out: dict[str, str] = {}
+    denom = max(len(labels) - 1, 1)
+    for i, lab in enumerate(labels):
+        j = min(n - 1, round(i * (n - 1) / denom)) if n > 1 else 0
+        dn = severity_display_from_issue_field(allowed_options[j])
+        if dn:
+            out[lab] = dn
+    return out
+
+
+def build_ai_to_jira_severity_name_map(sorted_names: list[str]) -> dict[str, str]:
+    labels = _severity_semantic_labels()
+    if not labels or not sorted_names:
+        return {}
+    n = len(sorted_names)
+    out: dict[str, str] = {}
+    denom = max(len(labels) - 1, 1)
+    for i, lab in enumerate(labels):
+        j = min(n - 1, round(i * (n - 1) / denom)) if n > 1 else 0
+        out[lab] = sorted_names[j]
+    return out
+
+
+def map_test_severity_to_jira(
+    ai_or_name: str | None,
+    meta_field: dict,
+) -> dict | None:
+    av = meta_field.get("allowedValues") if isinstance(meta_field, dict) else None
+    opts = [x for x in av if isinstance(x, dict)] if isinstance(av, list) else []
+    if not opts:
+        return None
+    raw = str(ai_or_name or "").strip()
+    labs = _severity_semantic_labels()
+    if not raw:
+        raw = labs[len(labs) // 2] if labs else severity_display_from_issue_field(opts[len(opts) // 2])
+    def _dk(o: dict) -> str:
+        return severity_display_from_issue_field(o).lower()
+
+    by_name = {_dk(o): o for o in opts}
+    ai_map = build_ai_to_jira_severity_map(opts)
+    if raw.lower() in by_name:
+        return by_name[raw.lower()]
+    for lab in labs:
+        if lab.lower() == raw.lower():
+            jnm = ai_map.get(lab)
+            if jnm and str(jnm).strip().lower() in by_name:
+                return by_name[str(jnm).strip().lower()]
+            break
+    for lab, jnm in ai_map.items():
+        if lab.lower() == raw.lower() and jnm and str(jnm).strip().lower() in by_name:
+            return by_name[str(jnm).strip().lower()]
+    for lab in labs:
+        lj = lab.lower()
+        if lj in raw.lower() or raw.lower() in lj:
+            jnm = ai_map.get(lab)
+            if jnm and str(jnm).strip().lower() in by_name:
+                return by_name[str(jnm).strip().lower()]
+            break
+    return opts[len(opts) // 2]
+
+
+def severity_option_payload_for_issue(pick: dict) -> dict:
+    pid = pick.get("id")
+    if pid is not None and str(pid).strip() != "":
+        return {"id": str(pid)}
+    v = pick.get("value")
+    if isinstance(v, str) and v.strip():
+        return {"value": v.strip()}
+    n = pick.get("name")
+    if isinstance(n, str) and n.strip():
+        return {"name": n.strip()}
+    return dict(pick)
+
+
+def apply_test_severity_to_issue_fields(fields: dict, test_case: dict, meta_fields: dict[str, dict]) -> None:
+    fid = find_severity_field_id(meta_fields or {})
+    if not fid:
+        return
+    fm = meta_fields.get(fid) if isinstance(meta_fields, dict) else None
+    if not isinstance(fm, dict):
+        return
+    opt = map_test_severity_to_jira((test_case or {}).get("severity"), fm)
+    if opt is None:
+        return
+    fields[fid] = severity_option_payload_for_issue(opt)
 
 
 def _adf(
@@ -519,17 +663,27 @@ def fetch_linked_test_issues(
     want = (test_issue_type_name or "").strip() or "Test"
     want_l = want.casefold()
     keys = list_linked_issue_keys(base_url, user, password, requirement_key)
+    uniq_pj: list[str] = []
+    for ik in keys:
+        pj = project_key_from_issue_key(ik)
+        if pj and pj not in uniq_pj:
+            uniq_pj.append(pj)
+    meta_by_pj: dict[str, dict[str, dict]] = {}
+    for pj in uniq_pj:
+        try:
+            meta_by_pj[pj] = get_issue_create_meta_fields_cached(base_url, user, password, pj, want)
+        except Exception:
+            meta_by_pj[pj] = {}
     out: list[dict] = []
     for ik in keys:
+        pj_link = project_key_from_issue_key(ik)
+        meta_l = meta_by_pj.get(pj_link) or {}
+        sev_fid = find_severity_field_id(meta_l)
+        fld = "summary,description,issuetype,status,priority,renderedFields"
+        if sev_fid:
+            fld += f",{sev_fid}"
         try:
-            data = _get_issue_json(
-                base_url,
-                user,
-                password,
-                ik,
-                fields="summary,description,issuetype,status,priority,renderedFields",
-                expand="renderedFields",
-            )
+            data = _get_issue_json(base_url, user, password, ik, fields=fld, expand="renderedFields")
         except Exception:
             continue
         fields = data.get("fields") or {}
@@ -547,11 +701,14 @@ def fetch_linked_test_issues(
         pri = fields.get("priority") if isinstance(fields.get("priority"), dict) else {}
         jira_priority_name = str(pri.get("name") or "").strip()
         jira_priority_icon_url = str(pri.get("iconUrl") or "").strip()
+        se_raw = fields.get(sev_fid) if sev_fid else None
+        jira_severity_name = severity_display_from_issue_field(se_raw) if se_raw is not None else ""
         tc = {
             "description": summary[:10000],
             "preconditions": "",
             "steps": steps,
             "expected_result": "",
+            "severity": jira_severity_name,
         }
         out.append(
             {
@@ -561,6 +718,7 @@ def fetch_linked_test_issues(
                 "browse_url": browse,
                 "jira_priority_name": jira_priority_name,
                 "jira_priority_icon_url": jira_priority_icon_url,
+                "jira_severity_name": jira_severity_name,
                 "test_case": tc,
             }
         )
@@ -585,6 +743,315 @@ def _issue_fields_summary_desc_priority(
     except Exception:
         pass
     return fields
+
+
+def fetch_issue_create_meta_fields(
+    base_url: str,
+    user: str,
+    password: str,
+    project_key: str,
+    issue_type_name: str,
+) -> dict[str, dict]:
+    verify = _requests_verify()
+    base = base_url.rstrip("/")
+    pj = quote(norm_issue_key(project_key), safe="")
+    itn = quote(issue_type_name.strip(), safe="")
+    url = (
+        f"{base}/rest/api/2/issue/createmeta"
+        f"?projectKeys={pj}&issuetypeNames={itn}&expand=projects.issuetypes.fields"
+    )
+    r = requests.get(
+        url,
+        auth=(user, password),
+        headers={"Accept": "application/json"},
+        timeout=60,
+        verify=verify,
+    )
+    r.raise_for_status()
+    data = r.json()
+    projects = data.get("projects") if isinstance(data, dict) else None
+    if not isinstance(projects, list):
+        raise ValueError("JIRA createmeta response has no projects")
+    target = issue_type_name.strip().casefold()
+    for pr in projects:
+        if not isinstance(pr, dict):
+            continue
+        for ipt in pr.get("issuetypes") or []:
+            if not isinstance(ipt, dict):
+                continue
+            if str(ipt.get("name") or "").strip().casefold() != target:
+                continue
+            fd = ipt.get("fields")
+            return fd if isinstance(fd, dict) else {}
+    raise ValueError(f"Issue type {issue_type_name!r} not found in createmeta for project {project_key!r}")
+
+
+def project_key_from_issue_key(issue_key: str) -> str:
+    k = norm_issue_key(issue_key)
+    if "-" not in k:
+        return ""
+    return k.split("-", 1)[0]
+
+
+def _createmeta_cache_blob_key(base_url: str, project_key: str, issue_type_name: str) -> str:
+    b = base_url.rstrip("/").casefold()
+    pk = norm_issue_key(project_key).casefold()
+    it = issue_type_name.strip().casefold()
+    return f"{b}|{pk}|{it}"
+
+
+def _load_createmeta_cache_blob() -> dict:
+    path = _CREATEMETA_CACHE_PATH
+    if not path.is_file():
+        return {"v": 1, "entries": {}}
+    try:
+        with open(path, encoding="utf-8") as f:
+            blob = json.load(f)
+        if isinstance(blob, dict) and isinstance(blob.get("entries"), dict):
+            return blob
+    except Exception:
+        pass
+    return {"v": 1, "entries": {}}
+
+
+def _save_createmeta_cache_blob(blob: dict) -> None:
+    path = _CREATEMETA_CACHE_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(blob, f, ensure_ascii=False)
+    tmp.replace(path)
+
+
+def get_issue_create_meta_fields_cached(
+    base_url: str,
+    user: str,
+    password: str,
+    project_key: str,
+    issue_type_name: str,
+) -> dict[str, dict]:
+    ttl = int(settings.jira_createmeta_test_ttl_seconds or 0)
+    if ttl <= 0:
+        return fetch_issue_create_meta_fields(
+            base_url, user, password, project_key, issue_type_name
+        )
+    ck = _createmeta_cache_blob_key(base_url, project_key, issue_type_name)
+    now = time.time()
+    with _createmeta_cache_lock:
+        blob = _load_createmeta_cache_blob()
+        entries = blob.setdefault("entries", {})
+        if not isinstance(entries, dict):
+            entries = {}
+            blob["entries"] = entries
+        ent = entries.get(ck)
+        if isinstance(ent, dict):
+            at = ent.get("fetched_at_unix")
+            fields = ent.get("fields")
+            if isinstance(at, (int, float)) and isinstance(fields, dict) and (now - float(at)) < ttl:
+                return fields
+        fields = fetch_issue_create_meta_fields(
+            base_url, user, password, project_key, issue_type_name
+        )
+        entries[ck] = {"fetched_at_unix": now, "fields": fields}
+        _save_createmeta_cache_blob(blob)
+        return fields
+
+
+def _fetch_myself(base_url: str, user: str, password: str) -> dict | None:
+    verify = _requests_verify()
+    base = base_url.rstrip("/")
+    r = requests.get(
+        f"{base}/rest/api/2/myself",
+        auth=(user, password),
+        headers={"Accept": "application/json"},
+        timeout=30,
+        verify=verify,
+    )
+    if not r.ok:
+        return None
+    d = r.json()
+    return d if isinstance(d, dict) else None
+
+
+def _assignee_candidate_from_myself(me: dict) -> dict[str, str] | None:
+    aid = me.get("accountId")
+    if isinstance(aid, str) and aid.strip():
+        return {"accountId": aid.strip()}
+    name = me.get("name") or me.get("displayName") or me.get("key")
+    if isinstance(name, str) and name.strip():
+        return {"name": name.strip()}
+    email = me.get("emailAddress")
+    if isinstance(email, str) and email.strip():
+        return {"emailAddress": email.strip()}
+    return None
+
+
+def _schema_type(meta: dict) -> str:
+    sc = meta.get("schema") if isinstance(meta.get("schema"), dict) else {}
+    return str(sc.get("type") or "").strip().lower()
+
+
+def _first_allowed_issue_value(av: object) -> object | None:
+    if not isinstance(av, list) or not av:
+        return None
+    first = av[0]
+    if not isinstance(first, dict):
+        return first
+    if first.get("id") is not None and str(first.get("id")).strip() != "":
+        return {"id": str(first.get("id"))}
+    nm = first.get("name") or first.get("value")
+    if nm is not None and str(nm).strip() != "":
+        return {"name": str(nm).strip()}
+    return dict(first)
+
+
+def _default_value_for_createmeta_field(
+    field_id: str,
+    meta: dict,
+    *,
+    base_url: str,
+    user: str,
+    password: str,
+    myself_cached: dict | None,
+) -> tuple[object | None, dict | None]:
+    if not isinstance(meta, dict):
+        return None, myself_cached
+
+    dv = meta.get("defaultValue")
+    if dv is not None:
+        sch = meta.get("schema") if isinstance(meta.get("schema"), dict) else {}
+        st = str(sch.get("type") or "").lower()
+        if st == "array" and not isinstance(dv, list):
+            return [dv] if dv not in ({}, [], None) else None, myself_cached
+        if st != "array" or isinstance(dv, list):
+            return dv, myself_cached
+
+    av = meta.get("allowedValues")
+    fv = _first_allowed_issue_value(av)
+    if fv is not None:
+        styp = _schema_type(meta)
+        if styp == "array":
+            items = meta.get("schema") if isinstance(meta.get("schema"), dict) else {}
+            it = str((items.get("items") if isinstance(items.get("items"), str) else "") or "").strip()
+            if it == "string":
+                if isinstance(av, list) and av:
+                    x0 = av[0]
+                    if isinstance(x0, dict) and isinstance(x0.get("value"), str):
+                        return [x0.get("value")], myself_cached
+                return ([] if fv == [] else [fv]), myself_cached
+        return fv, myself_cached
+
+    styp = _schema_type(meta)
+
+    sys_name = ""
+    scm = meta.get("schema") if isinstance(meta.get("schema"), dict) else {}
+    if isinstance(scm.get("system"), str):
+        sys_name = scm["system"].strip().lower()
+
+    if styp == "user" or field_id.casefold() in ("assignee", "reporter") or sys_name in ("assignee", "reporter"):
+        myself_cached = myself_cached or _fetch_myself(base_url, user, password)
+        if isinstance(myself_cached, dict):
+            pl = _assignee_candidate_from_myself(myself_cached)
+            if pl:
+                return pl, myself_cached
+        return None, myself_cached
+
+    if styp in ("string", "text") or scm.get("type") == "string":
+        return " ", myself_cached
+
+    if styp == "number" or scm.get("type") in ("integer", "long", "double"):
+        return 0, myself_cached
+
+    if "date" in styp:
+        return datetime.now(timezone.utc).strftime("%Y-%m-%d"), myself_cached
+
+    if styp == "datetime":
+        try:
+            return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        except Exception:
+            return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000") + "+0000", myself_cached
+
+    if styp == "array":
+        inner = scm.get("items")
+        if inner == "string":
+            return [], myself_cached
+        iv = _first_allowed_issue_value(av)
+        if iv is not None:
+            return [iv] if not isinstance(iv, list) else iv, myself_cached
+        return None, myself_cached
+
+    return None, myself_cached
+
+
+def _normalize_description_for_jira(fields_out: dict, meta_fields: dict[str, dict]) -> None:
+    desc_m = meta_fields.get("description")
+    if isinstance(desc_m, dict) and str((desc_m.get("schema") or {}).get("type") or "").lower() == "doc":
+        blob = fields_out.pop("description", None)
+        if blob is None:
+            return
+        if isinstance(blob, str):
+            stripped = blob.strip()
+            if stripped:
+                fields_out["description"] = {"type": "doc", "version": 1, "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": stripped}]},
+                ]}
+
+
+def merge_createmeta_defaults_for_issue_create(
+    base_url: str,
+    user: str,
+    password: str,
+    fields_out: dict,
+    *,
+    meta_fields: dict[str, dict],
+    error_prefix: str = "Issue create failed",
+) -> None:
+    def _field_value_nonempty(v: object) -> bool:
+        if v is None or v == "":
+            return False
+        if isinstance(v, (list, dict)) and len(v) == 0:
+            return False
+        return True
+
+    myself: dict | None = None
+    missing: list[str] = []
+    skipped_keys = frozenset({"project", "issuetype"})
+    fd_out = dict(fields_out)
+
+    for fid, fm in sorted(meta_fields.items(), key=lambda x: x[0]):
+        if not isinstance(fm, dict) or not fm.get("required"):
+            continue
+        if fid in skipped_keys:
+            continue
+        if _field_value_nonempty(fd_out.get(fid)):
+            continue
+        dv, myself = _default_value_for_createmeta_field(
+            fid,
+            fm,
+            base_url=base_url,
+            user=user,
+            password=password,
+            myself_cached=myself,
+        )
+        if dv is not None:
+            fd_out[fid] = dv
+        else:
+            missing.append(fid)
+
+    if missing:
+        show = missing[:24]
+        extra = len(missing) - len(show)
+        msg = ", ".join(show)
+        if extra > 0:
+            msg = f"{msg} (+{extra} more)"
+        raise ValueError(
+            f"{error_prefix}: JIRA marks these fields required but no default exists in metadata: {msg}. "
+            "Configure the project's create screen or add mappings."
+        )
+
+    fields_out.clear()
+    fields_out.update(fd_out)
+    _normalize_description_for_jira(fields_out, meta_fields)
 
 
 def _test_case_description_text(tc: dict) -> str:
@@ -622,6 +1089,18 @@ def push_test_case_to_jira(
     issue_type = (raw_type or settings.jira_test_issue_type or "Test").strip() or "Test"
     proj = norm_issue_key(test_project_key)
     fld = _issue_fields_summary_desc_priority(base_url, user, password, test_case)
+    meta_fields = get_issue_create_meta_fields_cached(
+        base_url, user, password, proj, issue_type
+    )
+    merge_createmeta_defaults_for_issue_create(
+        base_url,
+        user,
+        password,
+        fld,
+        meta_fields=meta_fields,
+        error_prefix="Create test issue",
+    )
+    apply_test_severity_to_issue_fields(fld, test_case, meta_fields)
     payload = {
         "fields": {
             "project": {"key": proj},
@@ -679,10 +1158,18 @@ def update_test_case_in_jira(
     auth = (user, password)
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
     ik = norm_issue_key(issue_key)
-    payload: dict = {"fields": _issue_fields_summary_desc_priority(base_url, user, password, test_case)}
+    proj_data = _get_issue_json(base_url, user, password, ik, fields="project,issuetype")
+    fproj = proj_data.get("fields") or {}
+    pj = norm_issue_key(str((fproj.get("project") or {}).get("key") or ""))
+    itn = str((fproj.get("issuetype") or {}).get("name") or "").strip() or (
+        settings.jira_test_issue_type or "Test"
+    ).strip()
+    meta_fields = get_issue_create_meta_fields_cached(base_url, user, password, pj, itn)
+    fld = _issue_fields_summary_desc_priority(base_url, user, password, test_case)
+    apply_test_severity_to_issue_fields(fld, test_case, meta_fields)
     r = requests.put(
         f"{base}/rest/api/2/issue/{ik}",
-        json=payload,
+        json={"fields": fld},
         auth=auth,
         headers=headers,
         timeout=60,

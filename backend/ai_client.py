@@ -28,6 +28,24 @@ def _paste_priority_list() -> list[str]:
     return [x.strip() for x in raw.split(",") if x.strip()]
 
 
+def _paste_severity_list() -> list[str]:
+    raw = (settings.paste_mode_severities or "").strip()
+    if not raw:
+        return ["Blocker", "Critical", "Major", "Minor"]
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
+def resolve_severity_allowed_for_generation(
+    paste_mode: bool,
+    jira_fetched_names: list[str] | None,
+) -> list[str]:
+    if paste_mode:
+        return _paste_severity_list()
+    if jira_fetched_names and any(str(x).strip() for x in jira_fetched_names):
+        return [str(x).strip() for x in jira_fetched_names if str(x).strip()]
+    return _paste_severity_list()
+
+
 def resolve_priority_allowed_for_generation(
     paste_mode: bool,
     jira_fetched_names: list[str] | None,
@@ -42,6 +60,23 @@ def resolve_priority_allowed_for_generation(
 def _norm_priority(raw: object | None, allowed: list[str]) -> str:
     if not allowed:
         return "Medium"
+    mid = allowed[len(allowed) // 2]
+    s = str(raw or "").strip()
+    if not s:
+        return mid
+    low = s.lower()
+    for a in allowed:
+        if a.lower() == low:
+            return a
+    for a in allowed:
+        if low in a.lower() or a.lower() in low:
+            return a
+    return mid
+
+
+def _norm_severity(raw: object | None, allowed: list[str]) -> str:
+    if not allowed:
+        return "Major"
     mid = allowed[len(allowed) // 2]
     s = str(raw or "").strip()
     if not s:
@@ -279,7 +314,8 @@ def _clamp_score_0_10(sc: object) -> float | None:
     return round(max(0.0, min(10.0, float(sc))), 1)
 
 
-def _norm(c: dict, *, default_change_status: str = "new", allowed_priorities: list[str]) -> dict:
+def _norm(c: dict, *, default_change_status: str = "new", allowed_priorities: list[str], allowed_severities: list[str] | None = None) -> dict:
+    sev_allowed = allowed_severities if allowed_severities is not None else _paste_severity_list()
     st = _steps_list(c.get("steps"))
     pre = str(c.get("preconditions") or "").strip()
     exp = str(c.get("expected_result") or "").strip()
@@ -299,8 +335,11 @@ def _norm(c: dict, *, default_change_status: str = "new", allowed_priorities: li
     if c.get("jira_existing"):
         pr = str(c.get("priority") or "").strip()
         prio = pr if pr else _norm_priority(None, allowed_priorities)
+        sv = str(c.get("severity") or "").strip()
+        sev = sv if sv else _norm_severity(None, sev_allowed)
     else:
         prio = _norm_priority(c.get("priority"), allowed_priorities)
+        sev = _norm_severity(c.get("severity"), sev_allowed)
     out = {
         "description": _collapse_multiline(_cap_lines(str(c.get("description") or ""))),
         "preconditions": _collapse_multiline(_cap_lines(pre)),
@@ -308,6 +347,7 @@ def _norm(c: dict, *, default_change_status: str = "new", allowed_priorities: li
         "expected_result": _collapse_multiline(_cap_lines(exp)),
         "change_status": cs,
         "priority": prio,
+        "severity": sev,
     }
     if c.get("jira_existing"):
         out["jira_existing"] = True
@@ -351,11 +391,16 @@ _SIMILAR_THRESHOLD = 0.92
 _JIRA_EXISTING_MATCH_THRESHOLD = 0.88
 
 
-def _jira_row_from_entry(je: dict, allowed_priorities: list[str]) -> dict:
+def _jira_row_from_entry(je: dict, allowed_priorities: list[str], allowed_severities: list[str]) -> dict:
     base_tc = je.get("test_case")
     if not isinstance(base_tc, dict):
         base_tc = {}
-    row = _norm(base_tc, default_change_status="unchanged", allowed_priorities=allowed_priorities)
+    row = _norm(
+        base_tc,
+        default_change_status="unchanged",
+        allowed_priorities=allowed_priorities,
+        allowed_severities=allowed_severities,
+    )
     row["change_status"] = "unchanged"
     row["jira_issue_key"] = je["issue_key"]
     row["jira_status"] = str(je.get("status_name") or "")
@@ -367,6 +412,9 @@ def _jira_row_from_entry(je: dict, allowed_priorities: list[str]) -> dict:
     ji = str(je.get("jira_priority_icon_url") or "").strip()
     if ji:
         row["priority_icon_url"] = ji
+    js = str(je.get("jira_severity_name") or "").strip()
+    if js:
+        row["severity"] = js
     return row
 
 
@@ -375,6 +423,7 @@ def merge_ai_cases_with_jira_existing(
     jira_entries: list[dict],
     *,
     allowed_priorities: list[str],
+    allowed_severities: list[str],
 ) -> list[dict]:
     if not jira_entries:
         return ai_cases
@@ -382,12 +431,19 @@ def merge_ai_cases_with_jira_existing(
     for i, ai in enumerate(ai_cases):
         if not isinstance(ai, dict):
             continue
-        na = _norm(ai, default_change_status="new", allowed_priorities=allowed_priorities)
+        na = _norm(
+            ai, default_change_status="new", allowed_priorities=allowed_priorities, allowed_severities=allowed_severities
+        )
         for j, je in enumerate(jira_entries):
             tc = je.get("test_case") if isinstance(je, dict) else None
             if not isinstance(tc, dict):
                 continue
-            nj = _norm(tc, default_change_status="unchanged", allowed_priorities=allowed_priorities)
+            nj = _norm(
+                tc,
+                default_change_status="unchanged",
+                allowed_priorities=allowed_priorities,
+                allowed_severities=allowed_severities,
+            )
             sim = _tc_similarity_for_merge(na, nj)
             if sim >= _JIRA_EXISTING_MATCH_THRESHOLD:
                 pairs.append((sim, i, j))
@@ -407,7 +463,7 @@ def merge_ai_cases_with_jira_existing(
             continue
         if i in ai_to_jira:
             je = jira_entries[ai_to_jira[i]]
-            out.append(_jira_row_from_entry(je, allowed_priorities))
+            out.append(_jira_row_from_entry(je, allowed_priorities, allowed_severities))
         else:
             out.append(ai)
     for j, je in enumerate(jira_entries):
@@ -415,7 +471,7 @@ def merge_ai_cases_with_jira_existing(
             continue
         if not isinstance(je, dict):
             continue
-        out.append(_jira_row_from_entry(je, allowed_priorities))
+        out.append(_jira_row_from_entry(je, allowed_priorities, allowed_severities))
     return out
 
 
@@ -443,6 +499,7 @@ def _best_prior_by_similarity(
     prev_list: list,
     *,
     allowed_priorities: list[str],
+    allowed_severities: list[str],
     min_sim: float,
 ) -> dict | None:
     best = None
@@ -450,7 +507,12 @@ def _best_prior_by_similarity(
     for tc in prev_list:
         if not isinstance(tc, dict):
             continue
-        p = _norm(tc, default_change_status="unchanged", allowed_priorities=allowed_priorities)
+        p = _norm(
+            tc,
+            default_change_status="unchanged",
+            allowed_priorities=allowed_priorities,
+            allowed_severities=allowed_severities,
+        )
         sim = _tc_similarity_for_merge(n, p)
         if sim > best_sim:
             best_sim = sim
@@ -469,6 +531,7 @@ def _dedupe_similar_test_cases(cases: list[dict]) -> list[dict]:
                     str(tc.get("change_status") or "new"),
                 )
                 out[i]["priority"] = tc.get("priority") or out[i].get("priority")
+                out[i]["severity"] = tc.get("severity") or out[i].get("severity")
                 jk = _pick_jira_issue_key(tc.get("jira_issue_key"), out[i].get("jira_issue_key"))
                 if jk:
                     out[i]["jira_issue_key"] = jk
@@ -529,6 +592,7 @@ def merge_test_cases_with_previous(
     incoming: list,
     *,
     allowed_priorities: list[str],
+    allowed_severities: list[str],
 ) -> list:
     prev_list = previous if isinstance(previous, list) else []
     inc_list = incoming if isinstance(incoming, list) else []
@@ -537,7 +601,14 @@ def merge_test_cases_with_previous(
     for tc in prev_list:
         if isinstance(tc, dict):
             prior_fps.add(
-                _tc_fingerprint(_norm(tc, default_change_status="unchanged", allowed_priorities=allowed_priorities)),
+                _tc_fingerprint(
+                    _norm(
+                        tc,
+                        default_change_status="unchanged",
+                        allowed_priorities=allowed_priorities,
+                        allowed_severities=allowed_severities,
+                    )
+                ),
             )
 
     def _has_diff_snap(row: dict) -> bool:
@@ -566,7 +637,12 @@ def merge_test_cases_with_previous(
         if not isinstance(tc, dict):
             continue
         default_cs = "unchanged" if from_prior else "new"
-        n = _norm(tc, default_change_status=default_cs, allowed_priorities=allowed_priorities)
+        n = _norm(
+            tc,
+            default_change_status=default_cs,
+            allowed_priorities=allowed_priorities,
+            allowed_severities=allowed_severities,
+        )
         fp = _tc_fingerprint(n)
         if fp not in by_fp:
             merged_sim = False
@@ -587,6 +663,7 @@ def merge_test_cases_with_previous(
                     row["steps"] = n["steps"]
                     row["expected_result"] = n.get("expected_result", "")
                     row["priority"] = n.get("priority") or row.get("priority")
+                    row["severity"] = n.get("severity") or row.get("severity")
                     _merge_jira_row_meta(row, n)
                     jk = _pick_jira_issue_key(n.get("jira_issue_key"), row.get("jira_issue_key"))
                     if jk:
@@ -611,6 +688,7 @@ def merge_test_cases_with_previous(
         inc_cs = str(n.get("change_status") or "new")
         by_fp[fp]["change_status"] = _merge_change_status(prev_cs, inc_cs)
         by_fp[fp]["priority"] = n.get("priority") or by_fp[fp].get("priority")
+        by_fp[fp]["severity"] = n.get("severity") or by_fp[fp].get("severity")
         if "score" in n:
             by_fp[fp]["score"] = n["score"]
         _merge_jira_row_meta(by_fp[fp], n)
@@ -626,7 +704,11 @@ def merge_test_cases_with_previous(
         if fp not in prior_fps:
             n = by_fp[fp]
             pm = _best_prior_by_similarity(
-                n, prev_list, allowed_priorities=allowed_priorities, min_sim=_SIMILAR_THRESHOLD
+                n,
+                prev_list,
+                allowed_priorities=allowed_priorities,
+                allowed_severities=allowed_severities,
+                min_sim=_SIMILAR_THRESHOLD,
             )
             cur = str(n.get("change_status") or "new")
             if pm:
@@ -643,7 +725,11 @@ def merge_test_cases_with_previous(
     for n in out_rows:
         if str(n.get("change_status") or "") == "updated" and not _has_diff_snap(n):
             pm = _best_prior_by_similarity(
-                n, prev_list, allowed_priorities=allowed_priorities, min_sim=_SNAPSHOT_SIM_MIN
+                n,
+                prev_list,
+                allowed_priorities=allowed_priorities,
+                allowed_severities=allowed_severities,
+                min_sim=_SNAPSHOT_SIM_MIN,
             )
             if pm:
                 for fld in ("description", "preconditions", "steps", "expected_result"):
@@ -770,10 +856,16 @@ def score_merged_test_cases(req: dict, cases: list[dict]) -> None:
     score_test_cases_0_10(req, cases)
 
 
-def _normalize_generated_case_list(data: dict, allowed_priorities: list[str]) -> list[dict]:
+def _normalize_generated_case_list(
+    data: dict, allowed_priorities: list[str], allowed_severities: list[str]
+) -> list[dict]:
     cases = data.get("test_cases")
     cases = cases if isinstance(cases, list) else []
-    out = [_norm(c, allowed_priorities=allowed_priorities) for c in cases if isinstance(c, dict)]
+    out = [
+        _norm(c, allowed_priorities=allowed_priorities, allowed_severities=allowed_severities)
+        for c in cases
+        if isinstance(c, dict)
+    ]
     return _dedupe_similar_test_cases(out)
 
 
@@ -797,6 +889,7 @@ def _generated_case_quality_issues(
     min_test_cases: int,
     max_test_cases: int,
     allowed_priorities: list[str],
+    allowed_severities: list[str],
 ) -> list[str]:
     issues: list[str] = []
     if len(cases) < min_test_cases:
@@ -807,6 +900,7 @@ def _generated_case_quality_issues(
     seen_desc: set[str] = set()
     seen_sig: set[str] = set()
     allowed_cf = {str(x).casefold() for x in allowed_priorities}
+    allowed_sf = {str(x).casefold() for x in allowed_severities}
     for idx, tc in enumerate(cases, start=1):
         desc = str(tc.get("description") or "").strip()
         if not desc:
@@ -820,6 +914,10 @@ def _generated_case_quality_issues(
         pr = str(tc.get("priority") or "").strip()
         if allowed_cf and pr.casefold() not in allowed_cf:
             issues.append(f"Case {idx} priority {pr!r} is not one of the allowed labels.")
+
+        sr = str(tc.get("severity") or "").strip()
+        if allowed_sf and sr.casefold() not in allowed_sf:
+            issues.append(f"Case {idx} severity {sr!r} is not one of the allowed labels.")
 
         steps = tc.get("steps") if isinstance(tc.get("steps"), list) else []
         steps = [str(x).strip() for x in steps if str(x).strip()]
@@ -895,6 +993,25 @@ def _quality_retry_user_prompt(
     )
 
 
+def _severity_guidance(allowed: list[str], paste_mode: bool) -> str:
+    slist = ", ".join(allowed)
+    if paste_mode:
+        return (
+            f'Each test case MUST include "severity" as exactly one of: {slist}. '
+            "Pick Blocker/Critical for maximum business or safety impact; Major for important defects; Minor/Trivial for lower impact. "
+            "Paste mode: use only these exact severity strings (no synonyms)."
+        )
+    if len(allowed) >= 2:
+        return (
+            f'Each test case MUST include "severity" as exactly one of: {slist}. '
+            f'Use "{allowed[0]}" for highest impact failures; "{allowed[-1]}" for lowest impact; '
+            "intermediate labels for medium-impact defect scenarios. Use only these exact strings (no synonyms)."
+        )
+    if len(allowed) == 1:
+        return f'Each test case MUST set "severity" to "{allowed[0]}".'
+    return f'Each test case MUST include "severity" as exactly one of: {slist}.'
+
+
 def _priority_guidance(allowed: list[str], paste_mode: bool) -> str:
     plist = ", ".join(allowed)
     if paste_mode:
@@ -922,6 +1039,7 @@ def build_generation_user_prompt(
     paste_mode: bool,
     existing_jira_tests: list[dict] | None,
     allowed_priorities: list[str],
+    allowed_severities: list[str],
     min_test_cases: int,
     max_test_cases: int,
 ) -> str:
@@ -959,10 +1077,11 @@ def build_generation_user_prompt(
         )
     max_note = "no upper limit" if max_test_cases == 0 else f"at most {max_test_cases}"
     pri_line = _priority_guidance(allowed_priorities, paste_mode)
+    sev_line = _severity_guidance(allowed_severities, paste_mode)
     parts = [
         f"Requirements:\n{json.dumps(req, ensure_ascii=False, indent=2)}",
         linked_block + prior,
-        f"Task: Build test_cases per system rules from Requirements and Prior / linked tests when present. {pri_line}"
+        f"Task: Build test_cases per system rules from Requirements and Prior / linked tests when present. {pri_line} {sev_line}"
         f"Aim for strong BDD coverage: mix happy path with edge, negative, and alternative scenarios where the text supports them (not only trivial happy cases). "
         f"Return at least {min_test_cases} test case(s) and {max_note} total in test_cases. "
         "Use correct English grammar in every description and step line. "
@@ -1000,6 +1119,7 @@ async def generate_test_cases(
     prev: dict | None,
     *,
     allowed_priorities: list[str],
+    allowed_severities: list[str],
     min_test_cases: int = 1,
     max_test_cases: int = 10,
     paste_mode: bool = False,
@@ -1012,6 +1132,7 @@ async def generate_test_cases(
         paste_mode=paste_mode,
         existing_jira_tests=existing_jira_tests,
         allowed_priorities=allowed_priorities,
+        allowed_severities=allowed_severities,
         min_test_cases=min_test_cases,
         max_test_cases=max_test_cases,
     )
@@ -1038,12 +1159,13 @@ async def generate_test_cases(
         _chat, base, model, msgs, 0.15, response_format=response_format, bearer=bear
     )
     data = _json(raw)
-    out = _normalize_generated_case_list(data, allowed_priorities)
+    out = _normalize_generated_case_list(data, allowed_priorities, allowed_severities)
     issues = _generated_case_quality_issues(
         out,
         min_test_cases=min_test_cases,
         max_test_cases=max_test_cases,
         allowed_priorities=allowed_priorities,
+        allowed_severities=allowed_severities,
     )
     if issues:
         retry_user = _quality_retry_user_prompt(
@@ -1065,12 +1187,13 @@ async def generate_test_cases(
                 response_format=response_format,
                 bearer=bear,
             )
-            retry_out = _normalize_generated_case_list(_json(retry_raw), allowed_priorities)
+            retry_out = _normalize_generated_case_list(_json(retry_raw), allowed_priorities, allowed_severities)
             retry_issues = _generated_case_quality_issues(
                 retry_out,
                 min_test_cases=min_test_cases,
                 max_test_cases=max_test_cases,
                 allowed_priorities=allowed_priorities,
+                allowed_severities=allowed_severities,
             )
             if retry_out and len(retry_issues) < len(issues):
                 out = retry_out

@@ -32,6 +32,7 @@ Output contract:
   - "expected_result": always "".
   - "change_status": "new", "updated", or "unchanged".
   - "priority": one of the exact labels provided in the Task.
+  - "severity": one of the exact labels provided in the Task.
 - Do not include an "id" field.
 
 Change status:
@@ -70,7 +71,7 @@ English quality:
 - Every Then/And assertion must be a full sentence: subject + clear outcome (e.g. not a lone noun phrase like "The logo" with no visible expectation).
 
 Example:
-{"test_cases":[{"description":"Successful login with valid credentials","preconditions":"","steps":["Given The user is on the login page","When The user enters a valid username","And The user enters a valid password","And The user clicks the \"Login\" button","Then The dashboard page is visible"],"expected_result":"","change_status":"new","priority":"High"}]}
+{"test_cases":[{"description":"Successful login with valid credentials","preconditions":"","steps":["Given The user is on the login page","When The user enters a valid username","And The user enters a valid password","And The user clicks the \"Login\" button","Then The dashboard page is visible"],"expected_result":"","change_status":"new","priority":"High","severity":"Minor"}]}
 """
 
 BDD_TEST_GENERATION_WITH_ATTACHMENTS_SUPPLEMENT_PROMPT = """
@@ -145,7 +146,7 @@ Rules:
 AGENT_SUGGESTED_SCENARIOS_GENERATION_SYSTEM_PROMPT = """
 Output JSON only: {"test_cases":[...]}.
 Create one scenario per suggestion.
-Each item must include: description, preconditions "", steps, expected_result "", change_status "new", priority.
+Each item must include: description, preconditions "", steps, expected_result "", change_status "new", priority, severity.
 steps must be a JSON array of strings, one string per Gherkin line.
 Never put all steps in one string.
 Trace only to requirements and supplied context.

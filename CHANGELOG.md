@@ -147,3 +147,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Fixed issue with JIRA_PASSWORD set in .env
+
+---
+## [2.3.0]
+
+### Added
+- Added SEVERITY from LLM and JIRA
+- Added logic to get the meta template for Test creation from JIRA
+
+### Changed
+- Added info message for PRIORITY, SEVERITY

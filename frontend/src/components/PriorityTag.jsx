@@ -8,7 +8,7 @@ const stroke = {
   strokeLinejoin: "round",
 };
 
-function PriorityGlyph({ level }) {
+export function PriorityGlyph({ level }) {
   switch (level) {
     case "highest":
       return (
@@ -48,15 +48,19 @@ function PriorityGlyph({ level }) {
   }
 }
 
-export function PriorityTag({ priority, iconUrl }) {
+export function PriorityTag({ priority, iconUrl, fromJiraIssue = false }) {
   const raw = String(priority ?? "").trim();
   if (!raw) return null;
   const label = KNOWN.find((k) => k.toLowerCase() === raw.toLowerCase()) || raw;
-  const fromJira = Boolean(iconUrl);
-  const slug = fromJira ? "jira" : KNOWN.includes(label) ? label.toLowerCase() : "unknown";
+  const showJiraImg = Boolean(fromJiraIssue && String(iconUrl ?? "").trim());
+  const slug = showJiraImg
+    ? "jira"
+    : KNOWN.includes(label)
+      ? label.toLowerCase()
+      : "unknown";
   return (
     <span className={`tc-priority tc-priority--${slug}`}>
-      {fromJira ? (
+      {showJiraImg ? (
         <span className="tc-priority-icon" aria-hidden>
           <img src={iconUrl} alt="" className="tc-priority-icon-img" />
         </span>
