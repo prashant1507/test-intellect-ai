@@ -117,6 +117,15 @@ export const AUDIT_USER_EMPTY = "__empty__";
 export const AUDIT_TICKET_EMPTY = "__empty_ticket__";
 export const AUDIT_JIRA_USER_EMPTY = "__empty_jira_user__";
 
+export function auditTicketIdIsDisplayDash(ticketId) {
+  const t = String(ticketId ?? "");
+  return (
+    t === "AUTH" ||
+    t === "AUTOMATION_SAVED_SUITE" ||
+    t === "AUTOMATION_SAVED_SELECTORS"
+  );
+}
+
 export async function downloadAuditPdf(entries) {
   if (!Array.isArray(entries) || entries.length === 0) return;
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
@@ -134,7 +143,7 @@ export async function downloadAuditPdf(entries) {
       formatTime(row.created_at),
       String(row.username || "—"),
       row.jira_username ? String(row.jira_username) : "—",
-      row.ticket_id === "AUTH" ? "—" : String(row.ticket_id || "—"),
+      auditTicketIdIsDisplayDash(row.ticket_id) ? "—" : String(row.ticket_id || "—"),
       auditActionLabel(row.action),
     ]),
     styles: { fontSize: 8, cellPadding: 2 },

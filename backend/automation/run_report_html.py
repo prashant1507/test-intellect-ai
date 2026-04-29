@@ -694,10 +694,6 @@ def _html_environment_section(
             _e(_bool_yn(d.get("post_run_analysis"))),
         ),
         (
-            "Locator prerun (spike)",
-            _e(_bool_yn(d.get("spike_prerun"))),
-        ),
-        (
             "Parallel execution (default)",
             _e(str(int(d.get("parallel_execution", 1) or 1))),
         ),

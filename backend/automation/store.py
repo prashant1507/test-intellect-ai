@@ -140,6 +140,7 @@ def init_automation_db() -> None:
                 c.execute(
                     "ALTER TABLE automation_run_steps ADD COLUMN inventory_count INTEGER"
                 )
+        c.execute("DROP TABLE IF EXISTS automation_selector_cache_deny")
         c.commit()
     finally:
         c.close()
@@ -327,6 +328,19 @@ def delete_selector_cache_by_rowid(rowid: int) -> bool:
         c.close()
 
 
+def delete_all_selector_cache() -> int:
+    c = _connect()
+    try:
+        n = int(
+            c.execute("SELECT COUNT(*) FROM automation_selector_cache").fetchone()[0]
+        )
+        c.execute("DELETE FROM automation_selector_cache")
+        c.commit()
+        return n
+    finally:
+        c.close()
+
+
 def list_suite_cases() -> list[dict[str, Any]]:
     c = _connect()
     try:
@@ -505,6 +519,21 @@ def delete_suite_case(case_id: str) -> bool:
         c.execute("DELETE FROM automation_suite_cases WHERE id=?", (t,))
         c.commit()
         return True
+    finally:
+        c.close()
+
+
+def delete_all_suite_cases() -> tuple[int, int]:
+    c = _connect()
+    try:
+        n_cases = int(c.execute("SELECT COUNT(*) FROM automation_suite_cases").fetchone()[0])
+        n_hist = int(
+            c.execute("SELECT COUNT(*) FROM automation_suite_case_run_history").fetchone()[0]
+        )
+        c.execute("DELETE FROM automation_suite_case_run_history")
+        c.execute("DELETE FROM automation_suite_cases")
+        c.commit()
+        return n_cases, n_hist
     finally:
         c.close()
 

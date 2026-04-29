@@ -1285,6 +1285,14 @@ button.automation-spike-run-artifact-dl.req-attach-dl {
   font-weight: inherit;
 }
 
+.automation-spike-saved-selectors-head-tail {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  justify-content: flex-end;
+}
+
 .automation-spike-saved-suite-retention {
   margin: 0.75rem 0 0.5rem;
   font-size: 0.8rem;
@@ -1900,6 +1908,38 @@ button.automation-spike-suite-recent-reports-icon-btn:hover {
 }
 
 button.automation-spike-suite-recent-reports-icon-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+button.automation-spike-suite-delete-all-cases-icon-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.4rem;
+  height: 2.4rem;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--err) 45%, var(--card-border));
+  border-radius: 8px;
+  line-height: 0;
+  color: var(--err);
+  background: var(--card-bg, transparent);
+  -webkit-tap-highlight-color: transparent;
+}
+
+button.automation-spike-suite-delete-all-cases-icon-btn:hover:not(:disabled) {
+  color: var(--err);
+  background: color-mix(in srgb, var(--err) 10%, var(--card-bg));
+  border-color: color-mix(in srgb, var(--err) 55%, var(--card-border));
+}
+
+button.automation-spike-suite-delete-all-cases-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.automation-spike-suite-delete-all-cases-icon-btn:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }

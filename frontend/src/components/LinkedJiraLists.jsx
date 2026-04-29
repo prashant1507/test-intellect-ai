@@ -4,28 +4,13 @@ import { PriorityTag } from "./PriorityTag";
 
 const VISIBLE_ROWS = 2;
 
-const SCROLL_EXTRA_STORAGE = {
-  attachments: "linkedListScrollExtra.attachments",
-  tests: "linkedListScrollExtra.tests",
-  work: "linkedListScrollExtra.work",
-};
-
 function viewportScrollCapPx() {
   if (typeof window === "undefined") return 512;
   return Math.min(window.innerHeight * 0.85, 32 * 16);
 }
 
-function readStoredExtraPx(key) {
-  if (!key) return 0;
-  try {
-    const v = sessionStorage.getItem(key);
-    if (v != null) return Math.max(0, Number(v));
-  } catch {}
-  return 0;
-}
-
-export function ResizableScrollClip({ scroll, clipPx, className, children, storageKey }) {
-  const [extraPx, setExtraPx] = useState(() => readStoredExtraPx(storageKey));
+export function ResizableScrollClip({ scroll, clipPx, className, children }) {
+  const [extraPx, setExtraPx] = useState(0);
   const [viewportCap, setViewportCap] = useState(viewportScrollCapPx);
 
   useEffect(() => {
@@ -33,13 +18,6 @@ export function ResizableScrollClip({ scroll, clipPx, className, children, stora
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
-
-  useEffect(() => {
-    if (!storageKey) return;
-    try {
-      sessionStorage.setItem(storageKey, String(extraPx));
-    } catch {}
-  }, [storageKey, extraPx]);
 
   const basePx = clipPx != null && clipPx > 0 ? clipPx : 120;
 
@@ -190,7 +168,6 @@ export function LinkedJiraTestsBlock({ rows, heading }) {
         scroll={scroll}
         clipPx={clipPx}
         className="linked-jira-tests-scroll"
-        storageKey={SCROLL_EXTRA_STORAGE.tests}
       >
         {list}
       </ResizableScrollClip>
@@ -239,7 +216,6 @@ export function LinkedJiraWorkBlock({ rows, heading }) {
         scroll={scroll}
         clipPx={clipPx}
         className="linked-jira-tests-scroll"
-        storageKey={SCROLL_EXTRA_STORAGE.work}
       >
         {list}
       </ResizableScrollClip>
@@ -333,7 +309,6 @@ export function RequirementAttachmentsInline({
         scroll={scroll}
         clipPx={clipPx}
         className="req-attachments-scroll"
-        storageKey={SCROLL_EXTRA_STORAGE.attachments}
       >
         {list}
       </ResizableScrollClip>

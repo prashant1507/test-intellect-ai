@@ -675,6 +675,8 @@ export function AutomationSpikeSectionCards({
   const [suiteRunOneUrlInvalid, setSuiteRunOneUrlInvalid] = useState(false);
   const [suiteRunningCaseIds, setSuiteRunningCaseIds] = useState([]);
   const [suiteDeleteCase, setSuiteDeleteCase] = useState(null);
+  const [deleteAllSelectorsConfirmOpen, setDeleteAllSelectorsConfirmOpen] = useState(false);
+  const [deleteAllSuiteCasesConfirmOpen, setDeleteAllSuiteCasesConfirmOpen] = useState(false);
   const [suiteReportsRecentOpen, setSuiteReportsRecentOpen] = useState(() => {
     try {
       return typeof localStorage !== "undefined" && localStorage.getItem(SUITE_REPORTS_RECENT_LS_KEY) === "1";
@@ -776,6 +778,8 @@ export function AutomationSpikeSectionCards({
   const suiteRunOneUrlInputRef = useRef(null);
   const suiteReportsRecentDialogRef = useRef(null);
   const suiteDeleteCaseDialogRef = useRef(null);
+  const deleteAllSelectorsDialogRef = useRef(null);
+  const deleteAllSuiteCasesDialogRef = useRef(null);
 
   useEffect(() => {
     const onDoc = (e) => {
@@ -1044,6 +1048,8 @@ export function AutomationSpikeSectionCards({
     setSuiteRunOneUrlInvalid(false);
     setSuiteDeleteCase(null);
     setSuiteReportsRecentOpen(false);
+    setDeleteAllSelectorsConfirmOpen(false);
+    setDeleteAllSuiteCasesConfirmOpen(false);
   }, []);
 
   const requestDeleteSuiteCase = useCallback(
@@ -1138,6 +1144,24 @@ export function AutomationSpikeSectionCards({
     return () => cancelAnimationFrame(id);
   }, [suiteDeleteCase]);
 
+  useLayoutEffect(() => {
+    if (!deleteAllSelectorsConfirmOpen) return;
+    const id = requestAnimationFrame(() => {
+      document.getElementById("app-theme-toggle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      deleteAllSelectorsDialogRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [deleteAllSelectorsConfirmOpen]);
+
+  useLayoutEffect(() => {
+    if (!deleteAllSuiteCasesConfirmOpen) return;
+    const id = requestAnimationFrame(() => {
+      document.getElementById("app-theme-toggle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      deleteAllSuiteCasesDialogRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [deleteAllSuiteCasesConfirmOpen]);
+
   useEffect(() => {
     const hasSuiteModal =
       Boolean(suiteBddViewCase) ||
@@ -1146,7 +1170,9 @@ export function AutomationSpikeSectionCards({
       suiteRunDialogOpen ||
       (suiteRunOneDialogOpen && suiteRunOneCase) ||
       Boolean(suiteDeleteCase) ||
-      suiteReportsRecentOpen;
+      suiteReportsRecentOpen ||
+      deleteAllSelectorsConfirmOpen ||
+      deleteAllSuiteCasesConfirmOpen;
     if (!hasSuiteModal) return undefined;
 
     const onDocPointerDown = (e) => {
@@ -1168,6 +1194,18 @@ export function AutomationSpikeSectionCards({
         const d = document.getElementById("automation-suite-reports-recent-dialog");
         if (d?.contains(t)) return;
         closeSuiteReportsRecent();
+        return;
+      }
+      if (deleteAllSelectorsConfirmOpen) {
+        const d = document.getElementById("automation-clear-all-selectors-dialog");
+        if (d?.contains(t)) return;
+        setDeleteAllSelectorsConfirmOpen(false);
+        return;
+      }
+      if (deleteAllSuiteCasesConfirmOpen) {
+        const d = document.getElementById("automation-clear-all-suite-cases-dialog");
+        if (d?.contains(t)) return;
+        setDeleteAllSuiteCasesConfirmOpen(false);
         return;
       }
       if (suiteDeleteCase) {
@@ -1213,6 +1251,8 @@ export function AutomationSpikeSectionCards({
     suiteRunOneCase,
     suiteDeleteCase,
     suiteReportsRecentOpen,
+    deleteAllSelectorsConfirmOpen,
+    deleteAllSuiteCasesConfirmOpen,
     closeSuiteBddView,
     closeSuiteAnalysisView,
     closeSuiteHistoryView,
@@ -1221,6 +1261,30 @@ export function AutomationSpikeSectionCards({
     cancelDeleteSuiteCase,
     closeSuiteReportsRecent,
   ]);
+
+  useEffect(() => {
+    if (!deleteAllSuiteCasesConfirmOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setDeleteAllSuiteCasesConfirmOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [deleteAllSuiteCasesConfirmOpen]);
+
+  useEffect(() => {
+    if (!deleteAllSelectorsConfirmOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setDeleteAllSelectorsConfirmOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [deleteAllSelectorsConfirmOpen]);
 
   useEffect(() => {
     if (!suiteDeleteCase) return undefined;
@@ -1518,6 +1582,30 @@ export function AutomationSpikeSectionCards({
     setSuiteErr("");
     try {
       await api(`/automation/selectors/${rowid}`, "DELETE");
+      await refreshLists();
+    } catch (e) {
+      setSuiteErr(e?.message || String(e));
+    }
+  };
+
+  const confirmDeleteAllSelectors = async () => {
+    setDeleteAllSelectorsConfirmOpen(false);
+    setSuiteErr("");
+    try {
+      await api("/automation/selectors/all", "DELETE");
+      await refreshLists();
+    } catch (e) {
+      setSuiteErr(e?.message || String(e));
+    }
+  };
+
+  const confirmDeleteAllSuiteCases = async () => {
+    setDeleteAllSuiteCasesConfirmOpen(false);
+    setSuiteErr("");
+    try {
+      await api("/automation/suite/all", "DELETE");
+      setLastSuiteReport(null);
+      setSuiteRunAllDoneGreen(false);
       await refreshLists();
     } catch (e) {
       setSuiteErr(e?.message || String(e));
@@ -1940,6 +2028,25 @@ export function AutomationSpikeSectionCards({
                     )}
                   </button>
                 </FloatingTooltip>
+                <FloatingTooltip
+                  text={
+                    runOrSuiteBusy
+                      ? "Cannot remove while a test run is in progress"
+                      : suiteCases.length === 0
+                        ? "No saved cases to remove"
+                        : "Delete all test cases and its run history"
+                  }
+                >
+                  <button
+                    type="button"
+                    className="automation-spike-suite-delete-all-cases-icon-btn"
+                    onClick={() => setDeleteAllSuiteCasesConfirmOpen(true)}
+                    disabled={runOrSuiteBusy || suiteCases.length === 0}
+                    aria-label="Delete all Saved Suite test cases"
+                  >
+                    <IconTrash />
+                  </button>
+                </FloatingTooltip>
               </>
             ) : null}
             {suiteBusy ? (
@@ -2021,7 +2128,6 @@ export function AutomationSpikeSectionCards({
               scroll={suiteScrollEnabled}
               clipPx={suiteClipPx}
               className="linked-jira-tests-scroll"
-              storageKey="automationSuiteListScrollExtra"
             >
               <ul ref={suiteListRef} className="automation-spike-suite-list">
                 {suiteCases.map((c, i) => (
@@ -2330,7 +2436,28 @@ export function AutomationSpikeSectionCards({
               <FieldInfo text="Cached selectors from successful runs, so later runs can resolve steps more quickly when the app matches a known state." />
             </span>
           </h2>
-          <span className="linked-jira-tests-count">Count: {selectors.length}</span>
+          <span className="automation-spike-saved-selectors-head-tail">
+            <span className="linked-jira-tests-count">Count: {selectors.length}</span>
+            {selectors.length > 0 ? (
+              <FloatingTooltip
+                text={
+                  runOrSuiteBusy
+                    ? "Cannot remove while a test run is in progress"
+                    : "Delete all saved selectors. The next runs may rebuild the cache via the LLM."
+                }
+              >
+                <button
+                  type="button"
+                  className="automation-spike-suite-delete-all-cases-icon-btn"
+                  onClick={() => setDeleteAllSelectorsConfirmOpen(true)}
+                  disabled={runOrSuiteBusy}
+                  aria-label="Delete all saved selectors"
+                >
+                  <IconTrash />
+                </button>
+              </FloatingTooltip>
+            ) : null}
+          </span>
         </div>
         {selectors.length === 0 ? (
           <p className="automation-spike-muted">No cached rows yet. They appear after successful runs with new fingerprints.</p>
@@ -2344,7 +2471,6 @@ export function AutomationSpikeSectionCards({
               scroll={cacheScrollEnabled}
               clipPx={cacheClipPx}
               className="linked-jira-tests-scroll"
-              storageKey="automationCacheListScrollExtra"
             >
               <ul ref={cacheListRef} className="automation-spike-sel-list">
                 {selectors.map((r, i) => (
@@ -2374,6 +2500,118 @@ export function AutomationSpikeSectionCards({
           </div>
         )}
       </div>
+
+      {deleteAllSelectorsConfirmOpen ? (
+        <div
+          className="modal-backdrop modal-backdrop--main-area"
+          role="presentation"
+          onClick={() => setDeleteAllSelectorsConfirmOpen(false)}
+        >
+          <div
+            id="automation-clear-all-selectors-dialog"
+            ref={deleteAllSelectorsDialogRef}
+            className="modal-dialog modal-dialog-tc-edit"
+            role="dialog"
+            tabIndex={-1}
+            aria-modal="true"
+            aria-labelledby="automation-clear-all-selectors-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-dialog-head">
+              <h2 id="automation-clear-all-selectors-title" className="modal-dialog-title">
+                Delete all Saved Selectors?
+              </h2>
+              <button
+                type="button"
+                className="modal-dialog-close"
+                onClick={() => setDeleteAllSelectorsConfirmOpen(false)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-dialog-tc-edit-body">
+              <p className="modal-dialog-sub">
+                This removes all {selectors.length} cached selector row{selectors.length === 1 ? "" : "s"}. This
+                cannot be undone.
+              </p>
+              <div className="modal-dialog-tc-edit-actions">
+                <button
+                  type="button"
+                  className="primary danger-btn"
+                  onClick={() => void confirmDeleteAllSelectors()}
+                  disabled={runOrSuiteBusy}
+                >
+                  Delete all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeleteAllSelectorsConfirmOpen(false)}
+                  disabled={runOrSuiteBusy}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteAllSuiteCasesConfirmOpen ? (
+        <div
+          className="modal-backdrop modal-backdrop--main-area"
+          role="presentation"
+          onClick={() => setDeleteAllSuiteCasesConfirmOpen(false)}
+        >
+          <div
+            id="automation-clear-all-suite-cases-dialog"
+            ref={deleteAllSuiteCasesDialogRef}
+            className="modal-dialog modal-dialog-tc-edit"
+            role="dialog"
+            tabIndex={-1}
+            aria-modal="true"
+            aria-labelledby="automation-clear-all-suite-cases-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-dialog-head">
+              <h2 id="automation-clear-all-suite-cases-title" className="modal-dialog-title">
+                Delete all test cases from Saved Suite?
+              </h2>
+              <button
+                type="button"
+                className="modal-dialog-close"
+                onClick={() => setDeleteAllSuiteCasesConfirmOpen(false)}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="modal-dialog-tc-edit-body">
+              <p className="modal-dialog-sub">
+                This removes all {suiteCases.length} saved test case{suiteCases.length === 1 ? "" : "s"} and their
+                run history from the suite. This cannot be undone.
+              </p>
+              <div className="modal-dialog-tc-edit-actions">
+                <button
+                  type="button"
+                  className="primary danger-btn"
+                  onClick={() => void confirmDeleteAllSuiteCases()}
+                  disabled={runOrSuiteBusy}
+                >
+                  Delete all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeleteAllSuiteCasesConfirmOpen(false)}
+                  disabled={runOrSuiteBusy}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {suiteBddViewCase ? (
         <div

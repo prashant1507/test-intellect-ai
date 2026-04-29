@@ -31,19 +31,19 @@ sets `SHOW_JIRA_MODE_UI` back to `true` so at least one mode stays available.
 
 ## JIRA Settings
 
-| Variable                          | Example                     | Description                                                                   |
-|-----------------------------------|-----------------------------|-------------------------------------------------------------------------------|
-| `JIRA_URL`                        | *(empty)*                   | Jira site base URL (e.g. `https://your-domain.atlassian.net`).                |
-| `JIRA_USERNAME`                   | *(empty)*                   | Jira user (often email) for API auth.                                         |
-| `JIRA_PASSWORD`                   | *(empty)*                   | API token or password (Atlassian Cloud: prefer API token). If set, JIRA calls work with an empty UI password; the secret is never exposed via `/api/config`. |
-| `JIRA_TEST_PROJECT_KEY`           | *(empty)*                   | Project key for creating test issues (e.g. `QA`).                             |
-| `JIRA_TEST_ISSUE_TYPE`            | `Test`                      | Issue type name for test issues.                                              |
-| `JIRA_TEST_LINK_TYPE`             | `Relates`                   | Link type name when linking tests to the requirement.                         |
-| `JIRA_LINK_INWARD_IS_REQUIREMENT` | `true`                      | Whether the inward end of the link is treated as the requirement.             |
-| `JIRA_VERIFY_SSL`                 | `false`                     | If `true`, verify TLS for Jira HTTPS. Use `false` only for self-signed / dev. |
-| `JIRA_LINKED_WORK_ISSUE_TYPES`    | `Story,Improvement,Feature` | Comma-separated types for **Linked work**-style lists in the UI.              |
-| `JIRA_CREATEMETA_TEST_TTL_SECONDS` | `3600`                     | TTL in seconds for cached JIRA **createmeta** used when pushing **test** issues (`data/jira_createmeta_cache.json`). `0` disables disk cache (always queries JIRA). Updated when TTL expires combined with relevant JIRA interactions; not during **Fetch Requirements** alone. |
-| `JIRA_TEST_SEVERITY_FIELD_ID` | *(empty)* | Optional custom field id for **Severity** when create metadata does not expose a field named `Severity`. |
+| Variable                           | Example                     | Description                                                                                                                                                                                                                                                                     |
+|------------------------------------|-----------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `JIRA_URL`                         | *(empty)*                   | Jira site base URL (e.g. `https://your-domain.atlassian.net`).                                                                                                                                                                                                                  |
+| `JIRA_USERNAME`                    | *(empty)*                   | Jira user (often email) for API auth.                                                                                                                                                                                                                                           |
+| `JIRA_PASSWORD`                    | *(empty)*                   | API token or password (Atlassian Cloud: prefer API token). If set, JIRA calls work with an empty UI password; the secret is never exposed via `/api/config`.                                                                                                                    |
+| `JIRA_TEST_PROJECT_KEY`            | *(empty)*                   | Project key for creating test issues (e.g. `QA`).                                                                                                                                                                                                                               |
+| `JIRA_TEST_ISSUE_TYPE`             | `Test`                      | Issue type name for test issues.                                                                                                                                                                                                                                                |
+| `JIRA_TEST_LINK_TYPE`              | `Relates`                   | Link type name when linking tests to the requirement.                                                                                                                                                                                                                           |
+| `JIRA_LINK_INWARD_IS_REQUIREMENT`  | `true`                      | Whether the inward end of the link is treated as the requirement.                                                                                                                                                                                                               |
+| `JIRA_VERIFY_SSL`                  | `false`                     | If `true`, verify TLS for Jira HTTPS. Use `false` only for self-signed / dev.                                                                                                                                                                                                   |
+| `JIRA_LINKED_WORK_ISSUE_TYPES`     | `Story,Improvement,Feature` | Comma-separated types for **Linked work**-style lists in the UI.                                                                                                                                                                                                                |
+| `JIRA_CREATEMETA_TEST_TTL_SECONDS` | `3600`                      | TTL in seconds for cached JIRA **createmeta** used when pushing **test** issues (`data/jira_createmeta_cache.json`). `0` disables disk cache (always queries JIRA). Updated when TTL expires combined with relevant JIRA interactions; not during **Fetch Requirements** alone. |
+| `JIRA_TEST_SEVERITY_FIELD_ID`      | *(empty)*                   | Optional custom field id for **Severity** when create metadata does not expose a field named `Severity`.                                                                                                                                                                        |
 
 ---
 
@@ -57,13 +57,12 @@ sets `SHOW_JIRA_MODE_UI` back to `true` so at least one mode stays available.
 
 ## Auto Tests Settings
 
-| Variable                    | Example | Description                                                                                         |
-|-----------------------------|---------|-----------------------------------------------------------------------------------------------------|
-| `AUTOMATION_POST_ANALYSIS`  | `true`  | If `true`, run post-run LLM analysis on automation results.                                         |
-| `AUTOMATION_WRITE_RUN_HTML` | `true`  | Write per-run HTML reports under the reports directory.                                             |
-| `AUTOMATION_RETENTION_DAYS` | `20`    | Prune data older than this many days (runs, artifacts, reports, history). `0` disables.             |
-| `AUTOMATION_SPIKE_PRERUN`   | `false` | If `true`, run Playwright locator pre-check (and optional repair) after a non-cached selector plan. |
-| `AUTOMATION_HEADLESS`        | *(omit)* | If **set** (`true` / `false`), forces Playwright headless and locks the “Headless” control in the Auto Tests env panel. **Docker:** set `true` (no display in the container). **Local dev:** **omit** to use the in-app on/off value (stored in the automation database). |
+| Variable                    | Example  | Description                                                                                                                                                                                                                                                               |
+|-----------------------------|----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `AUTOMATION_POST_ANALYSIS`  | `true`   | If `true`, run post-run LLM analysis on automation results.                                                                                                                                                                                                               |
+| `AUTOMATION_WRITE_RUN_HTML` | `true`   | Write per-run HTML reports under the reports directory.                                                                                                                                                                                                                   |
+| `AUTOMATION_RETENTION_DAYS` | `20`     | Prune data older than this many days (runs, artifacts, reports, history). `0` disables.                                                                                                                                                                                   |
+| `AUTOMATION_HEADLESS`       | *(omit)* | If **set** (`true` / `false`), forces Playwright headless and locks the “Headless” control in the Auto Tests env panel. **Docker:** set `true` (no display in the container). **Local dev:** **omit** to use the in-app on/off value (stored in the automation database). |
 
 ---
 
@@ -86,13 +85,13 @@ sets `SHOW_JIRA_MODE_UI` back to `true` so at least one mode stays available.
 Used for BDD generation, batch scoring, agentic graph (when not using a separate vision call), Playwright automation
 planning, and other text endpoints.
 
-| Variable                 | Example                    | Description                                                                                                                                   |
-|--------------------------|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
-| `LLM_TEXT_URL`           | `http://127.0.0.1:1234/v1` | OpenAI-compatible API base; include `/v1` if the server uses that path. **Required** when `MOCK=false` (see validation in `settings.py`).      |
-| `LLM_TEXT_MODEL`         | `qwen/qwen2.5-7b`          | Model id for text. **Required** when `MOCK=false`.                                                                                            |
-| `LLM_TEXT_ACCESS_TOKEN`  | *(empty)*                  | Bearer for the text API; leave empty for local servers.                                                                                       |
-| *Aliases (same fields)*  |                            | `LLM_URL` → `LLM_TEXT_URL`, `LLM_MODEL` → `LLM_TEXT_MODEL`, `LLM_ACCESS_TOKEN` → `LLM_TEXT_ACCESS_TOKEN` (Pydantic `AliasChoices` in settings). |
-| `DOCKER_LLM_URL`         | *(empty)*                  | **Not read by the app.** Compose/docs only: map into `LLM_TEXT_URL` inside a container.                                                       |
+| Variable                | Example                    | Description                                                                                                                                     |
+|-------------------------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| `LLM_TEXT_URL`          | `http://127.0.0.1:1234/v1` | OpenAI-compatible API base; include `/v1` if the server uses that path. **Required** when `MOCK=false` (see validation in `settings.py`).       |
+| `LLM_TEXT_MODEL`        | `qwen/qwen2.5-7b`          | Model id for text. **Required** when `MOCK=false`.                                                                                              |
+| `LLM_TEXT_ACCESS_TOKEN` | *(empty)*                  | Bearer for the text API; leave empty for local servers.                                                                                         |
+| *Aliases (same fields)* |                            | `LLM_URL` → `LLM_TEXT_URL`, `LLM_MODEL` → `LLM_TEXT_MODEL`, `LLM_ACCESS_TOKEN` → `LLM_TEXT_ACCESS_TOKEN` (Pydantic `AliasChoices` in settings). |
+| `DOCKER_LLM_URL`        | *(empty)*                  | **Not read by the app.** Compose/docs only: map into `LLM_TEXT_URL` inside a container.                                                         |
 
 Non-secret hint: `GET /api/config` does not expose LLM URLs, models, or tokens.
 
@@ -100,32 +99,37 @@ Non-secret hint: `GET /api/config` does not expose LLM URLs, models, or tokens.
 
 ## Vision LLM (optional, OpenAI-compatible)
 
-When **`LLM_VISION_URL` is set** (non-empty), the app treats a vision endpoint as available: multimodal **image/PDF** requests
-for test generation and the agentic pipeline use this URL and model, with **`LLM_VISION_ACCESS_TOKEN`** as Bearer (or the
+When **`LLM_VISION_URL` is set** (non-empty), the app treats a vision endpoint as available: multimodal **image/PDF**
+requests
+for test generation and the agentic pipeline use this URL and model, with **`LLM_VISION_ACCESS_TOKEN`** as Bearer (or
+the
 text token if the vision token is empty). The UI shows mockup upload and JIRA attachment **selection** when
 `LLM_VISION_URL` is configured (`GET /api/config` includes `llm_vision_configured: true`).
 
-If **both** `LLM_VISION_URL` and `LLM_VISION_MODEL` are empty, the deployment is text-only: JIRA **still fetches** ticket
+If **both** `LLM_VISION_URL` and `LLM_VISION_MODEL` are empty, the deployment is text-only: JIRA **still fetches**
+ticket
 attachments for display, but the user cannot select them for the LLM and cannot upload mockups for generation.
 
-| Variable                    | Example                    | Description                                                                                    |
-|-----------------------------|----------------------------|------------------------------------------------------------------------------------------------|
-| `LLM_VISION_URL`            | *(empty)*                  | OpenAI-compatible base for vision/multimodal calls. If set, `LLM_VISION_MODEL` must be set.    |
-| `LLM_VISION_MODEL`          | *(empty)*                  | Vision model id. If set, `LLM_VISION_URL` must be set.                                         |
-| `LLM_VISION_ACCESS_TOKEN`   | *(empty)*                  | Bearer for the vision API; if empty, `LLM_TEXT_ACCESS_TOKEN` is used.                          |
+| Variable                  | Example   | Description                                                                                 |
+|---------------------------|-----------|---------------------------------------------------------------------------------------------|
+| `LLM_VISION_URL`          | *(empty)* | OpenAI-compatible base for vision/multimodal calls. If set, `LLM_VISION_MODEL` must be set. |
+| `LLM_VISION_MODEL`        | *(empty)* | Vision model id. If set, `LLM_VISION_URL` must be set.                                      |
+| `LLM_VISION_ACCESS_TOKEN` | *(empty)* | Bearer for the vision API; if empty, `LLM_TEXT_ACCESS_TOKEN` is used.                       |
 
 ---
 
 ## Requirement mockups / screenshots (LLM)
 
-Uploads and JIRA attachment selection for generation require **`LLM_VISION_URL`** (and `LLM_VISION_MODEL`). Limits below apply whenever vision is configured.
+Uploads and JIRA attachment selection for generation require **`LLM_VISION_URL`** (and `LLM_VISION_MODEL`). Limits below
+apply whenever vision is configured.
 
-| Variable                              | Example | Description                                                                                          |
-|---------------------------------------|---------|------------------------------------------------------------------------------------------------------|
-| `LLM_REQUIREMENT_IMAGES_MAX_COUNT`    | `5`     | Max number of files (uploads + selected JIRA attachments) per request.                             |
-| `LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB` | `300`   | Max combined size of those files in MB.                                                             |
+| Variable                              | Example | Description                                                            |
+|---------------------------------------|---------|------------------------------------------------------------------------|
+| `LLM_REQUIREMENT_IMAGES_MAX_COUNT`    | `5`     | Max number of files (uploads + selected JIRA attachments) per request. |
+| `LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB` | `300`   | Max combined size of those files in MB.                                |
 
-**UI:** The paste/JIRA **upload** row and JIRA **checkboxes** for the LLM are shown when `llm_vision_configured` is true. JIRA can still list attachments without vision; they are not selectable for generation until vision is configured.
+**UI:** The paste/JIRA **upload** row and JIRA **checkboxes** for the LLM are shown when `llm_vision_configured` is
+true. JIRA can still list attachments without vision; they are not selectable for generation until vision is configured.
 
 **Backend:** If `LLM_VISION_URL` is unset, generate routes merge **no** image bytes for the LLM.
 
@@ -141,7 +145,7 @@ Uploads and JIRA attachment selection for generation require **`LLM_VISION_URL`*
 
 ## Priorities
 
-| Variable                | Example                                | Description                                                                                |
-|-------------------------|----------------------------------------|--------------------------------------------------------------------------------------------|
-| `PASTE_MODE_PRIORITIES` | `'Highest, High, Medium, Low, Lowest'` | Comma-separated priority labels for **paste** mode (and fallbacks as implemented in code). |
+| Variable                | Example                                      | Description                                                                                   |
+|-------------------------|----------------------------------------------|-----------------------------------------------------------------------------------------------|
+| `PASTE_MODE_PRIORITIES` | `'Highest, High, Medium, Low, Lowest'`       | Comma-separated priority labels for **paste** mode (and fallbacks as implemented in code).    |
 | `PASTE_MODE_SEVERITIES` | `'Blocker, Critical, Major, Minor, Trivial'` | Comma-separated severity labels for **paste** mode and semantic mapping to JIRA **Severity**. |

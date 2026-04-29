@@ -26,7 +26,6 @@ services:
       AUTOMATION_POST_ANALYSIS: "true"
       AUTOMATION_WRITE_RUN_HTML: "true"
       AUTOMATION_RETENTION_DAYS: "20"
-      AUTOMATION_SPIKE_PRERUN: "false"
       AUTOMATION_HEADLESS: "true"
 
       USE_KEYCLOAK: "false"

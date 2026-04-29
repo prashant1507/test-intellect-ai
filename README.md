@@ -240,8 +240,9 @@ flowchart TB
   VAL --> PRERUN{Prerun: early steps match page?}
   PRERUN -->|fail once| ZFIX[Text LLM: repair zero-match locators]
   ZFIX --> PR2{Still bad?}
-  PR2 -->|yes| ERR[Fail with prerun error]
+  PR2 -->|yes| BYP[Log + continue: run without prerun guard]
   PR2 -->|no| BROWSER
+  BYP --> BROWSER
   PRERUN -->|ok| BROWSER[Launch browser, goto page]
   LOAD --> BROWSER
 

@@ -37,7 +37,6 @@ class Settings(BaseSettings):
         "show_paste_requirements_mode_ui",
         "show_auto_tests_ui",
         "use_keycloak",
-        "automation_spike_prerun",
         "automation_post_analysis",
         "automation_write_run_html",
         mode="before",
@@ -98,7 +97,6 @@ class Settings(BaseSettings):
     automation_artifacts_dir: str = "data/automation/runs"
     automation_reports_dir: str = "data/automation/reports"
     automation_retention_days: int = 20
-    automation_spike_prerun: bool = True
     automation_headless: bool | None = None
     @field_validator("automation_headless", mode="before")
     @classmethod

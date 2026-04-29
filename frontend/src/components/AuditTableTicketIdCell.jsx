@@ -1,8 +1,8 @@
-import { jiraBrowseHref } from "../utils/audit";
+import { jiraBrowseHref, auditTicketIdIsDisplayDash } from "../utils/audit";
 import { isLikelyJiraIssueKey } from "../utils/format";
 
 export function AuditTableTicketIdCell({ ticketId, jiraUrl }) {
-  if (ticketId === "AUTH") {
+  if (auditTicketIdIsDisplayDash(ticketId)) {
     return <span className="audit-context-muted">—</span>;
   }
   const tid = String(ticketId ?? "");

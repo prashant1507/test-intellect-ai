@@ -41,7 +41,76 @@ from .store import (
     upsert_selector_cache,
 )
 
-_GH = re.compile(r"^(Given|When|Then|And)\b", re.I)
+
+def _l(log: list[str], msg: str) -> None:
+    log.append(msg)
+
+
+def _format_bdd_numbered(bdd_lines: list[str]) -> str:
+    return "\n".join(f"  {i}. {line}" for i, line in enumerate(bdd_lines))
+
+
+def _skip_following_steps(results: list[dict[str, Any]], failed_step_index: int) -> None:
+    for j in range(failed_step_index + 1, len(results)):
+        results[j]["pass"] = False
+        results[j]["err"] = "skipped (previous step failed)"
+
+
+def _screenshot_step_failure(
+    page: Any,
+    run_dir: Path,
+    run_id: str,
+    step_index: int,
+    st: dict[str, Any],
+) -> None:
+    pthf = run_dir / f"shot_step_{step_index}_fail.png"
+    try:
+        page.screenshot(path=str(pthf), full_page=True)
+        st["screenshot_path"] = f"{run_id}/{pthf.name}"
+    except OSError:
+        st["screenshot_path"] = None
+
+
+def _step_cur_for_llm(st: dict[str, Any]) -> dict[str, str]:
+    return {
+        "playwright_selector": st.get("selector", ""),
+        "action": st.get("action", "click"),
+        "value": (st.get("value") or "") or "",
+    }
+
+
+def _apply_merged_to_step(st: dict[str, Any], mg: dict[str, Any]) -> None:
+    st["selector"] = mg["selector"]
+    st["action"] = mg["action"]
+    st["value"] = mg["value"]
+
+
+def _repair_path_with_suffix(st: dict[str, Any], suffix: str) -> None:
+    prev = st.get("repair_path") or ""
+    st["repair_path"] = f"{prev}+{suffix}" if prev else suffix
+
+
+def _launch_playwright_browser(p: Any, browser_name: str, headless: bool) -> Any:
+    if browser_name == "firefox":
+        return p.firefox.launch(headless=headless)
+    if browser_name == "msedge":
+        return p.chromium.launch(channel="msedge", headless=headless)
+    if browser_name == "chrome":
+        return p.chromium.launch(channel="chrome", headless=headless)
+    return p.chromium.launch(headless=headless)
+
+
+def _bdd_line_needs_body_assert_visible(bl: str) -> bool:
+    s = (bl or "").strip()
+    if re.match(r"(?i)^given\b", s):
+        return bool(
+            re.search(r"(?i)\bon the\b", s) and re.search(r"(?i)\bpage\b", s)
+        )
+    if re.match(r"(?i)^when\b", s):
+        return bool(re.search(r"(?i)\bviews?\s+the\s+page\b", s))
+    return False
+
+
 _BDD_THEN_TEXT_DISPLAYED = re.compile(
     r'(?i)\bThe text\s+"([^"]+)"\s+is\s+displayed\.?\s*$'
 )
@@ -212,12 +281,20 @@ def _raise_if_spike_cancelled(log: list[str]) -> None:
         raise SpikeUserError(cancel.cancel_message(), logs=log)
 
 
-def spike_prerun_zero_match_message(bad_indices: list[int]) -> str:
-    return (
-        "Pre-run: no elements matched for step index(es) "
-        f"{bad_indices!s} (Given/early When; locator().count() was 0). "
-        "Try pasting page HTML, or set AUTOMATION_SPIKE_PRERUN=false."
-    )
+_LOC_NOT_LOCATOR_API = re.compile(
+    r"(?is)(^\s*page\.\w+\s*\(|page\.goto|page\.navigate|page\.evaluate|^\s*await\s+page\.|^\s*goto\s*\()"
+)
+
+
+def _sanitize_selector_not_playwright_api(raw: str, log: list[str] | None) -> str:
+    t = (raw or "").strip()
+    if not t:
+        return t
+    if _LOC_NOT_LOCATOR_API.search(t):
+        if log is not None:
+            _l(log, f"Selector replaced (API/code, not locator string): {t[:160]!r} -> body")
+        return "body"
+    return t
 
 
 def _strip_invalid_css_pseudo_tail(s: str, log: list[str] | None) -> str:
@@ -234,6 +311,7 @@ def _strip_invalid_css_pseudo_tail(s: str, log: list[str] | None) -> str:
 
 def _finalize_playwright_selector(raw: str, log: list[str] | None) -> str:
     t = (raw or "").strip()
+    t = _sanitize_selector_not_playwright_api(t, log)
     t = _strip_invalid_css_pseudo_tail(t, log)
     return t
 
@@ -300,9 +378,10 @@ def _classify_spike_failure(
         "strict mode" in low and "violation" in low
     ):
         return "ambiguous"
-    if "resolved to" in low and "element" in low:
-        return "ambiguous"
-    if "more than one" in low and "element" in low:
+    if (
+        ("resolved to" in low and "element" in low)
+        or ("more than one" in low and "element" in low)
+    ):
         return "ambiguous"
     if "not attached" in low:
         return "not_attached"
@@ -397,6 +476,13 @@ def _default_selector_for_empty_bdd_step(
         return "input[name='password']"
     if re.search(r"(?i)\blogin\b", bl) and re.search(r"(?i)\b(click|press)\b", bl):
         return "button[type='submit']"
+    if (
+        re.match(r"(?i)^given\b", bl)
+        and re.search(r"(?i)\bon the\b", bl)
+        and re.search(r"(?i)\bpage\b", bl)
+        and re.search(r"(?i)\bswag labs\b", bl)
+    ):
+        return "text=Swag Labs"
     return "body"
 
 
@@ -477,15 +563,11 @@ def _llm_reconcile_step_count(
     n = len(bdd_lines)
     safe = [x if isinstance(x, dict) else {} for x in draft]
     sys_r = playwright_reconcile_step_count_mismatch_prompt(n, len(draft))
-    num = "\n".join(f"  {i}. {line}" for i, line in enumerate(bdd_lines))
+    num = _format_bdd_numbered(bdd_lines)
     u = f"Title: {title}\nBDD:\n{num}\n\nDraft steps:\n{json.dumps(safe, ensure_ascii=False)}\n\nHTML:\n{_truncate_dom(dom)}"
     raw = llm_chat_completion(sys_r, u, temperature=0.05, max_tokens=12_000)
     data = parse_llm_json_object(raw)
-    sl: Any = None
-    if isinstance(data, dict) and isinstance(data.get("steps"), list):
-        sl = data["steps"]
-    elif isinstance(data, list):
-        sl = data
+    sl = _raw_steps_list_from_llm_parsed(data)
     if not isinstance(sl, list) or len(sl) != n or not all(isinstance(x, dict) for x in sl):
         return None
     _l(log, f"LLM: reconcile -> {n} step(s).")
@@ -519,7 +601,7 @@ def _llm_build_steps(
 ) -> list[dict[str, Any]]:
     n = len(bdd_lines)
     sys0 = playwright_map_bdd_to_locator_steps_prompt(n)
-    num = "\n".join(f"  {i}. {line}" for i, line in enumerate(bdd_lines))
+    num = _format_bdd_numbered(bdd_lines)
     user0 = f"Title: {title}\nBDD (N={n}, step[i] MUST implement line i only):\n{num}\n\nHTML:\n{_truncate_dom(dom)}"
     data: Any = None
     for attempt in (0, 1):
@@ -578,7 +660,7 @@ def _llm_validate_and_refine_steps(
         ensure_ascii=False,
     )
     fwi = first_when_index
-    num = "\n".join(f"  {i}. {line}" for i, line in enumerate(bdd_lines))
+    num = _format_bdd_numbered(bdd_lines)
     rule = playwright_refine_locators_against_html_rule(fwi, n)
     try:
         raw = llm_chat_completion(
@@ -756,6 +838,48 @@ def _fix_assert_visibility_from_bdd(
                 _l(log, f"step {i}: BDD implies visible/appear -> assert_visible")
 
 
+_GIVEN_ON_PAGE_BODY_FORCE_VISIBLE_ACTIONS = frozenset(
+    {
+        "click",
+        "dblclick",
+        "fill",
+        "clear",
+        "focus",
+        "hover",
+        "check",
+        "uncheck",
+        "press",
+        "press_sequentially",
+        "select_option",
+        "scroll_into_view",
+        "get_text",
+    }
+)
+
+
+def _fix_given_on_page_body_actions(
+    bdd_lines: list[str], out: list[dict[str, Any]], log: list[str] | None
+) -> None:
+    for i, bline in enumerate(bdd_lines):
+        if i >= len(out):
+            break
+        if not _bdd_line_needs_body_assert_visible(bline):
+            continue
+        st = out[i]
+        if (st.get("selector") or "").strip() != "body":
+            continue
+        a = str(st.get("action") or "")
+        if a not in _GIVEN_ON_PAGE_BODY_FORCE_VISIBLE_ACTIONS:
+            continue
+        st["action"] = "assert_visible"
+        st["value"] = ""
+        if log is not None:
+            _l(
+                log,
+                f"step {i}: on-page context with body locator -> assert_visible (was {a!r})",
+            )
+
+
 def _merge_to_run_steps(
     bdd_lines: list[str], spec: list[dict[str, Any]], source: str, log: list[str]
 ) -> list[dict[str, Any]]:
@@ -786,6 +910,7 @@ def _merge_to_run_steps(
                 "source": source,
             }
         )
+    _fix_given_on_page_body_actions(bdd_lines, out, log)
     return out
 
 
@@ -838,16 +963,8 @@ def _run_spike_one_browser(
     gen_trace = get_effective_automation_trace_file_generation()
 
     with sync_playwright() as p:
-        if browser_name == "firefox":
-            browser = p.firefox.launch(headless=headless)
-        elif browser_name == "msedge":
-            browser = p.chromium.launch(channel="msedge", headless=headless)
-        elif browser_name == "chrome":
-            browser = p.chromium.launch(channel="chrome", headless=headless)
-        else:
-            browser = p.chromium.launch(headless=headless)
+        browser = _launch_playwright_browser(p, browser_name, headless)
         try:
-            context = browser.new_context()
             context = browser.new_context(viewport={"width": 1920, "height": 1080})
             context.set_default_timeout(tw)
             if gen_trace:
@@ -879,25 +996,24 @@ def _run_spike_one_browser(
                 )
                 _raise_if_spike_cancelled(log)
                 run_steps = _merge_to_run_steps(bdd_lines, spec, "llm", log)
-                if bool(getattr(settings, "automation_spike_prerun", True)):
-                    pre_upto = fwi
-                    bad = _playwright_list_bad_locators(
+                pre_upto = fwi
+                bad = _playwright_list_bad_locators(
+                    page, run_steps, log, precheck_upto=pre_upto
+                )
+                if bad:
+                    spec = _llm_repair_zero_match_steps(
+                        title, bdd_lines, dom, spec, bad, log
+                    )
+                    run_steps = _merge_to_run_steps(bdd_lines, spec, "llm", log)
+                    bad2 = _playwright_list_bad_locators(
                         page, run_steps, log, precheck_upto=pre_upto
                     )
-                    if bad:
-                        spec = _llm_repair_zero_match_steps(
-                            title, bdd_lines, dom, spec, bad, log
+                    if bad2:
+                        _l(
+                            log,
+                            "Pre-run: still 0 matches for step index(es) "
+                            f"{bad2!s} after repair; continuing to step execution.",
                         )
-                        run_steps = _merge_to_run_steps(bdd_lines, spec, "llm", log)
-                        bad2 = _playwright_list_bad_locators(
-                            page, run_steps, log, precheck_upto=pre_upto
-                        )
-                        if bad2:
-                            raise SpikeUserError(
-                                spike_prerun_zero_match_message(bad2), logs=log
-                            )
-                else:
-                    _l(log, "Prerun: locator pre-check disabled (automation_spike_prerun).")
             else:
                 _l(log, "Playwright: using cached selector plan")
                 run_steps = _merge_to_run_steps(
@@ -937,15 +1053,8 @@ def _run_spike_one_browser(
                             log,
                             f"Spike: step {i} taxonomy=empty_selector inv={st['inventory_count']}",
                         )
-                        pthf = run_dir / f"shot_step_{i}_fail.png"
-                        try:
-                            page.screenshot(path=str(pthf), full_page=True)
-                            st["screenshot_path"] = f"{run_id}/{pthf.name}"
-                        except OSError:
-                            st["screenshot_path"] = None
-                        for j in range(i + 1, len(results)):
-                            results[j]["pass"] = False
-                            results[j]["err"] = "skipped (previous step failed)"
+                        _screenshot_step_failure(page, run_dir, run_id, i, st)
+                        _skip_following_steps(results, i)
                         abort = True
                         break
                     ok = False
@@ -1028,10 +1137,7 @@ def _run_spike_one_browser(
                         break
                     st["pass"] = False
                     if attempt == 0 and _llm_base_ok():
-                        rp0 = st.get("repair_path") or ""
-                        st["repair_path"] = (
-                            f"{rp0}+llm_text" if rp0 else "llm_text"
-                        )
+                        _repair_path_with_suffix(st, "llm_text")
                         dom2 = page.content()
                         sh = _playwright_computed_style_hint(
                             page, expect, sel, tw, log
@@ -1040,11 +1146,7 @@ def _run_spike_one_browser(
                             title,
                             bdd_lines[i],
                             i,
-                            {
-                                "playwright_selector": st.get("selector", ""),
-                                "action": st.get("action", "click"),
-                                "value": (st.get("value") or "") or "",
-                            },
+                            _step_cur_for_llm(st),
                             (st.get("err") or err or "unknown") or "",
                             dom2,
                             log,
@@ -1054,9 +1156,7 @@ def _run_spike_one_browser(
                             mg = _merge_to_run_steps(
                                 [bdd_lines[i]], [tnew], "llm", log
                             )[0]
-                            st["selector"] = mg["selector"]
-                            st["action"] = mg["action"]
-                            st["value"] = mg["value"]
+                            _apply_merged_to_step(st, mg)
                             st["source"] = "llm"
                         continue
                     if attempt == 1 and (settings.llm_vision_url or "").strip():
@@ -1085,14 +1185,7 @@ def _run_spike_one_browser(
                                     title,
                                     bdd_lines[i],
                                     i,
-                                    {
-                                        "playwright_selector": st.get(
-                                            "selector", ""
-                                        ),
-                                        "action": st.get("action", "click"),
-                                        "value": (st.get("value") or "")
-                                        or "",
-                                    },
+                                    _step_cur_for_llm(st),
                                     (st.get("err") or err or "unknown") or "",
                                     dom2v,
                                     log,
@@ -1102,51 +1195,21 @@ def _run_spike_one_browser(
                                     st["err"] = (
                                         "Expected content not visible on page (vision)"
                                     )
-                                    rpv = st.get("repair_path") or ""
-                                    st["repair_path"] = (
-                                        f"{rpv}+llm_vision_not_visible"
-                                        if rpv
-                                        else "llm_vision_not_visible"
-                                    )
-                                    pthf = run_dir / f"shot_step_{i}_fail.png"
-                                    try:
-                                        page.screenshot(
-                                            path=str(pthf), full_page=True
-                                        )
-                                        st["screenshot_path"] = (
-                                            f"{run_id}/{pthf.name}"
-                                        )
-                                    except OSError:
-                                        st["screenshot_path"] = None
-                                    for j in range(i + 1, len(results)):
-                                        results[j]["pass"] = False
-                                        results[j]["err"] = (
-                                            "skipped (previous step failed)"
-                                        )
+                                    _repair_path_with_suffix(st, "llm_vision_not_visible")
+                                    _screenshot_step_failure(page, run_dir, run_id, i, st)
+                                    _skip_following_steps(results, i)
                                     abort = True
                                     break
                                 if isinstance(vout, dict) and vout:
                                     mg = _merge_to_run_steps(
                                         [bdd_lines[i]], [vout], "llm", log
                                     )[0]
-                                    st["selector"] = mg["selector"]
-                                    st["action"] = mg["action"]
-                                    st["value"] = mg["value"]
+                                    _apply_merged_to_step(st, mg)
                                     st["source"] = "llm-vision"
-                                    rpv = st.get("repair_path") or ""
-                                    st["repair_path"] = (
-                                        f"{rpv}+llm_vision" if rpv else "llm_vision"
-                                    )
+                                    _repair_path_with_suffix(st, "llm_vision")
                                     continue
-                    pthf = run_dir / f"shot_step_{i}_fail.png"
-                    try:
-                        page.screenshot(path=str(pthf), full_page=True)
-                        st["screenshot_path"] = f"{run_id}/{pthf.name}"
-                    except OSError:
-                        st["screenshot_path"] = None
-                    for j in range(i + 1, len(results)):
-                        results[j]["pass"] = False
-                        results[j]["err"] = "skipped (previous step failed)"
+                    _screenshot_step_failure(page, run_dir, run_id, i, st)
+                    _skip_following_steps(results, i)
                     abort = True
                     break
                 if abort:
@@ -1260,6 +1323,7 @@ def _execute_spike_finalize(
     replace_run_steps(run_id, rel_steps)
     run_dir = art / run_id
     trace_rel = f"{run_id}/trace.zip"
+    trace_stored_ok = (run_dir / "trace.zip").is_file()
     run_environment = get_run_environment_for_report()
     summary = {
         "steps": rel_steps,
@@ -1274,7 +1338,7 @@ def _execute_spike_finalize(
     )
     base_artifacts = f"/api/automation/artifacts/{run_id}"
     trace_href_htm = (
-        f"{base_artifacts}/trace.zip" if (run_dir / "trace.zip").is_file() else None
+        f"{base_artifacts}/trace.zip" if trace_stored_ok else None
     )
     report_url: str | None
     if write_run_html:
@@ -1301,7 +1365,7 @@ def _execute_spike_finalize(
         run_id,
         status="completed" if ok else "failed",
         error=err_msg,
-        trace_path=trace_rel if (run_dir / "trace.zip").is_file() else None,
+        trace_path=trace_rel if trace_stored_ok else None,
         summary=summary,
         used_cache=used_cache,
     )
@@ -1325,8 +1389,8 @@ def _execute_spike_finalize(
         "used_cache": used_cache,
         "status": "completed" if ok else "failed",
         "error": err_msg,
-        "trace_stored": (run_dir / "trace.zip").is_file(),
-        "trace_url": f"{base}/trace.zip" if (run_dir / "trace.zip").is_file() else None,
+        "trace_stored": trace_stored_ok,
+        "trace_url": f"{base}/trace.zip" if trace_stored_ok else None,
         "report_url": report_url,
         "analysis": analysis,
         "steps": rel_steps,

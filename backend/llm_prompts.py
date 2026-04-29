@@ -233,6 +233,7 @@ PLAYWRIGHT_STEPS_VS_DOM_INTRO_SYSTEM_PROMPT = (
     "When an Interactive elements inventory is present, prefer selectors derived from it (test_id, role+name, name, aria-label, text) over fragile CSS chains; "
     "do not invent inventory entries that are not listed. "
     "Never output an empty playwright_selector; for Then steps that assert the result of navigation (e.g. dashboard), output a non-empty locator even if that node is not in the current HTML snapshot. "
+    "playwright_selector must be ONLY a string for page.locator(...), e.g. CSS, role=..., text=... — never page.goto(...), page.click(...), await page..., or any Playwright API / JavaScript; the run already navigated to the scenario URL before steps. "
     "When a BDD line uses double-quoted text for an expected label, message, or visible string, the step's `value` for "
     "assert_text, assert_contains, or assert_value must be that string exactly as written in the BDD (character-for-character), "
     "not text copied or corrected from the HTML. If the BDD is wrong, the runtime test should still assert exactly what the BDD says."
@@ -246,7 +247,8 @@ PLAYWRIGHT_SINGLE_STEP_FAILURE_REPAIR_SYSTEM_PROMPT = (
     "match the BDD's quoted label/name to inventory entries by text, name, placeholder, aria_label, or test_id. "
     "Preference order: [data-testid=\"...\"], role=tag[name=\"...\"], [name=\"...\"], [aria-label=\"...\"], text=ExactText, then short CSS. "
     "Do not fabricate test_id/name/aria-label values that are not in the inventory or HTML. "
-    "If the BDD line includes double-quoted expected text, keep that exact `value` string; do not replace it with different text from the page."
+    "If the BDD line includes double-quoted expected text, keep that exact `value` string; do not replace it with different text from the page. "
+    "playwright_selector must be for page.locator() only — never page.goto(...), await page..., or executable snippets."
 )
 
 PLAYWRIGHT_VISION_STEP_EVIDENCE_SYSTEM_PROMPT = (
@@ -293,6 +295,7 @@ def playwright_map_bdd_to_locator_steps_prompt(n: int) -> str:
         "steps[i] must implement BDD line i only, preserving order. "
         "Each object must include: playwright_selector, action, value. "
         "playwright_selector must be a non-empty string usable by page.locator(); never \"\" or whitespace-only. "
+        "It must be ONLY a locator expression (CSS, role=..., text=..., etc.), never page.goto(...), page.navigate, await page..., or any JavaScript or Playwright API call — the app already opens the scenario URL before steps run. "
         "For Then steps about redirect or landing on a page (e.g. dashboard), use a stable post-login locator such as text=Dashboard with assert_visible (the snapshot HTML may still be the login page). "
         "value must be a string and must be \"\" when unused. "
         "Allowed actions: click, dblclick, fill, clear, focus, hover, check, uncheck, press, "
@@ -335,7 +338,8 @@ def playwright_refine_locators_against_html_rule(first_when_index: int, n: int) 
         "Do not use assert_attribute unless the attribute name and expected value exist in the HTML. "
         f"Return JSON only: {{\"steps\":[{n} objects]}}. No prose, no code fences. "
         "Each object must include playwright_selector, action, and value. "
-        "No ::placeholder selectors."
+        "No ::placeholder selectors. "
+        "playwright_selector is only for page.locator(...); never page.goto(...), page.click, await, or executable code."
     )
 
 
@@ -347,5 +351,6 @@ def playwright_repair_zero_locator_matches_prompt(n: int, bad: list[int]) -> str
         "When an Interactive elements inventory is present, use it as the primary source for replacement selectors — "
         "scan it for the BDD's quoted control name and pick the matching entry. "
         "Preference order: [data-testid=\"...\"], role=tag[name=\"...\"], [name=\"...\"], [aria-label=\"...\"], text=ExactText, then short CSS. "
-        "Do not fabricate test_id/name/aria-label/class values that are not in the inventory or HTML."
+        "Do not fabricate test_id/name/aria-label/class values that are not in the inventory or HTML. "
+        "playwright_selector must be a locator string for page.locator() only, never page.goto(...) or other API calls."
     )

@@ -30,6 +30,8 @@ from .prefs import (
 )
 from .store import (
     add_suite_case,
+    delete_all_selector_cache,
+    delete_all_suite_cases,
     delete_selector_cache_by_rowid,
     delete_suite_case,
     get_run,
@@ -58,6 +60,10 @@ def _maybe_automation_audit(kc: dict | None, ticket_id: str, action: str) -> Non
     if not t or not a:
         return
     append_audit(u, t, a, None)
+
+
+_AUDIT_TICKET_SAVED_SUITE = "AUTOMATION_SAVED_SUITE"
+_AUDIT_TICKET_SAVED_SELECTORS = "AUTOMATION_SAVED_SELECTORS"
 
 _UUID_36 = re.compile(
     r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z"
@@ -299,10 +305,26 @@ def automation_list_selectors(limit: int = 80) -> dict[str, Any]:
     return {"rows": list_selector_cache_rows(min(max(limit, 1), 500))}
 
 
+@router.delete("/selectors/all")
+def automation_delete_all_selectors(kc: Kc) -> dict[str, Any]:
+    n = delete_all_selector_cache()
+    _maybe_automation_audit(
+        kc,
+        _AUDIT_TICKET_SAVED_SELECTORS,
+        "Deleted all Selectors",
+    )
+    return {"ok": "true", "deleted_cache_rows": n}
+
+
 @router.delete("/selectors/{rowid}")
-def automation_delete_selector(rowid: int) -> dict[str, str]:
+def automation_delete_selector(rowid: int, kc: Kc) -> dict[str, str]:
     if not delete_selector_cache_by_rowid(int(rowid)):
         raise HTTPException(status_code=404, detail="not found")
+    _maybe_automation_audit(
+        kc,
+        _AUDIT_TICKET_SAVED_SELECTORS,
+        "Deleted Selector",
+    )
     return {"ok": "true"}
 
 
@@ -448,6 +470,19 @@ def automation_suite_update(case_id: str, body: SuiteCaseIn, kc: Kc) -> dict[str
         _automation_suite_audit_action(False, body),
     )
     return {"id": t, "ok": "true"}
+
+
+@router.delete("/suite/all")
+def automation_suite_delete_all(kc: Kc) -> dict[str, Any]:
+    if suite_state.get_running_case_ids():
+        raise HTTPException(status_code=409, detail="suite run in progress")
+    n_cases, n_hist = delete_all_suite_cases()
+    _maybe_automation_audit(
+        kc,
+        _AUDIT_TICKET_SAVED_SUITE,
+        "Deleted all tests from Saved Suite",
+    )
+    return {"ok": "true", "deleted_cases": n_cases, "deleted_history_rows": n_hist}
 
 
 @router.delete("/suite/{case_id}")

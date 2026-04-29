@@ -84,6 +84,5 @@ def get_run_environment_for_report() -> dict[str, str | int | bool]:
         "screenshot_on_pass": get_effective_automation_screenshot_on_pass(),
         "trace_file_generation": get_effective_automation_trace_file_generation(),
         "post_run_analysis": get_effective_automation_post_analysis(),
-        "spike_prerun": bool(getattr(settings, "automation_spike_prerun", True)),
         "parallel_execution": int(get_effective_automation_parallel_execution()),
     }

@@ -168,3 +168,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Create 2 sections in Environment under Auto Tests
 - Disable the delete button for the Saved Selector when the test is running in Auto test
+
+---
+## [2.4.0]
+
+### Added
+- Added delete all button for Saved Suite and Saved selectors
+- Delete all actions for Saved Suite and Selector is now Audited
+
+### Changed
+- The expand box will reset on refresh 
