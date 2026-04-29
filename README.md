@@ -35,6 +35,7 @@ Optionally:
 <summary><strong>Images</strong></summary>
 
 <img src="resources/product-sample/images/img-1.png" alt="UI" width="200" />
+<img src="resources/product-sample/images/img-1a.png" alt="UI" width="200" />
 <img src="resources/product-sample/images/img-2.png" alt="UI" width="200" />
 <img src="resources/product-sample/images/img-2a.png" alt="UI" width="200" />
 <img src="resources/product-sample/images/img-3.png" alt="UI" width="200" />
