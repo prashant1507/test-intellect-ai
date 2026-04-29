@@ -157,3 +157,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Added info message for PRIORITY, SEVERITY
+
+---
+## [2.3.1]
+
+### Added
+- The run suite button will change to green on completing or stopping the tests
+- Now Generate Tests section will display after successful fetching of requirements
+
+### Changed
+- Create 2 section in Environment under Auto Tests
+- Disable delete button for Saved Selector when test is running in Auto test

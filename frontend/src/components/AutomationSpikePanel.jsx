@@ -612,7 +612,7 @@ export function AutomationSpikePanel({
       {saveSuiteInfo ? (
         <p
           className={
-            saveSuiteInfo.includes("Test ID")
+            saveSuiteInfo.includes("Test ID") || saveSuiteInfo.includes("scenario name")
               ? "automation-spike-err"
               : "automation-spike-muted"
           }

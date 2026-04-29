@@ -266,6 +266,70 @@ def _playwright_computed_style_hint(
         return ""
 
 
+_SPIKE_INV_CNT_JS = (
+    "() => document.querySelectorAll("
+    "'a,button,input,select,textarea,label,[role],[data-testid],[aria-label],[contenteditable]'"
+    ").length"
+)
+
+
+def _spike_interactive_count(page: Any) -> int:
+    try:
+        return int(page.evaluate(_SPIKE_INV_CNT_JS) or 0)
+    except Exception:
+        return -1
+
+
+def _safe_locator_count(page: Any, sel: str) -> int:
+    return int(page.locator(sel).count())
+
+
+def _classify_spike_failure(
+    err: str | None,
+    *,
+    selector: str,
+    match_count: int | None,
+) -> str:
+    if not (selector or "").strip():
+        return "empty_selector"
+    if match_count == 0:
+        return "no_matches"
+    msg = (err or "").strip()
+    low = msg.lower()
+    if "strict mode violation" in low or (
+        "strict mode" in low and "violation" in low
+    ):
+        return "ambiguous"
+    if "resolved to" in low and "element" in low:
+        return "ambiguous"
+    if "more than one" in low and "element" in low:
+        return "ambiguous"
+    if "not attached" in low:
+        return "not_attached"
+    if "timeout" in low or "timed out" in low:
+        return "timeout"
+    if "waiting for" in low and (
+        "locator" in low or "selector" in low or "element" in low
+    ):
+        return "timeout"
+    if "expect" in low or "assertion" in low or "assert:" in low:
+        return "assertion"
+    if "not in text" in low or "get_text:" in low:
+        return "get_text_mismatch"
+    if "invalid selector" in low or "syntaxerror" in low:
+        return "selector_error"
+    return "other"
+
+
+_SKIP_VISION_TAXONOMY: frozenset[str] = frozenset({"selector_error", "empty_selector"})
+
+
+def _spike_vision_worthwhile(tax: str | None) -> bool:
+    if not tax:
+        return True
+    return tax not in _SKIP_VISION_TAXONOMY
+
+
 def _playwright_list_bad_locators(
     page: Any, run_steps: list[dict[str, Any]], log: list[str], *, precheck_upto: int | None
 ) -> list[int]:
@@ -285,7 +349,7 @@ def _playwright_list_bad_locators(
             bad.append(i)
             continue
         if c == 0:
-            _l(log, f"Pre-run: step {i} 0 matches {sel[:80]!r}")
+            _l(log, f"Pre-run: step {i} 0 matches {sel[:80]!r} taxonomy=no_matches")
             bad.append(i)
         else:
             _l(log, f"Pre-run: step {i} ok count={c}")
@@ -843,6 +907,7 @@ def _run_spike_one_browser(
             for i, st in enumerate(results):
                 _raise_if_spike_cancelled(log)
                 abort = False
+                st.pop("_spike_soft_wait_done", None)
                 n_step_attempts = (
                     3 if (settings.llm_vision_url or "").strip() else 2
                 )
@@ -865,6 +930,13 @@ def _run_spike_one_browser(
                     if not sel:
                         st["pass"] = False
                         st["err"] = "empty selector"
+                        st["failure_taxonomy"] = "empty_selector"
+                        st["inventory_count"] = _spike_interactive_count(page)
+                        st["repair_path"] = None
+                        _l(
+                            log,
+                            f"Spike: step {i} taxonomy=empty_selector inv={st['inventory_count']}",
+                        )
                         pthf = run_dir / f"shot_step_{i}_fail.png"
                         try:
                             page.screenshot(path=str(pthf), full_page=True)
@@ -876,32 +948,90 @@ def _run_spike_one_browser(
                             results[j]["err"] = "skipped (previous step failed)"
                         abort = True
                         break
-                    try:
-                        loc = page.locator(sel).first
-                    except Exception as e2:  # noqa: BLE001
-                        st["pass"] = False
-                        st["err"] = str(e2)
-                        abort = True
+                    ok = False
+                    err: str | None = None
+                    extra: dict[str, Any] = {}
+                    inner_retry = True
+                    while inner_retry:
+                        inner_retry = False
+                        match_count: int | None = None
+                        try:
+                            match_count = _safe_locator_count(page, sel)
+                        except Exception as e_cnt:  # noqa: BLE001
+                            ok, err, extra = False, str(e_cnt) or "count() failed", {}
+                            match_count = None
+                        else:
+                            if match_count == 0:
+                                ok, err, extra = (
+                                    False,
+                                    "0 elements matched selector",
+                                    {},
+                                )
+                            else:
+                                try:
+                                    loc = page.locator(sel).first
+                                except Exception as e2:  # noqa: BLE001
+                                    ok, err, extra = False, str(e2), {}
+                                else:
+                                    ok, err, extra = _playwright_run_locator_action(
+                                        expect, loc, action, val, tw
+                                    )
+                        for k, v in extra.items():
+                            st[k] = v
+                        st["pass"] = ok
+                        st["err"] = err if not ok else None
+                        if ok:
+                            st["err"] = None
+                            for k in ("failure_taxonomy", "repair_path", "inventory_count"):
+                                st.pop(k, None)
+                            pth = run_dir / f"shot_step_{i}.png"
+                            if shot_on_pass:
+                                try:
+                                    page.screenshot(path=str(pth), full_page=True)
+                                    st["screenshot_path"] = f"{run_id}/{pth.name}"
+                                except OSError:
+                                    st["screenshot_path"] = None
+                            break
+                        mc_cls = (
+                            0
+                            if err == "0 elements matched selector"
+                            else (match_count if match_count is not None else None)
+                        )
+                        tax = _classify_spike_failure(
+                            err, selector=sel, match_count=mc_cls
+                        )
+                        st["failure_taxonomy"] = tax
+                        st["inventory_count"] = _spike_interactive_count(page)
+                        _l(
+                            log,
+                            "Spike: step {0} fail taxonomy={1} inv={2} err={3!r}".format(
+                                i,
+                                tax,
+                                st["inventory_count"],
+                                (err or "")[:200],
+                            ),
+                        )
+                        if tax in ("timeout", "not_attached") and not st.get(
+                            "_spike_soft_wait_done"
+                        ):
+                            st["_spike_soft_wait_done"] = True
+                            wt = min(2000, max(400, tw // 4))
+                            page.wait_for_timeout(wt)
+                            st["repair_path"] = f"soft_wait_{wt}ms"
+                            _l(log, f"Spike: repair soft_wait {wt}ms step {i}")
+                            inner_retry = True
+                            continue
                         break
-                    ok, err, extra = _playwright_run_locator_action(
-                        expect, loc, action, val, tw
-                    )
-                    for k, v in extra.items():
-                        st[k] = v
-                    st["pass"] = ok
-                    st["err"] = err
+                    if abort:
+                        break
                     if ok:
-                        st["err"] = None
-                        pth = run_dir / f"shot_step_{i}.png"
-                        if shot_on_pass:
-                            try:
-                                page.screenshot(path=str(pth), full_page=True)
-                                st["screenshot_path"] = f"{run_id}/{pth.name}"
-                            except OSError:
-                                st["screenshot_path"] = None
                         break
                     st["pass"] = False
                     if attempt == 0 and _llm_base_ok():
+                        rp0 = st.get("repair_path") or ""
+                        st["repair_path"] = (
+                            f"{rp0}+llm_text" if rp0 else "llm_text"
+                        )
                         dom2 = page.content()
                         sh = _playwright_computed_style_hint(
                             page, expect, sel, tw, log
@@ -930,59 +1060,84 @@ def _run_spike_one_browser(
                             st["source"] = "llm"
                         continue
                     if attempt == 1 and (settings.llm_vision_url or "").strip():
-                        shv = _playwright_computed_style_hint(
-                            page, expect, sel, tw, log
-                        ) if action != "assert_class" else ""
-                        try:
-                            vpng = page.screenshot(type="png", full_page=True)
-                        except Exception as e3:  # noqa: BLE001
-                            _l(log, f"LLM: vision repair screenshot: {e3!r}")
-                            vpng = b""
-                        if vpng:
-                            dom2v = page.content()
-                            vout = _llm_vision_repair_step_evidence(
-                                vpng,
-                                title,
-                                bdd_lines[i],
-                                i,
-                                {
-                                    "playwright_selector": st.get("selector", ""),
-                                    "action": st.get("action", "click"),
-                                    "value": (st.get("value") or "") or "",
-                                },
-                                (st.get("err") or err or "unknown") or "",
-                                dom2v,
+                        tax_v = st.get("failure_taxonomy")
+                        if not _spike_vision_worthwhile(str(tax_v) if tax_v else None):
+                            _l(
                                 log,
-                                style_hint=shv,
+                                f"Spike: skip vision (taxonomy={tax_v!r}) step {i}",
                             )
-                            if vout == "not_visible":
-                                st["err"] = "Expected content not visible on page (vision)"
-                                pthf = run_dir / f"shot_step_{i}_fail.png"
-                                try:
-                                    page.screenshot(
-                                        path=str(pthf), full_page=True
+                        else:
+                            shv = _playwright_computed_style_hint(
+                                page, expect, sel, tw, log
+                            ) if action != "assert_class" else ""
+                            try:
+                                vpng = page.screenshot(type="png", full_page=True)
+                            except Exception as e3:  # noqa: BLE001
+                                _l(
+                                    log,
+                                    f"LLM: vision repair screenshot: {e3!r}",
+                                )
+                                vpng = b""
+                            if vpng:
+                                dom2v = page.content()
+                                vout = _llm_vision_repair_step_evidence(
+                                    vpng,
+                                    title,
+                                    bdd_lines[i],
+                                    i,
+                                    {
+                                        "playwright_selector": st.get(
+                                            "selector", ""
+                                        ),
+                                        "action": st.get("action", "click"),
+                                        "value": (st.get("value") or "")
+                                        or "",
+                                    },
+                                    (st.get("err") or err or "unknown") or "",
+                                    dom2v,
+                                    log,
+                                    style_hint=shv,
+                                )
+                                if vout == "not_visible":
+                                    st["err"] = (
+                                        "Expected content not visible on page (vision)"
                                     )
-                                    st["screenshot_path"] = (
-                                        f"{run_id}/{pthf.name}"
+                                    rpv = st.get("repair_path") or ""
+                                    st["repair_path"] = (
+                                        f"{rpv}+llm_vision_not_visible"
+                                        if rpv
+                                        else "llm_vision_not_visible"
                                     )
-                                except OSError:
-                                    st["screenshot_path"] = None
-                                for j in range(i + 1, len(results)):
-                                    results[j]["pass"] = False
-                                    results[j]["err"] = (
-                                        "skipped (previous step failed)"
+                                    pthf = run_dir / f"shot_step_{i}_fail.png"
+                                    try:
+                                        page.screenshot(
+                                            path=str(pthf), full_page=True
+                                        )
+                                        st["screenshot_path"] = (
+                                            f"{run_id}/{pthf.name}"
+                                        )
+                                    except OSError:
+                                        st["screenshot_path"] = None
+                                    for j in range(i + 1, len(results)):
+                                        results[j]["pass"] = False
+                                        results[j]["err"] = (
+                                            "skipped (previous step failed)"
+                                        )
+                                    abort = True
+                                    break
+                                if isinstance(vout, dict) and vout:
+                                    mg = _merge_to_run_steps(
+                                        [bdd_lines[i]], [vout], "llm", log
+                                    )[0]
+                                    st["selector"] = mg["selector"]
+                                    st["action"] = mg["action"]
+                                    st["value"] = mg["value"]
+                                    st["source"] = "llm-vision"
+                                    rpv = st.get("repair_path") or ""
+                                    st["repair_path"] = (
+                                        f"{rpv}+llm_vision" if rpv else "llm_vision"
                                     )
-                                abort = True
-                                break
-                            if isinstance(vout, dict) and vout:
-                                mg = _merge_to_run_steps(
-                                    [bdd_lines[i]], [vout], "llm", log
-                                )[0]
-                                st["selector"] = mg["selector"]
-                                st["action"] = mg["action"]
-                                st["value"] = mg["value"]
-                                st["source"] = "llm-vision"
-                                continue
+                                    continue
                     pthf = run_dir / f"shot_step_{i}_fail.png"
                     try:
                         page.screenshot(path=str(pthf), full_page=True)
@@ -1098,6 +1253,9 @@ def _execute_spike_finalize(
         }
         if x.get("actual_text") is not None:
             rec["actual_text"] = x["actual_text"]
+        for k in ("failure_taxonomy", "repair_path", "inventory_count"):
+            if x.get(k) is not None:
+                rec[k] = x[k]
         rel_steps.append(rec)
     replace_run_steps(run_id, rel_steps)
     run_dir = art / run_id

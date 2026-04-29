@@ -13,8 +13,8 @@ push to JIRA, and run UI/API automation.
 
 Optionally:
 
-- Save runs per ticket in SQLite
-- Track actions in an audit log
+- Save runs per ticket in SQLite 
+- Track actions in an audit log 
 - Use Keycloak to associate users with activity
 
 ---
@@ -477,6 +477,6 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 
 ## Last
 
-- Use TSX instead of JSX for frontend
+- Use TSX instead of JSX for frontend 
 - Provide a dropdown to select models or type model ID
 - Use a multi-model approach for Test Generation, coding, and vision

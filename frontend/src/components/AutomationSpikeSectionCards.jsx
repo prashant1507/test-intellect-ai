@@ -650,6 +650,7 @@ export function AutomationSpikeSectionCards({
   const [suiteCases, setSuiteCases] = useState([]);
   const [selectors, setSelectors] = useState([]);
   const [suiteBusy, setSuiteBusy] = useState(false);
+  const [suiteRunAllDoneGreen, setSuiteRunAllDoneGreen] = useState(false);
   const [suiteErr, setSuiteErr] = useState("");
   const [lastSuiteReport, setLastSuiteReport] = useState(null);
   const [suiteRunDialogOpen, setSuiteRunDialogOpen] = useState(false);
@@ -867,6 +868,11 @@ export function AutomationSpikeSectionCards({
 
   const runOrSuiteBusy = suiteBusy || spikeRunBusy;
   const envFieldsLocked = browserSaving || envOptionsSaving || runOrSuiteBusy;
+  const envAutomationBoolRows = useMemo(
+    () => (env && typeof env === "object" ? envBoolToggleRows(env) : []),
+    [env],
+  );
+
   const parallelExecutionValue = useMemo(
     () => defaultParallelFromEnv(env && typeof env === "object" ? env : {}),
     [env],
@@ -927,31 +933,70 @@ export function AutomationSpikeSectionCards({
     };
   }, [suiteBusy, api]);
 
-  const suiteScrollRunningCaseId = useMemo(() => {
-    if (!suiteRunningCaseIds.length || !suiteCases.length) return null;
-    const want = new Set(suiteRunningCaseIds.map(String));
-    const first = suiteCases.find((c) => want.has(String(c.id)));
-    return first != null && String(first.id).trim() ? String(first.id) : suiteRunningCaseIds[0] ?? null;
-  }, [suiteRunningCaseIds, suiteCases]);
+  const suiteRunningScrollKey = useMemo(
+    () => [...new Set(suiteRunningCaseIds.map(String))].sort().join("\x1e"),
+    [suiteRunningCaseIds],
+  );
+
+  const scrollRunningSuiteRowsIntoView = useCallback(() => {
+    if (!suiteBusy || !suiteRunningScrollKey || !suiteListRef.current) return;
+    const want = new Set(suiteRunningScrollKey.split("\x1e").filter(Boolean));
+    const root = suiteListRef.current;
+    const clip = root.closest(".linked-jira-tests-scroll");
+    const lis = [];
+    for (const li of root.querySelectorAll("li[data-suite-case-id]")) {
+      const id = li.getAttribute("data-suite-case-id");
+      if (id != null && want.has(String(id))) lis.push(li);
+    }
+    if (!lis.length) return;
+    if (clip && clip.scrollHeight > clip.clientHeight) {
+      const clipRect = clip.getBoundingClientRect();
+      let minTop = Infinity;
+      let maxBottom = -Infinity;
+      for (const li of lis) {
+        const r = li.getBoundingClientRect();
+        const top = r.top - clipRect.top + clip.scrollTop;
+        const bottom = r.bottom - clipRect.top + clip.scrollTop;
+        if (top < minTop) minTop = top;
+        if (bottom > maxBottom) maxBottom = bottom;
+      }
+      const h = clip.clientHeight;
+      const st = clip.scrollTop;
+      const span = maxBottom - minTop;
+      if (minTop >= st - 2 && maxBottom <= st + h + 2) return;
+      let target;
+      if (span <= h) target = minTop - (h - span) / 2;
+      else target = minTop + (span - h) / 2;
+      const maxScroll = Math.max(0, clip.scrollHeight - h);
+      target = Math.max(0, Math.min(target, maxScroll));
+      clip.scrollTo({ top: target, behavior: "auto" });
+    } else {
+      const smooth =
+        typeof window !== "undefined" &&
+        !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      lis[0].scrollIntoView({ block: "center", behavior: smooth ? "smooth" : "auto" });
+    }
+  }, [suiteBusy, suiteRunningScrollKey]);
+
+  useLayoutEffect(() => {
+    scrollRunningSuiteRowsIntoView();
+  }, [scrollRunningSuiteRowsIntoView]);
 
   useEffect(() => {
-    if (!suiteScrollRunningCaseId || !suiteListRef.current) return undefined;
-    const want = String(suiteScrollRunningCaseId);
-    const id = requestAnimationFrame(() => {
-      const root = suiteListRef.current;
-      if (!root) return;
-      for (const li of root.querySelectorAll("li[data-suite-case-id]")) {
-        if (li.getAttribute("data-suite-case-id") === want) {
-          const smooth =
-            typeof window !== "undefined" &&
-            !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
-          li.scrollIntoView({ block: "nearest", behavior: smooth ? "smooth" : "auto" });
-          break;
-        }
-      }
+    if (!suiteBusy || !suiteRunningScrollKey) return undefined;
+    const root = suiteListRef.current;
+    if (!root) return undefined;
+    let t;
+    const ro = new ResizeObserver(() => {
+      window.clearTimeout(t);
+      t = window.setTimeout(scrollRunningSuiteRowsIntoView, 48);
     });
-    return () => cancelAnimationFrame(id);
-  }, [suiteScrollRunningCaseId]);
+    ro.observe(root);
+    return () => {
+      ro.disconnect();
+      window.clearTimeout(t);
+    };
+  }, [suiteBusy, suiteRunningScrollKey, scrollRunningSuiteRowsIntoView]);
 
   useEffect(() => {
     return () => {
@@ -1435,6 +1480,7 @@ export function AutomationSpikeSectionCards({
       setSuiteErr(e?.message || String(e));
     } finally {
       setSuiteBusy(false);
+      setSuiteRunAllDoneGreen(true);
     }
   };
 
@@ -1855,16 +1901,28 @@ export function AutomationSpikeSectionCards({
                   text={
                     suiteBusy
                       ? "Running suite…"
-                      : "Run all tests in the saved suite, in order"
+                      : suiteRunAllDoneGreen
+                        ? "Suite run finished. The green indicator clears when you refresh the page"
+                        : "Run all tests in the saved suite, in order"
                   }
                 >
                   <button
                     type="button"
-                    className="primary automation-spike-suite-run-all-icon"
+                    className={
+                      suiteRunAllDoneGreen && !suiteBusy
+                        ? "primary automation-spike-suite-run-all-icon automation-spike-suite-run-all-icon--done"
+                        : "primary automation-spike-suite-run-all-icon"
+                    }
                     onClick={openRunAllDialog}
                     disabled={runOrSuiteBusy || suiteCases.length === 0}
                     aria-busy={suiteBusy || undefined}
-                    aria-label={suiteBusy ? "Running suite…" : "Run all tests in the saved suite"}
+                    aria-label={
+                      suiteBusy
+                        ? "Running suite…"
+                        : suiteRunAllDoneGreen
+                          ? "Suite run finished. Run all tests in the saved suite."
+                          : "Run all tests in the saved suite"
+                    }
                   >
                     {suiteBusy ? (
                       <Spinner />
@@ -2000,10 +2058,10 @@ export function AutomationSpikeSectionCards({
         {env && typeof env === "object" ? (
           <div className="automation-spike-env-inset">
             <div className="automation-spike-env-text" role="status">
-              <div
-                className="automation-spike-env-grid"
-                aria-label="Automation environment"
-              >
+              <div className="automation-spike-env-frame" aria-label="Automation environment">
+                <div className="automation-spike-env-split">
+                  <div className="automation-spike-env-split-col">
+                    <div className="automation-spike-env-mini-grid">
                     <span
                       className="automation-spike-env-grid-label"
                       id="automation-env-browser-label"
@@ -2032,7 +2090,70 @@ export function AutomationSpikeSectionCards({
                   </div>
                   {browserSaving ? <Spinner /> : null}
                 </div>
-                {envBoolToggleRows(env).map(
+                {envAutomationBoolRows.slice(0, 2).map(
+                  ({
+                    name,
+                    label,
+                    labelledBy,
+                    on,
+                    patchOn,
+                    patchOff,
+                    lockRow,
+                    labelInfo,
+                  }) => (
+                    <Fragment key={name}>
+                      <span
+                        className="automation-spike-env-grid-label"
+                        id={labelledBy}
+                      >
+                        {labelInfo ? (
+                          <span className="label-with-info">
+                            <span>{label}</span>
+                            <FieldInfo text={labelInfo} />
+                          </span>
+                        ) : (
+                          label
+                        )}
+                      </span>
+                      <div className="automation-spike-env-grid-control">
+                        <div
+                          className="automation-spike-env-bool-radios"
+                          role="radiogroup"
+                          aria-labelledby={labelledBy}
+                        >
+                          <label className="automation-spike-env-bool-radio">
+                            <input
+                              type="radio"
+                              name={name}
+                              value="0"
+                              checked={!on}
+                              onChange={() => onEnvOptionsChange(patchOff)}
+                              disabled={envFieldsLocked || lockRow}
+                            />
+                            <span>Off</span>
+                          </label>
+                          <label className="automation-spike-env-bool-radio">
+                            <input
+                              type="radio"
+                              name={name}
+                              value="1"
+                              checked={on}
+                              onChange={() => onEnvOptionsChange(patchOn)}
+                              disabled={envFieldsLocked || lockRow}
+                            />
+                            <span>On</span>
+                          </label>
+                        </div>
+                      </div>
+                    </Fragment>
+                  ),
+                )}
+                    </div>
+                  </div>
+                  <div className="automation-spike-env-split-vrule" aria-hidden="true" />
+                  <div className="automation-spike-env-split-col">
+                    <div className="automation-spike-env-mini-grid">
+                    {envAutomationBoolRows.slice(2).map(
                   ({
                     name,
                     label,
@@ -2172,9 +2293,12 @@ export function AutomationSpikeSectionCards({
                     disabled={envFieldsLocked}
                   />
                 </div>
+                    </div>
+                  </div>
+                </div>
                 {browserErr ? (
                   <p
-                    className="automation-spike-err automation-spike-env-grid-alert"
+                    className="automation-spike-err automation-spike-env-grid-alert automation-spike-env-frame-alert"
                     role="alert"
                   >
                     {browserErr}
@@ -2182,7 +2306,7 @@ export function AutomationSpikeSectionCards({
                 ) : null}
                 {envOptionsErr ? (
                   <p
-                    className="automation-spike-err automation-spike-env-grid-alert automation-spike-env-options-err"
+                    className="automation-spike-err automation-spike-env-grid-alert automation-spike-env-frame-alert automation-spike-env-options-err"
                     role="alert"
                   >
                     {envOptionsErr}
@@ -2226,11 +2350,18 @@ export function AutomationSpikeSectionCards({
                 {selectors.map((r, i) => (
                   <li key={`sel-${i}-${r.rowid}-${r.fingerprint}-${r.step_index}`}>
                     <code className="automation-spike-sel-code">{r.selector}</code>
-                    <FloatingTooltip text="Remove saved selector">
+                    <FloatingTooltip
+                      text={
+                        runOrSuiteBusy
+                          ? "Cannot remove while a test run is in progress"
+                          : "Remove saved selector"
+                      }
+                    >
                       <button
                         type="button"
                         className="tc-delete-icon-btn"
                         onClick={() => deleteSel(r.rowid)}
+                        disabled={runOrSuiteBusy}
                         aria-label="Remove saved selector"
                       >
                         <IconTrash />

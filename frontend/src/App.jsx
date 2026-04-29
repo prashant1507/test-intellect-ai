@@ -22,6 +22,7 @@ import { RequirementMockupsBlock } from "./components/RequirementMockupsBlock";
 import { TestCaseEditModal } from "./components/TestCaseEditModal";
 import { AutomationSpikePanel } from "./components/AutomationSpikePanel";
 import { AutomationSpikeSectionCards } from "./components/AutomationSpikeSectionCards";
+import { JiraGenerationFormFields } from "./components/JiraGenerationFormFields";
 import {
   AUDIT_JIRA_USER_EMPTY,
   AUDIT_TICKET_EMPTY,
@@ -52,6 +53,7 @@ import { readStoredJiraLinkType, readStoredJiraTestIssueType, readStoredJiraUrl 
 import { isAnyGenBusy, isJiraGenBusy, isPasteGenBusy } from "./utils/generationBusy";
 import { clampAgenticMaxRounds, parseMinTc, parseMaxTc, testCaseBounds } from "./utils/testCase";
 import { settleTestCaseAfterJiraPush, stripTestCaseDiffMeta } from "./utils/testCaseDiff";
+import { FETCH_TICKET } from "./constants/apiPaths";
 import { ARCHIVE_NOT_ALLOWED_MSG, isBlockedArchiveFilename } from "./utils/requirementImageUpload";
 import { withOidcAuthorization } from "./utils/oidcFetchHeaders";
 
@@ -1666,8 +1668,8 @@ export default function App() {
         return;
       }
 
-      if (path === "/fetch-ticket") {
-        const d = await api("/fetch-ticket", "POST", cred());
+      if (path === FETCH_TICKET) {
+        const d = await api(FETCH_TICKET, "POST", cred());
         if (inputModeRef.current !== "jira") {
           return;
         }
@@ -1740,11 +1742,15 @@ export default function App() {
     return [...set].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" })).join(", ");
   }, [linkedJiraWork]);
   const mainRequirementKey = useMemo(() => normTicketId(key || ticketId), [key, ticketId]);
+  const fetchingRequirements = busy === FETCH_TICKET;
+  const showJiraGenerationOptions =
+    inputMode === "jira" && lastFetchAt != null && !fetchingRequirements;
+  const showPasteOrJiraGenToolbar = inputMode === "paste" || showJiraGenerationOptions;
   const diffLong = diff && diff.length > 600;
   const diffShown = diffLong && !diffExpanded ? `${diff.slice(0, 600)}…` : diff;
 
   const loadingRequirements =
-    busy === "/fetch-ticket" ||
+    fetchingRequirements ||
     (isJiraGenBusy(busy) && !req) ||
     (isPasteGenBusy(busy) && !req);
   const loadingTestCases = (isJiraGenBusy(busy) && !!req) || isPasteGenBusy(busy);
@@ -2577,8 +2583,7 @@ export default function App() {
                 hidden={inputMode !== "jira"}
                 aria-hidden={inputMode !== "jira"}
               >
-            <div className="row cols-2 jira-form-split">
-              <div className="jira-form-col-stack">
+            <div className="row cols-3 jira-credentials-row-equal">
                 <div>
                   <label htmlFor="jiraUrl" className="label-with-info">
                     <span>JIRA URL</span>
@@ -2659,25 +2664,8 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-                <MinMaxTestCaseFields
-                  idPrefix="jira"
-                  layout="stack"
-                  minTestCases={minTestCases}
-                  maxTestCases={maxTestCases}
-                  onMinChange={setMinTestCases}
-                  onMaxChange={setMaxTestCases}
-                  parseMinTc={parseMinTc}
-                  parseMaxTc={parseMaxTc}
-                />
-                <AgenticPipelineOptions
-                  checked={useAgenticGen}
-                  onCheckedChange={setUseAgenticGen}
-                  maxRounds={agenticMaxRounds}
-                  onMaxRoundsChange={setAgenticMaxRounds}
-                  roundsInputId="agenticRoundsJira"
-                />
-              </div>
-              <div className="jira-form-col-stack">
+            </div>
+            <div className="row cols-3 jira-credentials-row-equal">
                 <div>
                   <label htmlFor="ticketId" className="label-with-info">
                     <span>Requirement Ticket ID</span>
@@ -2696,63 +2684,45 @@ export default function App() {
                     Requirement / Story ticket.
                   </span>
                 </div>
-                <div>
-                  <label htmlFor="jiraTestProject" className="label-with-info">
-                    <span>JIRA Test Project</span>
-                    <FieldInfo text="Project key where new test cases are created." />
-                  </label>
-                  <input
-                    id="jiraTestProject"
-                    value={jiraTestProject}
-                    onChange={(e) => setJiraTestProject(e.target.value)}
-                    placeholder=""
-                    autoComplete="off"
-                    aria-describedby="hint-jira-test-project"
-                  />
-                  <span id="hint-jira-test-project" className="sr-only">
-                    Project key where new test cases are created as JIRA issues.
-                  </span>
-                </div>
-                <div>
-                  <label htmlFor="jiraTestIssueType" className="label-with-info">
-                    <span>Test Issue Type</span>
-                    <FieldInfo text="Exact name of an issue type in your test project (e.g. Test, Task, or a custom type)." />
-                  </label>
-                  <input
-                    id="jiraTestIssueType"
-                    value={jiraTestIssueType}
-                    onChange={(e) => setJiraTestIssueType(e.target.value)}
-                    placeholder="Test"
-                    autoComplete="off"
-                    aria-describedby="hint-jira-test-issue-type"
-                  />
-                  <span id="hint-jira-test-issue-type" className="sr-only">
-                    Issue type name for created test issues; must exist in the JIRA test project.
-                  </span>
-                </div>
-                <div>
-                  <label htmlFor="jiraLinkType" className="label-with-info">
-                    <span>Issue Link Type</span>
-                    <FieldInfo text="Exact link type name from JIRA (Project settings → Issue linking). Often Relates — not the UI sentence “relates to”." />
-                  </label>
-                  <input
-                    id="jiraLinkType"
-                    value={jiraLinkType}
-                    onChange={(e) => setJiraLinkType(e.target.value)}
-                    placeholder="Relates"
-                    autoComplete="off"
-                    aria-describedby="hint-jira-link-type"
-                  />
-                  <span id="hint-jira-link-type" className="sr-only">
-                    JIRA issue link type name used when linking the new test issue to the requirement ticket.
-                  </span>
-                </div>
+            </div>
+            <div className="row cols-3 jira-credentials-row-equal jira-fetch-requirements-row">
+              <div className="jira-fetch-requirements-cell">
+                <button
+                  type="button"
+                  className="primary has-icon"
+                  disabled={fetchingRequirements || !canSubmit}
+                  onClick={() => run(FETCH_TICKET)}
+                  title={!canSubmit ? "Fill all fields first" : undefined}
+                >
+                  {fetchingRequirements ? <Spinner /> : null}
+                  {fetchingRequirements ? "Fetching…" : "Fetch Requirements"}
+                </button>
               </div>
             </div>
+            {showJiraGenerationOptions ? (
+              <JiraGenerationFormFields
+                jiraTestProject={jiraTestProject}
+                setJiraTestProject={setJiraTestProject}
+                jiraTestIssueType={jiraTestIssueType}
+                setJiraTestIssueType={setJiraTestIssueType}
+                jiraLinkType={jiraLinkType}
+                setJiraLinkType={setJiraLinkType}
+                minTestCases={minTestCases}
+                maxTestCases={maxTestCases}
+                setMinTestCases={setMinTestCases}
+                setMaxTestCases={setMaxTestCases}
+                parseMinTc={parseMinTc}
+                parseMaxTc={parseMaxTc}
+                useAgenticGen={useAgenticGen}
+                setUseAgenticGen={setUseAgenticGen}
+                agenticMaxRounds={agenticMaxRounds}
+                setAgenticMaxRounds={setAgenticMaxRounds}
+              />
+            ) : null}
               </div>
             ) : null}
             </fieldset>
-            {inputMode === "jira" || inputMode === "paste" ? (
+            {showPasteOrJiraGenToolbar ? (
               <>
             <label className={`check check-save-memory${mock ? " check-disabled" : ""}`}>
               <input
@@ -2771,34 +2741,22 @@ export default function App() {
             </label>
             <div className="actions">
               {inputMode === "jira" ? (
-                <>
-                  <button
-                    type="button"
-                    className="secondary has-icon"
-                    disabled={busy === "/fetch-ticket" || !canSubmit}
-                    onClick={() => run("/fetch-ticket")}
-                    title={!canSubmit ? "Fill all fields first" : undefined}
-                  >
-                    {busy === "/fetch-ticket" ? <Spinner /> : null}
-                    {busy === "/fetch-ticket" ? "Fetching…" : "Fetch Requirements"}
-                  </button>
-                  <button
-                    type="button"
-                    className="primary has-icon"
-                    disabled={isJiraGenBusy(busy) || !canSubmit || !canGenerateJira}
-                    onClick={() => run("/generate-tests")}
-                    title={
-                      !canSubmit
-                        ? "Fill all fields first"
-                        : !canGenerateJira
-                          ? "Fetch requirements for this ticket first"
-                          : undefined
-                    }
-                  >
-                    {isJiraGenBusy(busy) ? <Spinner /> : null}
-                    {isJiraGenBusy(busy) ? "Generating…" : "Generate Test Cases"}
-                  </button>
-                </>
+                <button
+                  type="button"
+                  className="primary has-icon"
+                  disabled={isJiraGenBusy(busy) || !canSubmit || !canGenerateJira}
+                  onClick={() => run("/generate-tests")}
+                  title={
+                    !canSubmit
+                      ? "Fill all fields first"
+                      : !canGenerateJira
+                        ? "Fetch requirements for this ticket first"
+                        : undefined
+                  }
+                >
+                  {isJiraGenBusy(busy) ? <Spinner /> : null}
+                  {isJiraGenBusy(busy) ? "Generating…" : "Generate Test Cases"}
+                </button>
               ) : (
                 <button
                   type="button"
@@ -2817,10 +2775,10 @@ export default function App() {
                 </button>
               ) : null}
             </div>
-            {inputMode === "jira" && !canSubmit ? (
+            {inputMode === "jira" && showJiraGenerationOptions && !canSubmit ? (
               <p className="form-hint-warn">Complete every field above to enable actions.</p>
             ) : null}
-            {inputMode === "jira" && canSubmit && !canGenerateJira ? (
+            {inputMode === "jira" && showJiraGenerationOptions && canSubmit && !canGenerateJira ? (
               <p className="form-hint-warn">Use “Fetch Requirements” to load this ticket before generating test cases.</p>
             ) : null}
             {inputMode === "paste" && !canSubmitPaste ? (
@@ -2899,7 +2857,7 @@ export default function App() {
               ) : req ? (
                 <>
                   <PasteRequirementsPreview text={fmtReqMarkdown(req)} />
-                  {inputMode === "jira" && reqImgConfig.visionConfigured && !mock ? (
+                  {showJiraGenerationOptions && reqImgConfig.visionConfigured && !mock ? (
                     <RequirementMockupsBlock
                       className="req-images-block--in-requirements"
                       title="Upload Mockups and Attachments"
@@ -2925,7 +2883,7 @@ export default function App() {
                       onRemoveAt={removeReqImageAt}
                     />
                   ) : null}
-                  {inputMode === "jira" && reqAttachments?.length ? (
+                  {showJiraGenerationOptions && reqAttachments?.length ? (
                     <RequirementAttachmentsInline
                       attachments={reqAttachments}
                       onDownload={downloadReqAttachment}

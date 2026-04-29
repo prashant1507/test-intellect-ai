@@ -54,5 +54,8 @@ export function MinMaxTestCaseFields({
   if (layout === "sideBySide") {
     return <div className="row cols-2">{inner}</div>;
   }
+  if (layout === "jiraCols3") {
+    return <div className="row cols-3 jira-credentials-row-equal">{inner}</div>;
+  }
   return inner;
 }

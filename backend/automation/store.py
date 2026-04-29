@@ -121,6 +121,25 @@ def init_automation_db() -> None:
                 c.execute(
                     "ALTER TABLE automation_suite_cases ADD COLUMN spike_type TEXT"
                 )
+        rs_t = c.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='automation_run_steps'"
+        ).fetchone()
+        if rs_t:
+            rsc = {
+                x[1] for x in c.execute("PRAGMA table_info(automation_run_steps)")
+            }
+            if "failure_taxonomy" not in rsc:
+                c.execute(
+                    "ALTER TABLE automation_run_steps ADD COLUMN failure_taxonomy TEXT"
+                )
+            if "repair_path" not in rsc:
+                c.execute(
+                    "ALTER TABLE automation_run_steps ADD COLUMN repair_path TEXT"
+                )
+            if "inventory_count" not in rsc:
+                c.execute(
+                    "ALTER TABLE automation_run_steps ADD COLUMN inventory_count INTEGER"
+                )
         c.commit()
     finally:
         c.close()
@@ -192,8 +211,9 @@ def replace_run_steps(run_id: str, steps: list[dict]) -> None:
                 """
                 INSERT INTO automation_run_steps
                   (run_id, step_index, step_text, selector, action, value,
-                   pass, err, source, screenshot_path)
-                VALUES (?,?,?,?,?,?,?,?,?,?)
+                   pass, err, source, screenshot_path,
+                   failure_taxonomy, repair_path, inventory_count)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
                 """,
                 (
                     run_id,
@@ -206,6 +226,9 @@ def replace_run_steps(run_id: str, steps: list[dict]) -> None:
                     s.get("err"),
                     s.get("source") or "llm",
                     s.get("screenshot_path"),
+                    s.get("failure_taxonomy"),
+                    s.get("repair_path"),
+                    s.get("inventory_count"),
                 ),
             )
         c.commit()

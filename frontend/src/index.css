@@ -1865,6 +1865,18 @@ button.automation-spike-suite-run-all-icon .spinner {
   color: #fff;
 }
 
+button.primary.automation-spike-suite-run-all-icon.automation-spike-suite-run-all-icon--done:not(:disabled) {
+  background: #16a34a;
+  color: #fff;
+}
+button.primary.automation-spike-suite-run-all-icon.automation-spike-suite-run-all-icon--done:not(:disabled):hover {
+  filter: brightness(1.06);
+}
+[data-theme="dark"] button.primary.automation-spike-suite-run-all-icon.automation-spike-suite-run-all-icon--done:not(:disabled) {
+  background: #15803d;
+  color: #fff;
+}
+
 button.automation-spike-suite-recent-reports-icon-btn {
   flex-shrink: 0;
   display: inline-flex;
@@ -1962,7 +1974,7 @@ button.automation-spike-suite-stop-icon-btn:focus-visible {
   background: color-mix(in srgb, var(--card-bg) 92%, var(--border));
 }
 
-/* Environment: content uses one bordered .automation-spike-env-grid (no nested inset box). */
+/* Environment: bordered frame + two-column split; label/control grids use .automation-spike-env-mini-grid. */
 .automation-spike-env-inset {
   margin-top: 0.75rem;
   min-width: 0;
@@ -2130,6 +2142,53 @@ button.automation-spike-suite-stop-icon-btn:focus-visible {
   white-space: pre-wrap;
 }
 
+
+.automation-spike-env-frame {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--card-bg) 92%, var(--border));
+  overflow: hidden;
+}
+
+.automation-spike-env-split {
+  display: flex;
+  align-items: stretch;
+  flex: 1;
+  min-width: 0;
+}
+
+.automation-spike-env-split-col {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.automation-spike-env-split-vrule {
+  flex: 0 0 1px;
+  align-self: stretch;
+  background: color-mix(in srgb, var(--card-border) 94%, transparent);
+  margin: 0.35rem 0;
+}
+
+@media (max-width: 760px) {
+  .automation-spike-env-split {
+    flex-direction: column;
+  }
+
+  .automation-spike-env-split-vrule {
+    display: none;
+  }
+
+  .automation-spike-env-split > .automation-spike-env-split-col:last-child {
+    border-top: 1px solid color-mix(in srgb, var(--card-border) 88%, transparent);
+    padding-top: 0.35rem;
+  }
+}
+
 .automation-spike-env-text {
   display: flex;
   flex-direction: column;
@@ -2142,20 +2201,15 @@ button.automation-spike-suite-stop-icon-btn:focus-visible {
   min-width: 0;
 }
 
-/* Two-column grid: aligned labels, controls start on one vertical line. One outer border (same treatment as suite/cache list wraps). */
-.automation-spike-env-grid {
+/* Within each Environment column: label/control pairs share one alignment grid (no outer border). */
+.automation-spike-env-mini-grid {
   display: grid;
-  grid-template-columns: minmax(10.5rem, 14rem) minmax(0, 1fr);
+  grid-template-columns: minmax(9.25rem, 12.5rem) minmax(0, 1fr);
   column-gap: 1rem;
   row-gap: 0.5rem;
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  border: 1px solid var(--card-border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--card-bg) 92%, var(--border));
-  overflow: hidden;
-  padding: 0.35rem 0 0.5rem;
 }
 
 .automation-spike-env-grid-label,
@@ -2233,12 +2287,21 @@ input.automation-spike-env-timeout-input::-webkit-inner-spin-button {
 }
 
 .automation-spike-env-grid-alert {
-  grid-column: 1 / -1;
   padding: 0.4rem 0.9rem 0.5rem;
   box-sizing: border-box;
   margin: 0.15rem 0 0;
   font-size: 0.78rem;
   line-height: 1.4;
+}
+
+.automation-spike-env-mini-grid .automation-spike-env-grid-alert {
+  grid-column: 1 / -1;
+}
+
+.automation-spike-env-frame > .automation-spike-env-frame-alert {
+  margin: 0;
+  border-radius: 0;
+  border-top: 1px solid color-mix(in srgb, var(--card-border) 92%, transparent);
 }
 
 .automation-spike-browser-radios {
@@ -2968,6 +3031,15 @@ button.automation-spike-iconbtn:disabled {
 .automation-spike-sel-list .automation-spike-sel-code {
   flex: 1 1 10rem;
   min-width: 0;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  font-style: normal;
+  color: inherit;
+  background: transparent;
+  padding: 0;
+  border: none;
+  letter-spacing: inherit;
 }
 
 .automation-spike-sel-list .automation-spike-iconbtn,
@@ -3814,6 +3886,12 @@ textarea.paste-requirements-textarea {
   .row.cols-3 {
     grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr) minmax(0, 1.1fr);
   }
+  .row.cols-3.jira-credentials-row-equal {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .row.cols-3.jira-credentials-row-equal > * {
+    min-width: 0;
+  }
 }
 
 .automation-spike-stack .row.automation-spike-auto-test-grid {
@@ -3826,6 +3904,21 @@ textarea.paste-requirements-textarea {
   flex-direction: column;
   gap: 0.75rem;
   min-width: 0;
+}
+
+.jira-fetch-requirements-row .jira-fetch-requirements-cell {
+  display: flex;
+  align-items: flex-end;
+}
+
+.actions button.primary.has-icon {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.jira-fetch-requirements-row .jira-fetch-requirements-cell button.primary.has-icon {
+  width: fit-content;
+  max-width: 100%;
 }
 
 .check {
