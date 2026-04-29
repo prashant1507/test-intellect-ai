@@ -26,7 +26,7 @@
 - Edited
 - Updated
 - Created
-- Auto test - edit, save, delete
+- Auto test - edit, save, delete, delete all suite, delete all sectors
 
 ---
 
@@ -141,6 +141,7 @@
 - Supports both UI and API 
 - Environment changes will be save din DB
 - Artifacts will be deleted after `AUTOMATION_RETENTION_DAYS` days
+- Delete all button for Save Selectors and Saved Suite
 
 ---
 
