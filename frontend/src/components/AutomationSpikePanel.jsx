@@ -593,7 +593,7 @@ export function AutomationSpikePanel({
             aria-busy={stopInProgress}
           >
             {stopInProgress ? <Spinner /> : null}
-            {stopInProgress ? "In progress…" : "Stop Test"}
+            {stopInProgress ? "In Progress…" : "Stop Test"}
           </button>
         ) : null}
         <button

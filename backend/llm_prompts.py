@@ -25,6 +25,9 @@ Coverage guidance, within the requested min/max count:
 Output contract:
 - Return JSON only. Do not return markdown, prose, comments, or code fences.
 - The top-level object must be exactly: {"test_cases": [...]}.
+- Stay strictly within the requested min..max count. Never exceed the maximum.
+- Order test_cases from most important to least important: happy path first, then validation/negative, then boundary/permissions/state.
+- All strings must be valid JSON: every double quote inside a step or description must be escaped as \\". Never use smart quotes ("" '').
 - Each item must include only these required fields unless prior/JIRA metadata is already present in input:
   - "description": short scenario title, not a Gherkin line.
   - "preconditions": always "".
@@ -92,17 +95,24 @@ Task:
 - Do not include explanation prose before or after the code.
 - Do not wrap the answer in markdown fences.
 - Preserve the requested language and framework.
-- Map Given/When/Then/And steps into comments, placeholders, or structured test steps.
-- Use TODO comments for unknown URLs, credentials, fixtures, selectors, and data.
+- Map Given/When/Then/And steps into comments, placeholders, or structured test steps in the same order.
+- For each Then/And assertion in the BDD, include a concrete assertion call (not just a comment) using the framework's idioms (e.g. expect(...).toHaveText(...) for Playwright, assertEquals for JUnit).
+- Prefer stable locators in this order when the framework supports them: getByTestId, getByRole, getByLabel, getByPlaceholder, getByText, then short CSS by [name=...] or [aria-label=...]. Avoid long :has() chains, ::placeholder selectors, or fragile nth-child paths.
+- Use double-quoted strings from BDD steps verbatim as locator text or expected values.
+- Use TODO comments for unknown URLs, credentials, fixtures, selectors not derivable from the BDD, and data not in the BDD.
 - Do not invent product-specific URLs, selectors, credentials, or business data.
 - Use example.com or obvious placeholders where needed.
 - Include imports and structure that match common conventions for the requested stack.
 """.strip()
 
 UI_SPIKE_TEST_RUN_SUMMARY_SYSTEM_PROMPT = (
-    "You are a senior QA engineer. Summarize the test run in plain text only. "
-    "State whether it passed or failed, the likely root cause if it failed, and one practical next step. "
-    "Use at most 6 short sentences."
+    "You are a senior QA engineer. Summarize the Playwright test run in plain text only. "
+    "Use at most 6 short sentences. Cover, in order: 1) overall result (passed/failed and the failing step text if any); "
+    "2) the most likely root cause grounded in the supplied error message, selector, and DOM/inventory context "
+    "(e.g. element not found, selector matched the wrong element, navigation did not occur, timing/visibility); "
+    "3) one practical next step phrased as a single concrete action (e.g. update the BDD step to match the visible label, "
+    "use a more stable locator like role/text/test-id, increase timeout, or fix the application bug). "
+    "Do not invent steps, controls, or behavior that are not in the supplied logs. Do not output JSON or markdown."
 )
 
 AGENT_CANDIDATE_TEST_SUITE_GENERATION_SYSTEM_PROMPT = (
@@ -127,7 +137,7 @@ Scoring:
 - traceability: scenarios are grounded in the requirement and supplied context.
 - coverage: important supported paths are covered within the requested count.
 - gherkin_structure: steps use valid Given/When/Then/And order and format.
-- concreteness: steps contain observable actions and outcomes.
+- concreteness: action steps reference one identifiable UI element by visible label/button text/field name/placeholder/aria-label/heading (quoted in double quotes), use a clear action verb, and use concrete data values (not "valid credentials"). Then/And assertions name a visible outcome (heading text, message text, field value, control state, URL keyword, or count).
 - non_redundancy: scenarios are meaningfully distinct.
 
 Rules:
@@ -135,6 +145,8 @@ Rules:
 - Blocking defects include unsupported behavior, broken Gherkin, missing required coverage, misleading assertions, or duplicated scenarios that reduce useful coverage.
 - Add a must_fix item when any scenario has no clear trace to the requirements or supplied context.
 - Add a must_fix item when any Then/And assertion lacks an observable outcome.
+- Add a must_fix item when an action step uses vague identifiers ("the field", "their credentials", "the form") instead of a quoted visible label/name.
+- Add a must_fix item when an action step uses vague verbs ("interacts with", "uses", "validates", "handles") instead of concrete actions (clicks, enters, selects, presses, etc.).
 - Add a must_fix item when a step combines multiple separate actions or assertions.
 - Add a must_fix item when success behavior is described but no happy path exists.
 - Add a must_fix item when validation, limits, permissions, state, or "must not" behavior is described but the suite omits that supported risk.
@@ -145,17 +157,27 @@ Rules:
 
 AGENT_SUGGESTED_SCENARIOS_GENERATION_SYSTEM_PROMPT = """
 Output JSON only: {"test_cases":[...]}.
-Create one scenario per suggestion.
+Create one scenario per suggestion, in the same order.
 Each item must include: description, preconditions "", steps, expected_result "", change_status "new", priority, severity.
-steps must be a JSON array of strings, one string per Gherkin line.
-Never put all steps in one string.
-Trace only to requirements and supplied context.
-Do not invent unsupported behavior.
+steps must be a JSON array of strings, one string per Gherkin line. Never put all steps in one string.
+Use the same automation-ready style as the main suite:
+- One Given to establish location/state, one When to trigger the action, one or more Then/And to assert observable outcomes.
+- Each action step references one identifiable UI element by its visible label/button text/field name/placeholder/aria-label/heading, quoted in double quotes (e.g. the "Username" field, the "Login" button).
+- Use clear action verbs: clicks, enters, selects, checks, presses, hovers, focuses on, scrolls to, navigates to.
+- Use concrete data values; quote them when from the evidence.
+- Each Then/And assertion names a visible outcome (heading text, message text, field value, control state, URL keyword, or count) and quotes the exact expected text.
+- Escape double quotes in JSON strings as \\".
+Trace only to requirements and supplied context. Do not invent unsupported behavior, labels, or messages.
 """.strip()
 
 AGENT_SCENARIOS_QUALITY_RANKING_SYSTEM_PROMPT = """
 Reply JSON only: {"base_scores":[number,...],"candidate_scores":[number,...]}.
-Each score is 0-5 for overall quality: traceability, Gherkin validity, concreteness, and usefulness.
+Each score is 0-5 for overall quality across these aspects (weight equally):
+- traceability: every step is grounded in the supplied requirements/evidence; nothing invented.
+- Gherkin validity: correct Given/When/Then/And order, one idea per step, single-line strings.
+- concreteness: action steps reference a quoted UI label/name and a concrete value; assertions name a visible outcome with quoted expected text.
+- usefulness: the scenario tests a meaningful, distinct behavior (not a trivial paraphrase of another).
+Reward scenarios that include quoted control identifiers and observable assertions. Penalize vague phrasing ("valid credentials", "interacts with", "the form"), missing observable outcomes, and near-duplicate ideas.
 base_scores must contain exactly as many numbers as BASE_SCENARIOS.
 candidate_scores must contain exactly as many numbers as CANDIDATE_SCENARIOS.
 Preserve item order.
@@ -165,15 +187,24 @@ BDD_TEST_CASES_BATCH_SCORING_SYSTEM_PROMPT = """
 Reply JSON only: {"scores":[number,...]}.
 Return exactly as many scores as test cases in the user message, in the same order.
 Each score must be 0-10 and may include one decimal.
-Judge traceability to requirements, Gherkin structure, concreteness, and clarity.
-Penalize unsupported assumptions, vague assertions, missing observable outcomes, duplicate coverage, and missing supported negative/boundary coverage.
-Penalize heavy deduction for steps that are clearly drafts: markers like "----", "check this", "TODO", or incomplete lines that are not full assertions.
+Judge traceability to requirements, Gherkin structure, concreteness, automation-readiness, and clarity.
+Reward:
+- Action steps that quote a visible identifier (label/button text/field name/placeholder/aria-label/heading) in double quotes.
+- Concrete data values (quoted samples) instead of vague terms.
+- Then/And assertions with quoted expected text and a clear observable target.
+Penalize:
+- Unsupported assumptions, invented labels/messages.
+- Vague action verbs ("interacts with", "uses", "validates", "handles") and vague identifiers ("the field", "their credentials", "the form").
+- Missing observable outcomes; "the page loads correctly"; "it works".
+- Duplicate coverage and near-duplicate scenarios.
+- Missing supported negative/boundary/permissions coverage.
+- Steps that are clearly drafts: markers like "----", "check this", "TODO", or incomplete lines that are not full assertions (deduct heavily).
 """.strip()
 
 API_BDD_TO_HTTP_OPERATIONS_PLANNER_SYSTEM_PROMPT = (
     "You are an API test planner. The user provides BDD steps for HTTP API testing. "
     "For each BDD line, return one JSON step object in the same order.\n"
-    "Return only valid JSON: {\"steps\": [...]} with length exactly N.\n"
+    "Return only valid JSON: {\"steps\": [...]} with length exactly N. No prose, no code fences.\n"
     "Allowed op values: noop, reachability, set_header, http, assert_status, assert_json_key, "
     "assert_json_path_not_empty, assert_json_path_empty, assert_body_contains.\n"
     "- noop: documentation-only line, no extra fields required.\n"
@@ -192,12 +223,15 @@ API_BDD_TO_HTTP_OPERATIONS_PLANNER_SYSTEM_PROMPT = (
     "Map When lines to http. "
     "Map Then/And lines to assertion ops. "
     "Use only values stated in the BDD. Do not invent endpoints, headers, body fields, credentials, or expected values. "
+    "If the BDD does not specify a value, omit the field rather than guessing. "
     "Do not use absolute URLs in path fields."
 )
 
 PLAYWRIGHT_STEPS_VS_DOM_INTRO_SYSTEM_PROMPT = (
     "You validate and repair Playwright step JSON so selectors work on the supplied HTML while strictly following the written BDD. "
-    "Return JSON only. "
+    "Return JSON only. No prose, no code fences. "
+    "When an Interactive elements inventory is present, prefer selectors derived from it (test_id, role+name, name, aria-label, text) over fragile CSS chains; "
+    "do not invent inventory entries that are not listed. "
     "Never output an empty playwright_selector; for Then steps that assert the result of navigation (e.g. dashboard), output a non-empty locator even if that node is not in the current HTML snapshot. "
     "When a BDD line uses double-quoted text for an expected label, message, or visible string, the step's `value` for "
     "assert_text, assert_contains, or assert_value must be that string exactly as written in the BDD (character-for-character), "
@@ -205,39 +239,57 @@ PLAYWRIGHT_STEPS_VS_DOM_INTRO_SYSTEM_PROMPT = (
 )
 
 PLAYWRIGHT_SINGLE_STEP_FAILURE_REPAIR_SYSTEM_PROMPT = (
-    "Return JSON only: {\"steps\":[one object]}. "
+    "Return JSON only: {\"steps\":[one object]}. No prose, no code fences. "
     "The object must include playwright_selector, action, and value. "
     "Repair the failed step for the current DOM (improve the locator/selector and action if needed) without changing what the BDD line requires. "
+    "When an Interactive elements inventory is present, use it as the primary source for the replacement selector — "
+    "match the BDD's quoted label/name to inventory entries by text, name, placeholder, aria_label, or test_id. "
+    "Preference order: [data-testid=\"...\"], role=tag[name=\"...\"], [name=\"...\"], [aria-label=\"...\"], text=ExactText, then short CSS. "
+    "Do not fabricate test_id/name/aria-label values that are not in the inventory or HTML. "
     "If the BDD line includes double-quoted expected text, keep that exact `value` string; do not replace it with different text from the page."
 )
 
 PLAYWRIGHT_VISION_STEP_EVIDENCE_SYSTEM_PROMPT = (
-    "You are given a PNG of the current page, HTML (text), a BDD line, and the failed Playwright step. "
+    "You are given a PNG of the current page, HTML (text), an optional Interactive elements inventory, a BDD line, and the failed Playwright step. "
+    "Return JSON only: {\"expected_visible\": boolean, \"steps\": [at most one object]}. No prose, no code fences. "
     "1) If the BDD line double-quotes the exact string to check, set expected_visible to true only if that exact string (same spelling and punctuation) "
     "is visible in the screenshot; if the page shows different text (e.g. another year or wording), set expected_visible to false. "
     "For lines without a quoted exact string, you may set expected_visible from whether the BDD-described content is visible. "
     "2) If expected_visible is true, output one object in 'steps' with playwright_selector, action, and value. "
+    "Build the selector from the inventory when possible (test_id, role+name, name, aria-label, text), otherwise from clearly stable HTML. "
+    "When the same text appears multiple times, choose the most prominent occurrence in the screenshot (largest, top-most, in main content) or the one whose surrounding context matches the BDD. "
     "If the BDD line contains double-quoted text for an assertion, `value` must be that exact quoted string, not a corrected or HTML-derived variant. "
     "Otherwise use the HTML for text and the image for layout. If expected_visible is false, use an empty 'steps' array. "
-    "Return JSON only: {\"expected_visible\": boolean, \"steps\": [at most one object]}. "
     "Each object must use keys playwright_selector, action, value (strings; value may be empty)."
 )
 
 
 def playwright_reconcile_step_count_mismatch_prompt(n: int, draft_len: int) -> str:
     return (
-        f"Return only JSON: {{\"steps\": [...]}}. "
+        f"Return only JSON: {{\"steps\": [...]}}. No prose, no code fences. "
         f"The steps array must contain exactly {n} objects, one per BDD line in order. "
         f"The draft contains {draft_len} item(s). Expand, split, trim, or replace items so the final length is exactly {n}. "
-        "Each object must include playwright_selector, action, and value as strings."
+        "Each object must include playwright_selector, action, and value as strings. "
+        "playwright_selector must be a non-empty string. value is \"\" when unused."
     )
 
 
 def playwright_map_bdd_to_locator_steps_prompt(n: int) -> str:
     return (
         "You are a Playwright test expert. "
-        f"The BDD has N = {n} lines. HTML is from page.content() or a pasted client snapshot. "
-        f"Return one JSON object with key \"steps\" containing exactly {n} objects. "
+        f"The BDD has N = {n} lines. "
+        "The user message may contain an **Interactive elements** JSON inventory listing every visible control on the current page (tag, role, name, id, type, test_id, aria_label, text, placeholder, cls, href). "
+        "When the inventory is present, use it as the primary source for selectors — match BDD nouns (quoted labels, button text, field names) to inventory entries by text, name, placeholder, aria_label, or test_id. "
+        "Selector preference order — pick the first that uniquely identifies the element: "
+        "1) [data-testid=\"...\"] when test_id is in the inventory; "
+        "2) role-based, e.g. role=button[name=\"Login\"] or role=textbox[name=\"Username\"]; "
+        "3) [name=\"...\"] for form fields; "
+        "4) [aria-label=\"...\"]; "
+        "5) text=ExactText or label-based, e.g. button:has-text(\"Login\"); "
+        "6) short CSS using id (only if the id looks stable, not a generated hash) or a stable class. "
+        "Never fabricate a test_id, name, aria-label, or class that is not present in the inventory or HTML. If unsure, use a text or role-based locator. "
+        "Fall back to the HTML section only when the inventory does not contain the needed element (e.g. post-action DOM that is not yet visible). "
+        f"Return one JSON object with key \"steps\" containing exactly {n} objects. No prose, no code fences. "
         "steps[i] must implement BDD line i only, preserving order. "
         "Each object must include: playwright_selector, action, value. "
         "playwright_selector must be a non-empty string usable by page.locator(); never \"\" or whitespace-only. "
@@ -247,10 +299,14 @@ def playwright_map_bdd_to_locator_steps_prompt(n: int) -> str:
         "press_sequentially, select_option, scroll_into_view, get_text, assert_text, assert_contains, "
         "assert_visible, assert_hidden, assert_value, assert_checked, assert_unchecked, assert_enabled, "
         "assert_disabled, assert_attribute, assert_placeholder, assert_class. "
-        "Use short stable locators such as input[name=...], button:has-text('Login'), text=Required, "
-        "[data-testid=...], [aria-label=...], or stable classes when no better option exists. "
-        "Avoid long fragile :has() chains. "
-        "Never use CSS ::placeholder in selectors. "
+        "BDD verb to action mapping: clicks/presses -> click; double-clicks -> dblclick; "
+        "enters/types/fills -> fill; clears -> clear; focuses on -> focus; hovers over -> hover; "
+        "checks/unchecks -> check/uncheck; selects -> select_option; scrolls to -> scroll_into_view. "
+        "Then assertion mapping: is visible/displayed/shown -> assert_visible; "
+        "is not visible/hidden/should not appear -> assert_hidden; contains/has text -> assert_contains; "
+        "equals/is exactly -> assert_text; field value is -> assert_value; "
+        "is enabled/disabled -> assert_enabled/assert_disabled; is checked/unchecked -> assert_checked/assert_unchecked. "
+        "Avoid long fragile :has() chains. Never use CSS ::placeholder in selectors. "
         "For XPath, prefer normalize-space(.) over text() equality. "
         "For a navigation Given after page.goto, assert a stable visible page element instead of navigating again. "
         "Strict BDD: when the step quotes expected text in double quotes, the `value` for assert_text or assert_contains must be "
@@ -268,14 +324,16 @@ def playwright_map_bdd_to_locator_steps_prompt(n: int) -> str:
 def playwright_refine_locators_against_html_rule(first_when_index: int, n: int) -> str:
     return (
         f"First When is at BDD index {first_when_index}. "
-        f"For BDD indices 0 through {first_when_index - 1}, each selector must match the supplied HTML. "
+        f"For BDD indices 0 through {first_when_index - 1}, each selector must match the supplied HTML or the inventory. "
         f"For BDD indices {first_when_index} through {n - 1}, use plausible locators for the live DOM after actions. "
+        "When an Interactive elements inventory is present, prefer inventory-derived selectors (test_id, role+name, name, aria-label, text) over CSS chains. "
+        "Do not fabricate test_id/name/aria-label values that are not in the inventory or HTML. "
         "For Then/And steps with double-quoted expected text, keep the quoted text exactly in `value`; do not substitute HTML wording. "
         "For other visible messages, prefer assert_contains or assert_visible; match the BDD, not a paraphrase from the HTML. "
         "For short exact text such as Required, text=Required is acceptable. "
         "For red/error borders, use assert_class only when the class or a clear error class pattern is supported by HTML. "
         "Do not use assert_attribute unless the attribute name and expected value exist in the HTML. "
-        f"Return JSON only: {{\"steps\":[{n} objects]}}. "
+        f"Return JSON only: {{\"steps\":[{n} objects]}}. No prose, no code fences. "
         "Each object must include playwright_selector, action, and value. "
         "No ::placeholder selectors."
     )
@@ -284,7 +342,10 @@ def playwright_refine_locators_against_html_rule(first_when_index: int, n: int) 
 def playwright_repair_zero_locator_matches_prompt(n: int, bad: list[int]) -> str:
     return (
         f"Pre-run locator().count() was 0 for step indices {bad!s}. "
-        f"Return JSON only with {{\"steps\": [...]}} containing exactly {n} objects. "
+        f"Return JSON only with {{\"steps\": [...]}} containing exactly {n} objects. No prose, no code fences. "
         "Fix only selectors/actions so elements are found; keep assert value strings exactly as required by the BDD lines (do not change quoted expected text to match the HTML). "
-        "Prefer stable text=, [name=], [data-testid=], [aria-label=], role-like text, or short CSS selectors."
+        "When an Interactive elements inventory is present, use it as the primary source for replacement selectors — "
+        "scan it for the BDD's quoted control name and pick the matching entry. "
+        "Preference order: [data-testid=\"...\"], role=tag[name=\"...\"], [name=\"...\"], [aria-label=\"...\"], text=ExactText, then short CSS. "
+        "Do not fabricate test_id/name/aria-label/class values that are not in the inventory or HTML."
     )
