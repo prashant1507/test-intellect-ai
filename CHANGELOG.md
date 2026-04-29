@@ -173,8 +173,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.4.0]
 
 ### Added
-- Added delete all button for Saved Suite and Saved selectors
-- Delete all actions for Saved Suite and Selector is now Audited
+- Added a delete all button for Saved Suite and Saved selectors
+- Delete all actions for the Saved Suite and Selector is now Audited
 
 ### Changed
 - The expand box will reset on refresh 
