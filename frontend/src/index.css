@@ -1315,33 +1315,55 @@ button.automation-spike-run-artifact-dl.req-attach-dl {
   overflow: visible;
 }
 
-.automation-spike-saved-suite-toolbar:has(.automation-saved-suite-run-filters[open]) {
-  flex-wrap: wrap;
+.automation-spike-saved-suite-filter-cluster {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.5rem;
+  align-items: center;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.automation-spike-saved-suite-filter-cluster:has(.automation-saved-suite-run-filters[open]) {
   align-items: flex-start;
 }
 
-.automation-spike-saved-suite-toolbar .automation-saved-suite-run-filters {
+.automation-spike-saved-suite-toolbar .automation-spike-saved-suite-filter-cluster .automation-saved-suite-run-filters {
   flex: 0 0 auto;
   width: max-content;
-  max-width: min(100%, calc(100% - 11rem));
   min-width: 0;
+  max-width: 100%;
   margin: 0;
 }
 
-.automation-spike-saved-suite-toolbar .automation-saved-suite-run-filters[open] {
-  flex: 1 1 100%;
-  width: 100%;
-  max-width: 100%;
+.automation-spike-saved-suite-toolbar .automation-spike-saved-suite-filter-cluster .automation-saved-suite-run-filters[open] {
+  flex: 1 1 0;
+  min-width: 0;
+  width: auto;
+  max-width: none;
 }
 
-.automation-spike-saved-suite-toolbar .automation-saved-suite-run-filters-summary {
+.automation-spike-saved-suite-toolbar .automation-spike-saved-suite-filter-cluster .automation-saved-suite-run-filters-summary {
   min-height: 2.4rem;
   padding: 0 0.65rem;
   box-sizing: border-box;
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
+.automation-spike-saved-suite-toolbar .automation-spike-saved-suite-filter-cluster .automation-saved-suite-run-filters-title {
+  letter-spacing: normal;
+}
+
+.automation-spike-saved-suite-toolbar .automation-spike-saved-suite-filter-cluster .automation-saved-suite-run-filters-hint {
+  font-weight: 400;
+  font-size: 0.72rem;
 }
 
 .automation-spike-saved-suite-toolbar .automation-spike-suite-actions {
   flex: 0 0 auto;
+  flex-shrink: 0;
   min-width: 0;
   margin: 0;
   margin-left: auto;
@@ -1353,14 +1375,107 @@ button.automation-spike-run-artifact-dl.req-attach-dl {
 }
 
 .automation-spike-saved-suite-toolbar:has(.automation-saved-suite-run-filters[open]) .automation-spike-suite-actions {
-  flex: 1 1 100%;
-  justify-content: flex-end;
-  align-self: stretch;
-  padding-top: 0;
+  align-self: flex-start;
 }
 
 .automation-spike-saved-suite-toolbar .automation-spike-suite-actions-lead {
   margin-left: 0;
+}
+
+.automation-spike-saved-suite-toolbar .automation-saved-suite-run-filters-body .automation-saved-suite-run-filters-k {
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
+.automation-spike-saved-suite-toolbar .automation-saved-suite-run-filters-body .automation-saved-suite-run-filters-pill {
+  font-weight: 400;
+  letter-spacing: 0.04em;
+}
+
+.automation-spike-saved-suite-toolbar .automation-saved-suite-run-filters-body .automation-saved-suite-run-filters-tag-chip {
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.45;
+}
+
+.automation-spike-saved-suite-toolbar .automation-saved-suite-run-filters-body .automation-saved-suite-run-filters-tag-typeahead {
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.45;
+}
+
+.automation-spike-saved-suite-toolbar .automation-saved-suite-run-filters-body .automation-saved-suite-run-filters-tag-typeahead::placeholder,
+.automation-spike-saved-suite-toolbar .automation-saved-suite-run-filters-body .automation-saved-suite-run-filters-tag-typeahead::-webkit-input-placeholder,
+.automation-spike-saved-suite-toolbar .automation-saved-suite-run-filters-body .automation-saved-suite-run-filters-tag-typeahead::-moz-placeholder {
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
+.automation-spike-saved-suite-toolbar .automation-saved-suite-run-filters-body .automation-saved-suite-run-filters-tag-suggest-item {
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.45;
+}
+
+.automation-spike-saved-suite-toolbar .automation-saved-suite-run-filters-body .automation-saved-suite-run-filters-tag-suggest-empty {
+  font-size: 0.78rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  line-height: 1.45;
+}
+
+.automation-spike-saved-suite-toolbar .automation-saved-suite-run-filters-body .automation-saved-suite-run-filters-empty {
+  font-size: 0.78rem;
+  font-weight: 400;
+}
+
+.automation-saved-suite-list-filters-inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  align-items: stretch;
+  width: 100%;
+}
+
+.automation-saved-suite-list-filters-inner > .automation-saved-suite-run-filters-field {
+  margin-bottom: 0;
+}
+
+.automation-saved-suite-list-filters-inner > .automation-saved-suite-list-filters-field--scenario {
+  flex: 1 1 12rem;
+}
+
+.automation-saved-suite-list-filters-inner > .automation-saved-suite-list-filters-field--tags {
+  flex: 2 1 16rem;
+}
+
+.automation-saved-suite-list-filters-inner input.automation-saved-suite-list-filters-title-input {
+  max-width: none;
+}
+
+input.automation-saved-suite-list-filters-title-input {
+  width: 100%;
+  max-width: 22rem;
+  min-width: 8rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: normal;
+  border-radius: 6px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  color: var(--text);
+  box-sizing: border-box;
+}
+
+input.automation-saved-suite-list-filters-title-input:focus {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 1px;
 }
 
 .automation-saved-suite-run-filters {

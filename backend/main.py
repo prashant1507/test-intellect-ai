@@ -35,6 +35,7 @@ from jira_client import (
 )
 from agentic import run_agentic_pipeline_async
 from ai_client import (
+    disambiguate_duplicate_test_case_descriptions,
     generate_automation_skeleton,
     generate_test_cases,
     merge_ai_cases_with_jira_existing,
@@ -547,6 +548,7 @@ async def _finalize_cases_after_llm(
             allowed_priorities=allowed_priorities,
             allowed_severities=allowed_severities,
         )
+    disambiguate_duplicate_test_case_descriptions(cases)
     await asyncio.to_thread(score_merged_test_cases, req, cases)
     if not settings.mock:
         if save_memory:

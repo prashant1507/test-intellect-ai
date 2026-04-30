@@ -178,3 +178,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - The expand box will reset on refresh 
+
+---
+## [2.4.1]
+
+### Added
+- Added filters in Auto Test Saved Suite
+
+### Changed
+- Fixed issue with duplicate scenario title
+- Improved HTML report
+- Date format will be 'DD MM YYYY'

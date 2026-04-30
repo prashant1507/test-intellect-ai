@@ -16,6 +16,7 @@ from ai_client import (
     _norm,
     build_generation_user_prompt,
     build_multimodal_user_content,
+    disambiguate_duplicate_test_case_descriptions,
     resolve_severity_allowed_for_generation,
     score_test_cases_0_10,
 )
@@ -454,6 +455,7 @@ def _final_cases_from_env(
     ]
     if max_hi:
         out = out[:max_hi]
+    disambiguate_duplicate_test_case_descriptions(out)
     return out
 
 

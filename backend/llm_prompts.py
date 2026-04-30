@@ -29,7 +29,7 @@ Output contract:
 - Order test_cases from most important to least important: happy path first, then validation/negative, then boundary/permissions/state.
 - All strings must be valid JSON: every double quote inside a step or description must be escaped as \\". Never use smart quotes ("" '').
 - Each item must include only these required fields unless prior/JIRA metadata is already present in input:
-  - "description": short scenario title, not a Gherkin line.
+  - "description": short scenario title, not a Gherkin line. Must be unique across all returned test_cases; when scenarios share the same flow but differ in Then/And assertions, encode the distinguishing outcome in the title (e.g. visible title vs URL) so titles never repeat for different assertions.
   - "preconditions": always "".
   - "steps": array of Gherkin step strings.
   - "expected_result": always "".

@@ -387,6 +387,56 @@ def _tc_signature_norm(tc: dict) -> str:
     return _desc_fold(tc) + "\n" + "\n".join(lines)
 
 
+_DESC_DISAMBIG_SEP = " — "
+
+
+def _gherkin_step_body(step: str) -> str:
+    s = str(step or "").strip()
+    for p in _GH_ALLOWED_PREFIXES:
+        if s.startswith(p):
+            return s[len(p) :].strip()
+    return s
+
+
+def _trunc_description_piece(s: str, max_len: int = 72) -> str:
+    t = _WS_NORM.sub(" ", str(s or "").strip())
+    if len(t) <= max_len:
+        return t
+    return t[: max_len - 1].rstrip() + "…"
+
+
+def disambiguate_duplicate_test_case_descriptions(cases: list) -> None:
+    if not isinstance(cases, list) or len(cases) < 2:
+        return
+    groups: dict[str, list[int]] = {}
+    for i, tc in enumerate(cases):
+        if not isinstance(tc, dict):
+            continue
+        k = _desc_fold(tc)
+        if not k:
+            continue
+        groups.setdefault(k, []).append(i)
+    for indices in groups.values():
+        if len(indices) < 2:
+            continue
+        tuples = {_steps_norm_tuple(cases[i].get("steps")) for i in indices}
+        if len(tuples) <= 1:
+            continue
+        for j, i in enumerate(indices):
+            tc = cases[i]
+            steps = tc.get("steps") if isinstance(tc.get("steps"), list) else []
+            steps = [str(x).strip() for x in steps if str(x).strip()]
+            last = steps[-1] if steps else ""
+            piece = _trunc_description_piece(_gherkin_step_body(last))
+            if not piece:
+                piece = f"variant {j + 1}"
+            base = str(tc.get("description") or "").strip()
+            full = base + _DESC_DISAMBIG_SEP + piece
+            if len(full) > 254:
+                full = full[:251].rstrip() + "…"
+            tc["description"] = full
+
+
 _SIMILAR_THRESHOLD = 0.92
 _JIRA_EXISTING_MATCH_THRESHOLD = 0.88
 
@@ -866,7 +916,9 @@ def _normalize_generated_case_list(
         for c in cases
         if isinstance(c, dict)
     ]
-    return _dedupe_similar_test_cases(out)
+    out = _dedupe_similar_test_cases(out)
+    disambiguate_duplicate_test_case_descriptions(out)
+    return out
 
 
 def _step_keyword(step: str) -> str:

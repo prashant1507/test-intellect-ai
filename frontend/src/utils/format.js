@@ -137,42 +137,63 @@ export function formatSizeMb(n) {
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 }
 
-export function formatTime(iso) {
-  try {
-    return new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
-  } catch {
-    return "";
-  }
-}
-
 function _parseIso(iso) {
   if (iso == null || !String(iso).trim()) return null;
   const d = new Date(String(iso));
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+const DISPLAY_LOCALE = "en-GB";
+
+function _fmtDayMonthYear(d) {
+  return d.toLocaleDateString(DISPLAY_LOCALE, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function _fmtTimeHm(d) {
+  return d.toLocaleTimeString(DISPLAY_LOCALE, {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function _fmtTimeHms(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+export function formatTime(iso) {
+  const d = _parseIso(iso);
+  if (!d) return "";
+  return `${_fmtDayMonthYear(d)} ${_fmtTimeHms(d)}`;
+}
+
 export function formatSuiteAnalysisAt(iso) {
   const d = _parseIso(iso);
   if (!d) return "";
-  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return `${_fmtDayMonthYear(d)} ${_fmtTimeHms(d)}`;
 }
 
 export function formatHistoryDate(iso) {
   const d = _parseIso(iso);
   if (!d) return "—";
-  return d.toLocaleDateString(undefined, { dateStyle: "medium" });
+  return _fmtDayMonthYear(d);
 }
 
 export function formatHistoryTime(iso) {
   const d = _parseIso(iso);
   if (!d) return "—";
-  return d.toLocaleTimeString(undefined, { timeStyle: "short" });
+  return _fmtTimeHm(d);
 }
 
 export function formatReportListAt(iso) {
   const d = _parseIso(iso);
   if (!d) return "—";
-  return d.toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" });
+  return `${_fmtDayMonthYear(d)} ${_fmtTimeHms(d)}`;
 }
 
 export function readTheme() {

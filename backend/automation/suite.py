@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -9,6 +10,7 @@ from settings import settings
 
 from . import cancel
 from . import suite_state
+from .date_display import format_dt_display
 from .errors import SpikeUserError
 from .prefs import (
     get_effective_automation_parallel_execution,
@@ -224,6 +226,7 @@ def run_suite_sequential(
     filter_tags: str = "",
     use_jira_filter: bool = False,
     filter_jira_ids: str = "",
+    report_author: str | None = None,
 ) -> dict[str, Any]:
     if clear_cancel:
         cancel.clear_for_new_suite()
@@ -243,6 +246,7 @@ def run_suite_sequential(
         filter_jira_keys=f_jira,
     )
     report_id = str(uuid.uuid4())
+    suite_started_at = format_dt_display(datetime.now().astimezone())
     p = Path(settings.automation_reports_dir) / f"{report_id}.html"
     p.parent.mkdir(parents=True, exist_ok=True)
     results: list[dict] = []
@@ -330,7 +334,12 @@ def run_suite_sequential(
                 results.append(ri)
                 batch_cases.append(bi)
     if batch_cases:
-        body = render_batch_report_html(report_id, batch_cases)
+        body = render_batch_report_html(
+            report_id,
+            batch_cases,
+            suite_started_at=suite_started_at,
+            report_author=report_author,
+        )
     else:
         body = (
             "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"/>"

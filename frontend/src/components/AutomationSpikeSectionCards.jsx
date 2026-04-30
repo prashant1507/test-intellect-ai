@@ -662,6 +662,11 @@ export function AutomationSpikeSectionCards({
   const [suiteRunFilterSelectedJiras, setSuiteRunFilterSelectedJiras] = useState([]);
   const [suiteRunFilterJiraInput, setSuiteRunFilterJiraInput] = useState("");
   const [suiteRunFilterJiraSuggestOpen, setSuiteRunFilterJiraSuggestOpen] = useState(false);
+  const [suiteListFilterSelectedTags, setSuiteListFilterSelectedTags] = useState([]);
+  const [suiteListFilterTagInput, setSuiteListFilterTagInput] = useState("");
+  const [suiteListFilterTagSuggestOpen, setSuiteListFilterTagSuggestOpen] = useState(false);
+  const [suiteListTitleFilter, setSuiteListTitleFilter] = useState("");
+  const [suiteToolbarFilterAccordion, setSuiteToolbarFilterAccordion] = useState(null);
   const [suiteBddViewCase, setSuiteBddViewCase] = useState(null);
   const [suiteAnalysisViewCase, setSuiteAnalysisViewCase] = useState(null);
   const [suiteAnalysisRunDetail, setSuiteAnalysisRunDetail] = useState(null);
@@ -701,6 +706,18 @@ export function AutomationSpikeSectionCards({
     return Array.from(s).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
   }, [suiteCases]);
 
+  const suiteListFilterChipOptions = useMemo(() => {
+    const s = new Set();
+    for (const c of suiteCases) {
+      parseTagCsv(c?.tag).forEach((t) => s.add(t));
+      const req = String(c?.requirement_ticket_id || "").trim();
+      if (req) s.add(req);
+      const jid = String(c?.jira_id || "").trim();
+      if (jid) s.add(jid);
+    }
+    return Array.from(s).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }, [suiteCases]);
+
   const suiteJiraFilterOptions = useMemo(() => {
     const s = new Set();
     for (const c of suiteCases) {
@@ -730,10 +747,45 @@ export function AutomationSpikeSectionCards({
     [suiteJiraFilterOptions, suiteRunFilterSelectedJiras, suiteRunFilterJiraInput],
   );
 
+  const suiteListFilterTagSuggestions = useMemo(
+    () =>
+      filterSuggestionsExcludingPicked(
+        suiteListFilterChipOptions,
+        new Set(suiteListFilterSelectedTags),
+        suiteListFilterTagInput,
+      ),
+    [suiteListFilterChipOptions, suiteListFilterSelectedTags, suiteListFilterTagInput],
+  );
+
+  const suiteCasesFiltered = useMemo(() => {
+    const q = suiteListTitleFilter.trim().toLowerCase();
+    const chipsPick = suiteListFilterSelectedTags;
+    return suiteCases.filter((c) => {
+      if (q && !String(c?.title || "").toLowerCase().includes(q)) return false;
+      if (chipsPick.length > 0) {
+        const tags = new Set(parseTagCsv(c?.tag));
+        const req = String(c?.requirement_ticket_id || "").trim();
+        const jid = String(c?.jira_id || "").trim();
+        const matches = (chip) =>
+          tags.has(chip) || (req !== "" && req === chip) || (jid !== "" && jid === chip);
+        if (!chipsPick.some(matches)) return false;
+      }
+      return true;
+    });
+  }, [suiteCases, suiteListTitleFilter, suiteListFilterSelectedTags]);
+
+  const suiteListFiltersActive =
+    suiteListTitleFilter.trim() !== "" || suiteListFilterSelectedTags.length > 0;
+
   useEffect(() => {
     const ts = new Set(suiteTagFilterOptions);
     setSuiteRunFilterSelectedTags((p) => p.filter((x) => ts.has(x)));
   }, [suiteTagFilterOptions]);
+
+  useEffect(() => {
+    const chips = new Set(suiteListFilterChipOptions);
+    setSuiteListFilterSelectedTags((p) => p.filter((x) => chips.has(x)));
+  }, [suiteListFilterChipOptions]);
 
   useEffect(() => {
     const js = new Set(suiteJiraFilterOptions);
@@ -766,6 +818,19 @@ export function AutomationSpikeSectionCards({
     setSuiteRunFilterSelectedJiras((prev) => prev.filter((x) => x !== k));
   }, []);
 
+  const addSuiteListFilterTag = useCallback(
+    (t) => {
+      if (!t) return;
+      setSuiteListFilterSelectedTags((prev) => mergePickIntoSorted(suiteListFilterChipOptions, prev, t));
+      setSuiteListFilterTagInput("");
+    },
+    [suiteListFilterChipOptions],
+  );
+
+  const removeSuiteListFilterTag = useCallback((t) => {
+    setSuiteListFilterSelectedTags((prev) => prev.filter((x) => x !== t));
+  }, []);
+
   useEffect(() => {
     try {
       if (suiteReportsRecentOpen) localStorage.setItem(SUITE_REPORTS_RECENT_LS_KEY, "1");
@@ -775,6 +840,7 @@ export function AutomationSpikeSectionCards({
   const suiteRunUrlInputRef = useRef(null);
   const suiteRunFilterTagComboRef = useRef(null);
   const suiteRunFilterJiraComboRef = useRef(null);
+  const suiteListFilterTagComboRef = useRef(null);
   const suiteRunOneUrlInputRef = useRef(null);
   const suiteReportsRecentDialogRef = useRef(null);
   const suiteDeleteCaseDialogRef = useRef(null);
@@ -789,6 +855,9 @@ export function AutomationSpikeSectionCards({
       if (!suiteRunFilterJiraComboRef.current || !suiteRunFilterJiraComboRef.current.contains(e.target)) {
         setSuiteRunFilterJiraSuggestOpen(false);
       }
+      if (!suiteListFilterTagComboRef.current || !suiteListFilterTagComboRef.current.contains(e.target)) {
+        setSuiteListFilterTagSuggestOpen(false);
+      }
     };
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
@@ -796,10 +865,10 @@ export function AutomationSpikeSectionCards({
 
   const suiteListRef = useRef(null);
   const suiteKeyForClip = useMemo(
-    () => suiteCases.map((c) => String(c.id ?? "")).join("\0"),
-    [suiteCases],
+    () => suiteCasesFiltered.map((c) => String(c.id ?? "")).join("\0"),
+    [suiteCasesFiltered],
   );
-  const suiteScrollEnabled = suiteCases.length > SAVED_LINKED_LIST_VISIBLE_ROWS;
+  const suiteScrollEnabled = suiteCasesFiltered.length > SAVED_LINKED_LIST_VISIBLE_ROWS;
   const suiteClipPx = useScrollClipHeightPx(
     suiteScrollEnabled,
     suiteListRef,
@@ -1659,7 +1728,11 @@ export function AutomationSpikeSectionCards({
               <FieldInfo text="Saves test scenarios. 'Run All' runs every case in order." />
             </span>
           </h2>
-          <span className="linked-jira-tests-count">Count: {suiteCases.length}</span>
+          <span className="linked-jira-tests-count">
+            {suiteListFiltersActive
+              ? `Showing ${suiteCasesFiltered.length} of ${suiteCases.length}`
+              : `Count: ${suiteCases.length}`}
+          </span>
         </div>
         {typeof automationRetentionDays === "number" ? (
           <p className="automation-spike-saved-suite-retention" role="status">
@@ -1676,7 +1749,18 @@ export function AutomationSpikeSectionCards({
         ) : null}
         <div className="automation-spike-saved-suite-toolbar">
           {suiteCases.length > 0 ? (
-          <details className="automation-saved-suite-run-filters">
+          <div className="automation-spike-saved-suite-filter-cluster">
+          <details
+            className="automation-saved-suite-run-filters"
+            open={suiteToolbarFilterAccordion === "run"}
+            onToggle={(e) => {
+              const el = e.currentTarget;
+              setSuiteToolbarFilterAccordion((prev) => {
+                if (el.open) return "run";
+                return prev === "run" ? null : prev;
+              });
+            }}
+          >
             <summary className="automation-saved-suite-run-filters-summary">
               <span className="automation-saved-suite-run-filters-chevron" aria-hidden>
                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -1909,6 +1993,161 @@ export function AutomationSpikeSectionCards({
             </div>
             </div>
           </details>
+          <details
+            className="automation-saved-suite-run-filters"
+            open={suiteToolbarFilterAccordion === "list"}
+            onToggle={(e) => {
+              const el = e.currentTarget;
+              setSuiteToolbarFilterAccordion((prev) => {
+                if (el.open) return "list";
+                return prev === "list" ? null : prev;
+              });
+            }}
+          >
+            <summary className="automation-saved-suite-run-filters-summary">
+              <span className="automation-saved-suite-run-filters-chevron" aria-hidden>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              </span>
+              <span className="automation-saved-suite-run-filters-title">
+                List Filter
+                <span className="automation-saved-suite-run-filters-hint">(Optional)</span>
+              </span>
+            </summary>
+            <div className="automation-saved-suite-run-filters-body">
+              <div className="automation-saved-suite-list-filters-inner">
+                <div className="automation-saved-suite-run-filters-field automation-saved-suite-list-filters-field--scenario">
+                  <div className="automation-saved-suite-run-filters-field-head">
+                    <span className="automation-saved-suite-run-filters-k">Scenario</span>
+                  </div>
+                  <input
+                    type="search"
+                    className="automation-saved-suite-list-filters-title-input"
+                    value={suiteListTitleFilter}
+                    onChange={(e) => setSuiteListTitleFilter(e.target.value)}
+                    placeholder="Contains…"
+                    autoComplete="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    aria-label="Filter saved cases by scenario"
+                  />
+                </div>
+                <div className="automation-saved-suite-run-filters-field automation-saved-suite-list-filters-field--tags">
+                  <div className="automation-saved-suite-run-filters-field-head">
+                    <span className="automation-saved-suite-run-filters-k">Tags</span>
+                  </div>
+                  {suiteListFilterChipOptions.length === 0 ? (
+                    <p className="automation-saved-suite-run-filters-empty automation-spike-muted">
+                      No tags, requirement IDs, or test IDs on saved cases yet.
+                    </p>
+                  ) : (
+                    <div className="automation-saved-suite-run-filters-tag-combo" ref={suiteListFilterTagComboRef}>
+                      <div
+                        className="automation-saved-suite-run-filters-tag-box"
+                        role="group"
+                        aria-label="Filter list by tag, requirement ID, or test ID"
+                      >
+                        {suiteListFilterSelectedTags.map((t) => (
+                          <span key={t} className="automation-saved-suite-run-filters-tag-chip" title={t}>
+                            <span className="automation-saved-suite-run-filters-tag-chip-text">{t}</span>
+                            <button
+                              type="button"
+                              className="automation-saved-suite-run-filters-tag-chip-x"
+                              aria-label={`Remove filter ${t}`}
+                              onClick={() => removeSuiteListFilterTag(t)}
+                            >
+                              <svg
+                                width="10"
+                                height="10"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden
+                              >
+                                <path d="M18 6L6 18M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </span>
+                        ))}
+                        <input
+                          id="automation-suite-list-filter-tag-input"
+                          type="text"
+                          className="automation-saved-suite-run-filters-tag-typeahead"
+                          value={suiteListFilterTagInput}
+                          onChange={(e) => {
+                            setSuiteListFilterTagInput(e.target.value);
+                            setSuiteListFilterTagSuggestOpen(true);
+                          }}
+                          onFocus={() => setSuiteListFilterTagSuggestOpen(true)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Escape") {
+                              setSuiteListFilterTagSuggestOpen(false);
+                              e.stopPropagation();
+                            } else if (e.key === "Enter" && suiteListFilterTagSuggestions.length > 0) {
+                              e.preventDefault();
+                              addSuiteListFilterTag(suiteListFilterTagSuggestions[0]);
+                            } else if (
+                              e.key === "Backspace" &&
+                              !suiteListFilterTagInput &&
+                              suiteListFilterSelectedTags.length > 0
+                            ) {
+                              removeSuiteListFilterTag(
+                                suiteListFilterSelectedTags[suiteListFilterSelectedTags.length - 1],
+                              );
+                            }
+                          }}
+                          placeholder="Tags, requirement ID, test ID…"
+                          autoComplete="off"
+                          autoCorrect="off"
+                          spellCheck={false}
+                          aria-label="Search tags, requirement IDs, or test IDs to filter the list"
+                          aria-expanded={
+                            suiteListFilterTagSuggestOpen && suiteListFilterTagInput.trim() !== ""
+                          }
+                          aria-controls="automation-suite-list-tag-suggest"
+                          aria-autocomplete="list"
+                        />
+                      </div>
+                      {suiteListFilterTagSuggestOpen && suiteListFilterTagInput.trim() !== "" ? (
+                        <div
+                          id="automation-suite-list-tag-suggest"
+                          className="automation-saved-suite-run-filters-tag-suggest"
+                          role="listbox"
+                          aria-label="Suggestions for list filter"
+                        >
+                          {suiteListFilterTagSuggestions.length > 0 ? (
+                            suiteListFilterTagSuggestions.map((t) => (
+                              <button
+                                key={t}
+                                type="button"
+                                role="option"
+                                className="automation-saved-suite-run-filters-tag-suggest-item"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  addSuiteListFilterTag(t);
+                                }}
+                              >
+                                {t}
+                              </button>
+                            ))
+                          ) : (
+                            <div className="automation-saved-suite-run-filters-tag-suggest-empty" role="status">
+                              No matching values.
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </details>
+          </div>
           ) : null}
           <div className="automation-spike-suite-actions">
             <div className="automation-spike-suite-actions-lead">
@@ -2118,11 +2357,13 @@ export function AutomationSpikeSectionCards({
         {suiteErr ? <p className="automation-spike-err">{suiteErr}</p> : null}
         {suiteCases.length === 0 ? (
           <p className="automation-spike-muted">No saved cases yet. Use &quot;Save to Suite&quot; in the form above to add a new test.</p>
+        ) : suiteCasesFiltered.length === 0 ? (
+          <p className="automation-spike-muted">No saved cases match these filters.</p>
         ) : (
           <div
             className="automation-spike-suite-linked-wrap"
             role="region"
-            aria-label={`Saved suite, ${suiteCases.length} test cases. Scroll when more than ${SAVED_LINKED_LIST_VISIBLE_ROWS}.`}
+            aria-label={`Saved suite, ${suiteCasesFiltered.length} test cases shown${suiteListFiltersActive ? ` (${suiteCases.length} total)` : ""}. Scroll when more than ${SAVED_LINKED_LIST_VISIBLE_ROWS}.`}
           >
             <ResizableScrollClip
               scroll={suiteScrollEnabled}
@@ -2130,7 +2371,7 @@ export function AutomationSpikeSectionCards({
               className="linked-jira-tests-scroll"
             >
               <ul ref={suiteListRef} className="automation-spike-suite-list">
-                {suiteCases.map((c, i) => (
+                {suiteCasesFiltered.map((c, i) => (
                   <SuiteCaseRow
                     key={`suite-${i}-${String(c.id)}`}
                     c={c}

@@ -534,10 +534,11 @@ def automation_suite_run_status() -> dict[str, Any]:
 
 
 @router.post("/suite-run")
-async def automation_suite_run(body: SuiteRunInF) -> dict[str, Any]:
+async def automation_suite_run(body: SuiteRunInF, kc: Kc) -> dict[str, Any]:
     du = (body.default_url or "").strip()[:4000]
     ft = (body.filter_tags or "").strip()[:200]
     fj = (body.filter_jira_ids or "").strip()[:800]
+    ra = claims_username(kc) if settings.use_keycloak and kc else None
     return await asyncio.to_thread(
         lambda: run_suite_sequential(
             body.case_ids,
@@ -547,6 +548,7 @@ async def automation_suite_run(body: SuiteRunInF) -> dict[str, Any]:
             filter_tags=ft,
             use_jira_filter=body.use_jira_filter,
             filter_jira_ids=fj,
+            report_author=ra,
         )
     )
 

@@ -134,7 +134,7 @@ export async function downloadAuditPdf(entries) {
   doc.text("Audit Records", 14, 16);
   doc.setFontSize(9);
   doc.setTextColor(80, 80, 80);
-  doc.text(`Generated ${new Date().toLocaleString()}`, 14, 22);
+  doc.text(`Generated ${formatTime(new Date().toISOString())}`, 14, 22);
   doc.setTextColor(0, 0, 0);
   autoTable(doc, {
     startY: 26,
