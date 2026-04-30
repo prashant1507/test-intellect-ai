@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import base64
+import logging
 from pathlib import Path
 
 from fastapi import HTTPException
 
+_LOG = logging.getLogger(__name__)
 _ALLOWED = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"})
 _ARCHIVE_SUFFIXES = frozenset({".zip", ".rar", ".7z", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".jar", ".war"})
 
@@ -146,6 +148,7 @@ def state_payload_to_images(rows: list[dict] | None) -> list[tuple[str, str, byt
         try:
             raw = base64.b64decode(b64)
         except Exception:
+            _LOG.debug("Skipping invalid image b64 in state payload", exc_info=True)
             continue
         fn = str(x.get("filename") or "image").strip() or "image"
         mt = str(x.get("mime_type") or "image/png").strip() or "image/png"

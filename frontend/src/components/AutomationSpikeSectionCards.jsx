@@ -835,7 +835,9 @@ export function AutomationSpikeSectionCards({
     try {
       if (suiteReportsRecentOpen) localStorage.setItem(SUITE_REPORTS_RECENT_LS_KEY, "1");
       else localStorage.removeItem(SUITE_REPORTS_RECENT_LS_KEY);
-    } catch {}
+    } catch (e) {
+      if (import.meta.env.DEV) console.warn("suiteReportsRecentOpen persist", e);
+    }
   }, [suiteReportsRecentOpen]);
   const suiteRunUrlInputRef = useRef(null);
   const suiteRunFilterTagComboRef = useRef(null);

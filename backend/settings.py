@@ -98,6 +98,7 @@ class Settings(BaseSettings):
     automation_reports_dir: str = "data/automation/reports"
     automation_retention_days: int = 20
     automation_headless: bool | None = None
+
     @field_validator("automation_headless", mode="before")
     @classmethod
     def _automation_headless_opt(cls, v: object) -> object:
@@ -106,6 +107,7 @@ class Settings(BaseSettings):
         if isinstance(v, str) and not (v or "").strip():
             return None
         return _env_bool(v)
+
     @field_validator("automation_db_path", mode="before")
     @classmethod
     def _automation_db_path(cls, v: object) -> str:
@@ -114,6 +116,7 @@ class Settings(BaseSettings):
         if p.is_absolute():
             return s
         return str((Path(__file__).resolve().parent.parent / s).resolve())
+
     @field_validator("automation_artifacts_dir", mode="before")
     @classmethod
     def _automation_artifacts_dir(cls, v: object) -> str:
@@ -122,6 +125,7 @@ class Settings(BaseSettings):
         if p.is_absolute():
             return s
         return str((Path(__file__).resolve().parent.parent / s).resolve())
+
     @field_validator("automation_reports_dir", mode="before")
     @classmethod
     def _automation_reports_dir(cls, v: object) -> str:
@@ -130,16 +134,19 @@ class Settings(BaseSettings):
         if p.is_absolute():
             return s
         return str((Path(__file__).resolve().parent.parent / s).resolve())
+
     @field_validator("automation_default_timeout_ms", mode="before")
     @classmethod
     def _automation_timeout(cls, v: object) -> int:
         n = int(v or 30_000)
         return min(max(n, 1000), 600_000)
+
     @field_validator("automation_parallel_execution", mode="before")
     @classmethod
     def _automation_parallel(cls, v: object) -> int:
         n = int(v or 1)
         return min(max(n, 1), 4)
+
     @field_validator("automation_retention_days", mode="before")
     @classmethod
     def _automation_retention_days(cls, v: object) -> int:

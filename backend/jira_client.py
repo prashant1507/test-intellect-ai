@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html as html_module
 import json
+import logging
 import re
 import threading
 import time
@@ -15,6 +16,7 @@ import urllib3
 from key_norm import norm_issue_key
 from settings import settings
 
+_LOG = logging.getLogger(__name__)
 _createmeta_cache_lock = threading.Lock()
 _CREATEMETA_CACHE_PATH = Path(__file__).resolve().parent.parent / "data" / "jira_createmeta_cache.json"
 
@@ -741,7 +743,7 @@ def _issue_fields_summary_desc_priority(
         if pick:
             fields["priority"] = _priority_payload_for_issue(pick)
     except Exception:
-        pass
+        _LOG.debug("Could not map test case priority to JIRA", exc_info=True)
     return fields
 
 
@@ -810,7 +812,7 @@ def _load_createmeta_cache_blob() -> dict:
         if isinstance(blob, dict) and isinstance(blob.get("entries"), dict):
             return blob
     except Exception:
-        pass
+        _LOG.warning("Ignoring invalid JIRA createmeta cache file at %s", path, exc_info=True)
     return {"v": 1, "entries": {}}
 
 

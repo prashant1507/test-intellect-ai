@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 
 import jwt
@@ -7,6 +8,8 @@ from fastapi import Header, HTTPException
 from jwt import PyJWKClient
 
 from settings import settings
+
+_LOG = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=8)
@@ -48,5 +51,6 @@ def get_keycloak_claims(authorization: str | None = Header(None)) -> dict | None
     token = authorization[7:].strip()
     try:
         return verify_keycloak_token(token)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid or expired token") from None
+    except Exception as e:
+        _LOG.debug("Keycloak token verification failed", exc_info=True)
+        raise HTTPException(status_code=401, detail="Invalid or expired token") from e

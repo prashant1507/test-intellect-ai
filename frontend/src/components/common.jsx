@@ -60,7 +60,9 @@ export function suggestedFilenameFromUrl(url, fallback = "download") {
       : new URL(u, typeof window !== "undefined" ? window.location.origin : "http://localhost");
     const seg = parsed.pathname.split("/").filter(Boolean).pop();
     if (seg) return decodeURIComponent(seg);
-  } catch {}
+  } catch (e) {
+    if (import.meta.env.DEV) console.warn("suggestedFilenameFromUrl", e);
+  }
   return fallback;
 }
 
@@ -299,7 +301,9 @@ export function FloatingTooltip({ text, children, wrapClassName = "" }) {
     if (rel instanceof Node) {
       try {
         if (w === rel || w.contains(rel)) return;
-      } catch {}
+      } catch (e) {
+        if (import.meta.env.DEV) console.warn("FloatingTooltip relatedTarget contains check", e);
+      }
     }
     close();
   };

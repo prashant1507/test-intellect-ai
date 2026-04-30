@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 import os
 import re
 from difflib import SequenceMatcher
@@ -19,6 +20,8 @@ from prompts import (
     UI_SPIKE_TEST_RUN_SUMMARY_SYSTEM_PROMPT,
 )
 from settings import settings
+
+_LOG = logging.getLogger(__name__)
 
 
 def _paste_priority_list() -> list[str]:
@@ -896,6 +899,7 @@ def score_test_cases_0_10(req: dict, cases: list[dict]) -> None:
         for i, c in enumerate(cases):
             c["score"] = round(fitted[i], 1)
     except Exception:
+        _LOG.debug("score_test_cases_0_10 LLM call failed", exc_info=True)
         return
 
 
@@ -1250,7 +1254,7 @@ async def generate_test_cases(
             if retry_out and len(retry_issues) < len(issues):
                 out = retry_out
         except Exception:
-            pass
+            _LOG.debug("LLM case-list retry after quality check failed", exc_info=True)
     return out[:max_test_cases] if max_test_cases else out
 
 

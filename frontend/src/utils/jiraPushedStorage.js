@@ -15,7 +15,8 @@ export function loadJiraPushedMap() {
       out[k] = v;
     }
     return out;
-  } catch {
+  } catch (e) {
+    if (import.meta.env.DEV) console.warn("loadJiraPushedMap: corrupt or unavailable storage", e);
     return {};
   }
 }
@@ -23,5 +24,7 @@ export function loadJiraPushedMap() {
 export function persistJiraPushedMap(map) {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
-  } catch {}
+  } catch (e) {
+    if (import.meta.env.DEV) console.warn("persistJiraPushedMap: storage write failed", e);
+  }
 }

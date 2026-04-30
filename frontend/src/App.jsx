@@ -718,7 +718,9 @@ export default function App() {
             test_cases: d.test_cases,
           };
         });
-      } catch {}
+      } catch (e) {
+        if (import.meta.env.DEV) console.warn("refreshMemoryPanelIfOpen", e);
+      }
     },
     [api],
   );
@@ -812,7 +814,9 @@ export default function App() {
               tcToSend = applyRemaps(tc);
             }
           }
-        } catch {}
+        } catch (e) {
+          if (import.meta.env.DEV) console.warn("JIRA priority/severity remap before push", e);
+        }
         const res = await api("/jira/push-test-case", "POST", {
           jira_url: jiraUrl,
           username,
@@ -887,7 +891,9 @@ export default function App() {
                 test_case: withKey[idx] ?? tcToSend,
               });
             }
-          } catch {}
+          } catch (e) {
+            if (import.meta.env.DEV) console.warn("memory sync after JIRA push", e);
+          }
         }
         await syncLists();
         await refreshMemoryPanelIfOpen(rk);
@@ -1213,7 +1219,9 @@ export default function App() {
     document.documentElement.dataset.theme = theme;
     try {
       localStorage.setItem("theme", theme);
-    } catch (_) {}
+    } catch (e) {
+      if (import.meta.env.DEV) console.warn("theme persist", e);
+    }
   }, [theme]);
 
   useEffect(() => {
@@ -1235,7 +1243,9 @@ export default function App() {
           ) {
             setJiraTestIssueType(c.default_jira_test_issue_type);
           }
-        } catch {}
+        } catch (e) {
+          if (import.meta.env.DEV) console.warn("default jira test issue type from config", e);
+        }
         try {
           if (
             typeof c.default_jira_link_type === "string" &&
@@ -1244,7 +1254,9 @@ export default function App() {
           ) {
             setJiraLinkType(c.default_jira_link_type);
           }
-        } catch {}
+        } catch (e) {
+          if (import.meta.env.DEV) console.warn("default jira link type from config", e);
+        }
         if (
           typeof c.llm_vision_configured === "boolean" ||
           typeof c.llm_requirement_images_max_count === "number" ||
@@ -1275,7 +1287,8 @@ export default function App() {
         try {
           const er = await fetch("/api/automation/env").then((r) => (r.ok ? r.json() : null));
           if (er && typeof er === "object") setAutomationEnv(er);
-        } catch {
+        } catch (e) {
+          if (import.meta.env.DEV) console.warn("fetch /api/automation/env", e);
           setAutomationEnv(null);
         }
         if (typeof c.keycloak_idle_timeout_minutes === "number") setIdleMinutes(c.keycloak_idle_timeout_minutes);
@@ -1359,19 +1372,25 @@ export default function App() {
   useEffect(() => {
     try {
       localStorage.setItem("jira-ai-jira-url", jiraUrl);
-    } catch {}
+    } catch (e) {
+      if (import.meta.env.DEV) console.warn("persist jira-ai-jira-url", e);
+    }
   }, [jiraUrl]);
 
   useEffect(() => {
     try {
       localStorage.setItem("jira-ai-jira-test-issue-type", jiraTestIssueType);
-    } catch {}
+    } catch (e) {
+      if (import.meta.env.DEV) console.warn("persist jira-ai-jira-test-issue-type", e);
+    }
   }, [jiraTestIssueType]);
 
   useEffect(() => {
     try {
       localStorage.setItem("jira-ai-jira-link-type", jiraLinkType);
-    } catch {}
+    } catch (e) {
+      if (import.meta.env.DEV) console.warn("persist jira-ai-jira-link-type", e);
+    }
   }, [jiraLinkType]);
 
   useEffect(() => {

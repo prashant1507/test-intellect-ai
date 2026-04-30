@@ -180,7 +180,7 @@ def _warm_jira_createmeta_cache(
             it,
         )
     except Exception:
-        pass
+        _LOG.debug("JIRA createmeta warm-up failed", exc_info=True)
 
 
 async def _load_ticket_linked_jira(body: TicketIn, key: str) -> tuple[list, list, str]:
@@ -202,6 +202,7 @@ async def _load_ticket_linked_jira(body: TicketIn, key: str) -> tuple[list, list
             tt,
         )
     except Exception:
+        _LOG.warning("fetch_linked_test_issues failed for %s", key, exc_info=True)
         linked = []
     linked_work: list = []
     work_labels = empty
@@ -217,6 +218,7 @@ async def _load_ticket_linked_jira(body: TicketIn, key: str) -> tuple[list, list
         )
         work_labels = _linked_work_type_labels_display(settings.jira_linked_work_issue_types, req_t)
     except Exception:
+        _LOG.warning("fetch_linked_work_issues failed for %s", key, exc_info=True)
         linked_work = []
         work_labels = empty
     return linked, linked_work, work_labels
@@ -239,6 +241,7 @@ async def _fetch_issue_attachments(body: TicketIn, key: str) -> list:
             key,
         )
     except Exception:
+        _LOG.warning("fetch_issue_attachment_meta failed for %s", key, exc_info=True)
         return []
 
 
@@ -437,6 +440,7 @@ async def _maybe_fetch_jira_severity_names_for_generate(body: GenerateIn) -> lis
         names = severity_allowed_display_names(fm if isinstance(fm, dict) else None)
         return names if names else None
     except Exception:
+        _LOG.debug("JIRA severity names for generate unavailable", exc_info=True)
         return None
 
 
@@ -471,6 +475,7 @@ async def _maybe_fetch_jira_priority_names_for_generate(body: GenerateIn) -> lis
         names = [str(p.get("name") or "").strip() for p in pri if str(p.get("name") or "").strip()]
         return names if names else None
     except Exception:
+        _LOG.debug("JIRA priority names for generate unavailable", exc_info=True)
         return None
 
 
@@ -705,11 +710,11 @@ async def _read_generate_body(request: Request, model_cls: type[BaseModel]) -> t
         return body, files
     try:
         data = await request.json()
-    except Exception:
+    except Exception as e:
         raise HTTPException(
             status_code=400,
             detail="Body must be JSON or multipart/form-data with form field 'payload'.",
-        ) from None
+        ) from e
     return model_cls.model_validate(data), []
 
 
@@ -984,7 +989,7 @@ async def jira_priorities(body: JiraPrioritiesIn, kc: Kc):
                     out["severities"] = [{"name": n} for n in snames]
                     out["ai_to_jira_severity_name"] = build_ai_to_jira_severity_name_map(snames)
         except Exception:
-            pass
+            _LOG.debug("JIRA severities meta for priorities endpoint failed", exc_info=True)
     return out
 
 
