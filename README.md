@@ -375,6 +375,9 @@ cd backend
 python3.12 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+playwright install chromium
+playwright install firefox
+playwright install msedge
 uvicorn main:app --reload --host 127.0.0.1 --port 8001
 ```
 

@@ -1171,7 +1171,6 @@ def _html_suite_tag_categorization(cases: list[dict[str, Any]]) -> str:
             trs.append(
                 "<tr>"
                 f'<td><span class="report-badge report-badge--{cls}">{_e(st_label)}</span></td>'
-                f"<td>{_e('—')}</td>"
                 f'<td>{_e(str(c.get("title") or ""))}</td>'
                 "</tr>"
             )
@@ -1185,7 +1184,7 @@ def _html_suite_tag_categorization(cases: list[dict[str, Any]]) -> str:
             f'<span class="report-sum-ab">{_e(str(ab))} Aborted</span>'
             f"</div></div>"
             f'<table class="report-tag-table"><thead><tr>'
-            f"<th>{_e('Status')}</th><th>{_e('Timestamp')}</th><th>{_e('Test name')}</th>"
+            f"<th>{_e('Status')}</th><th>{_e('Test name')}</th>"
             f"</tr></thead><tbody>{''.join(trs)}</tbody></table></div>"
         )
     return (
