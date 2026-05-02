@@ -33,7 +33,7 @@ export function MinMaxTestCaseFields({
       <div>
         <label htmlFor={maxId} className="label-with-info">
           <span>Maximum Test Cases</span>
-          <FieldInfo text="Maximum number of test cases to generate. 0 means no limit." />
+          <FieldInfo text="Maximum number of test cases to generate." />
         </label>
         <input
           id={maxId}
@@ -46,7 +46,7 @@ export function MinMaxTestCaseFields({
           aria-describedby={hintMaxId}
         />
         <span id={hintMaxId} className="sr-only">
-          Maximum number of test cases to generate. 0 means no limit.
+          Maximum number of test cases to generate
         </span>
       </div>
     </>

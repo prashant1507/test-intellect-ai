@@ -1378,4 +1378,5 @@ def spike_post_run_analysis(
             max_tokens=1200,
         ).strip()
     except Exception:  # noqa: BLE001
+        _LOG.debug("spike post-run summary LLM call failed", exc_info=True)
         return ""

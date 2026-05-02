@@ -1,5 +1,25 @@
 import { isUnifiedGherkin } from "./testCase";
 
+function jiraDoubleBraceToMdInlineCode(md) {
+  return md.replace(/\{\{([\s\S]*?)\}\}/g, (_, inner) => {
+    const d = String(inner);
+    let maxRun = 0;
+    let run = 0;
+    for (let i = 0; i < d.length; i++) {
+      if (d[i] === "`") {
+        run++;
+        maxRun = Math.max(maxRun, run);
+      } else {
+        run = 0;
+      }
+    }
+    const fence = "`".repeat(maxRun + 1);
+    const pad =
+      d.startsWith("`") || d.endsWith("`") || d.startsWith(" ") || d.endsWith(" ") ? " " : "";
+    return fence + pad + d + pad + fence;
+  });
+}
+
 export function jiraWikiToMarkdown(s) {
   if (!s || typeof s !== "string") return "";
   const lines = s.replace(/\r\n/g, "\n").split("\n");
@@ -35,15 +55,16 @@ export function jiraWikiToMarkdown(s) {
     }
     out.push(line);
   }
-  return out.join("\n");
+  return jiraDoubleBraceToMdInlineCode(out.join("\n"));
 }
 
 export function fmtReqMarkdown(r) {
   if (!r || typeof r !== "object") return "";
-  const title = String(r.title ?? "").trim();
+  const titleRaw = String(r.title ?? "").trim().replace(/\r?\n/g, " ");
+  const title = titleRaw ? jiraDoubleBraceToMdInlineCode(titleRaw) : "";
   const desc = jiraWikiToMarkdown(String(r.description ?? "").trim());
   const parts = [];
-  if (title) parts.push(`# ${title.replace(/\r?\n/g, " ")}`);
+  if (title) parts.push(`# ${title}`);
   if (title && desc) parts.push("");
   if (desc) parts.push(desc);
   return parts.join("\n");

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -45,6 +46,8 @@ from .store import (
 )
 from . import suite_state
 from .suite import run_suite_sequential
+
+_LOG = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/automation", tags=["automation"])
 
@@ -236,12 +239,13 @@ def automation_cancel_fn(body: CancelInF) -> dict[str, object]:
 
 
 @router.post("/spike-run")
-async def automation_spike_run(body: SpikeRunIn) -> dict[str, Any]:
+async def automation_spike_run(body: SpikeRunIn, kc: Kc) -> dict[str, Any]:
     cancel.clear_for_isolated_spike_run()
     try:
         st = (body.spike_type or "ui").strip().lower()
         if st not in ("ui", "api"):
             st = "ui"
+        ra = claims_username(kc) if settings.use_keycloak and kc else None
         return await run_automation_spike_async(
             (body.title or "").strip() or "Untitled",
             body.bdd,
@@ -251,6 +255,7 @@ async def automation_spike_run(body: SpikeRunIn) -> dict[str, Any]:
             body.tag,
             requirement_ticket_id=body.requirement_ticket_id,
             spike_type=st,
+            report_author=ra,
         )
     except SpikeUserError as e:
         d = e.logs
@@ -261,6 +266,7 @@ async def automation_spike_run(body: SpikeRunIn) -> dict[str, Any]:
             detail={"message": str(e), "logs": d or [str(e)]},
         ) from e
     except Exception as e:  # noqa: BLE001
+        _LOG.exception("automation spike failed")
         raise HTTPException(
             status_code=500, detail={"message": str(e), "logs": [str(e)]}
         ) from e

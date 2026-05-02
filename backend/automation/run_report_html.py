@@ -723,16 +723,6 @@ def _html_section_case_dashboard(ok: bool, steps: list) -> str:
     )
 
 
-def _html_hero_landing_single() -> str:
-    return (
-        '<div class="report-landing-hero report-landing-hero--extent">'
-        '<p class="report-landing-kicker">Summary</p>'
-        '<h1 class="report-landing-title">Execution Overview</h1>'
-        '<p class="report-landing-desc">Single test run (ExtentReports-style layout)</p>'
-        "</div>"
-    )
-
-
 def _bool_yn(b: object) -> str:
     if isinstance(b, bool):
         return "Yes" if b else "No"
@@ -828,56 +818,6 @@ def _html_hero_landing_suite() -> str:
         '<p class="report-landing-kicker">Suite run</p>'
         '<h1 class="report-landing-title">Execution Overview</h1>'
         "</div>"
-    )
-
-
-def _html_landing_page_single(
-    ok: bool,
-    steps: list,
-    *,
-    tag: str = "",
-    run_environment: dict[str, Any] | None = None,
-    case_url: str = "",
-) -> str:
-    inner = (
-        _html_hero_landing_single()
-        + _html_environment_section(
-            run_environment, for_landing=True, case_url=case_url
-        )
-        + _html_section_case_dashboard(ok, steps)
-        + _html_tag_breakdown_for_single_case((tag or "").strip(), ok, steps)
-    )
-    return f'<div class="report-landing-wrap">{inner}</div>'
-
-
-def _html_tag_breakdown_for_single_case(tag_raw: str, ok: bool, steps: list) -> str:
-    labels = parse_tag_tokens(tag_raw)
-    if not labels:
-        labels = ["—"]
-    cpass, cfail, cskip = _single_case_pass_fail_skip(ok, steps)
-    max_c = 1
-    blocks: list[str] = []
-    for tag_label in labels:
-        bar_rows = [
-            _html_dash_hbar_row("Pass", cpass, max_c, "pass"),
-            _html_dash_hbar_row("Fail", cfail, max_c, "fail"),
-        ]
-        if cskip:
-            bar_rows.append(
-                _html_dash_hbar_row("Skipped", cskip, max_c, "skip")
-            )
-        t = _e(tag_label)
-        blocks.append(
-            f'<div class="report-dash-by-tag-block" role="group" '
-            f'aria-label="{_e("Tag: " + tag_label)}">'
-            f'<p class="report-dash-by-tag-name">{t}</p>'
-            f'<div class="report-dash-bars">{"".join(bar_rows)}</div></div>'
-        )
-    return (
-        f'<section class="report-dash report-dash--by-tag" aria-label="Test status by tag">'
-        f'<h2 class="section-title"><span class="title-accent">By Tag</span></h2>'
-        f'{"".join(blocks)}'
-        f"</section>"
     )
 
 
@@ -3257,83 +3197,6 @@ _REPORT_TAIL = """
 }})();
 </script>
 </body></html>"""
-
-def render_spike_run_html(
-    run_id: str,
-    title: str,
-    bdd: str,
-    url: str,
-    ok: bool,
-    steps: list[dict],
-    log: list[str],
-    *,
-    jira_id: str = "",
-    requirement_ticket_id: str = "",
-    tag: str = "",
-    analysis: str = "",
-    trace_href: str | None = None,
-    embed_portable: bool = True,
-    run_environment: dict[str, Any] | None = None,
-) -> str:
-    jt = (jira_id or "").strip()
-    ttag = (tag or "").strip()
-    landing = _html_landing_page_single(
-        ok,
-        steps,
-        tag=ttag,
-        run_environment=run_environment,
-        case_url=str(url or "").strip(),
-    )
-    case_block = _build_case_content_html(
-        run_id,
-        title,
-        bdd,
-        ok,
-        steps,
-        log,
-        jira_id=jira_id,
-        requirement_ticket_id=requirement_ticket_id,
-        tag=tag,
-        analysis=analysis,
-        trace_href=trace_href,
-        embed_portable=embed_portable,
-    )
-    st = _case_nav_data_status({"ok": ok, "steps": steps})
-    nav_case_cls = _nav_st_classes(st)
-    uniq_tags, inc_untagged = _tag_filter_choices(None, single_tag=ttag)
-    filters_aside = _html_report_filters_aside(uniq_tags, inc_untagged)
-    tag_pipe_attr = _e(_tag_data_pipe(None, tag=ttag))
-    nav_dash = _e("Summary")
-    nav_title = _e(_nav_label_text(jt, (title or "").strip(), ttag))
-    st_esc = _e(st)
-    extent_header = _html_extent_topbar(
-        copy_id=str(run_id or "").strip(), copy_label="Copy run id"
-    )
-    body_html = f"""<div class="report-wrap report-wrap--nav">
-{extent_header}
-  <div class="report-layout report-layout--3col">
-    <nav class="report-nav" aria-label="Report sections">
-      <ul class="report-nav-list">
-        <li>
-          <button type="button" class="report-nav-item is-active" data-target="panel-dash" aria-current="page">{nav_dash}</button>
-        </li>
-        <li data-report-case-status="{st_esc}" data-report-case-tags="{tag_pipe_attr}">
-          <button type="button" class="{nav_case_cls}" data-target="case-0">{nav_title}</button>
-        </li>
-      </ul>
-    </nav>
-    <div class="report-panels">
-      <article id="panel-dash" class="report-panel is-active" tabindex="-1">
-{landing}
-      </article>
-      <article id="case-0" class="report-panel" data-report-case-status="{st_esc}" data-report-case-tags="{tag_pipe_attr}" tabindex="-1">
-{case_block}
-      </article>
-    </div>
-{filters_aside}
-  </div>
-</div>"""
-    return _emit_report_document("Report", body_html)
 
 
 def render_batch_report_html(

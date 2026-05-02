@@ -189,3 +189,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fixed issue with duplicate scenario title
 - Improved HTML report
 - Date format will be 'DD MM YYYY'
+
+---
+## [2.5.0]
+
+### Added
+- Added 1 more agent to check the coverage
+
+### Changed
+- Fix issue with HTML report from Start Test

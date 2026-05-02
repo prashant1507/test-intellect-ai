@@ -15,6 +15,7 @@ import { AuditTableTicketIdCell } from "./components/AuditTableTicketIdCell";
 import { LinkedJiraTestsBlock, LinkedJiraWorkBlock, RequirementAttachmentsInline } from "./components/LinkedJiraLists";
 import { MemoryDetailContent } from "./components/Memory";
 import { MainTestCasesPanel } from "./components/MainTestCasesPanel";
+import { AgenticCoveragePanel } from "./components/AgenticCoveragePanel";
 import { AutomationSkeletonModal } from "./components/AutomationSkeletonModal";
 import { AgenticPipelineOptions } from "./components/AgenticPipelineOptions";
 import { MinMaxTestCaseFields } from "./components/MinMaxTestCaseFields";
@@ -76,6 +77,7 @@ export default function App() {
   const [req, setReq] = useState(null);
   const [key, setKey] = useState("");
   const [tests, setTests] = useState(null);
+  const [agenticLast, setAgenticLast] = useState(null);
   const [diff, setDiff] = useState(null);
   const [reqFetchMeta, setReqFetchMeta] = useState({ hadSavedMemory: false });
   const [diffExpanded, setDiffExpanded] = useState(false);
@@ -141,6 +143,11 @@ export default function App() {
   const [pasteMemoryKey, setPasteMemoryKey] = useState("");
   const [historyJiraTicketId, setHistoryJiraTicketId] = useState("");
   const inputModeRef = useRef(inputMode);
+  const jiraEnvDefaultsRef = useRef({
+    testProject: "",
+    testIssueType: "Test",
+    linkType: "Relates",
+  });
   const [memoryPanel, setMemoryPanel] = useState(null);
 
   const jiraPasswordOk = useMemo(
@@ -195,9 +202,46 @@ export default function App() {
     setKey("");
   }, []);
 
+  const clearMainTestCasesWorkspace = useCallback(() => {
+    setTests(null);
+    setAgenticLast(null);
+    setHadPriorMemory(false);
+    setMemoryMatch(null);
+    setLastGenerateAt(null);
+    setTcOpen({});
+    setEditTcIdx(null);
+    setDeleteTcIdx(null);
+    setAutomationSkelIdx(null);
+    setBulkJiraSync(null);
+    setJiraUpdateSucceededKeys({});
+    setJiraHideUpdateAfterCreate({});
+    setTcFilter("all");
+  }, []);
+
+  const resetGenerationAndAttachmentDefaults = useCallback(() => {
+    const d = jiraEnvDefaultsRef.current;
+    setJiraTestProject(d.testProject);
+    setJiraTestIssueType(d.testIssueType);
+    setJiraLinkType(d.linkType);
+    setMinTestCases("1");
+    setMaxTestCases("5");
+    setUseAgenticGen(true);
+    setAgenticMaxRounds("3");
+    setSaveToMemory(!mock);
+    setReqImageFiles([]);
+    setSelectedReqAttachmentIds(new Set());
+  }, [mock]);
+
+  const resetPasteFormDefaults = useCallback(() => {
+    setPasteTitle("");
+    setPasteText("");
+    setPasteMemoryKey("");
+    setHistoryJiraTicketId("");
+  }, []);
+
   const resetWorkspaceOnInputModeChange = useCallback(() => {
     clearFetchedTicketState();
-    setTests(null);
+    clearMainTestCasesWorkspace();
     setHistoryJiraTicketId("");
     setPasteText("");
     setPasteTitle("");
@@ -205,24 +249,13 @@ export default function App() {
     setTicketId("");
     setPassword("");
     setShowPw(false);
-    setLastGenerateAt(null);
     setReqFetchMeta({ hadSavedMemory: false });
-    setHadPriorMemory(false);
-    setMemoryMatch(null);
     setDiffExpanded(false);
     setErr("");
     setAnnounce("");
-    setTcFilter("all");
     setMinTestCases("1");
     setMaxTestCases("5");
-    setTcOpen({});
-    setEditTcIdx(null);
-    setDeleteTcIdx(null);
-    setAutomationSkelIdx(null);
     setMemoryAutomationSkelIdx(null);
-    setBulkJiraSync(null);
-    setJiraUpdateSucceededKeys({});
-    setJiraHideUpdateAfterCreate({});
     setReqImageFiles([]);
     setSelectedReqAttachmentIds(new Set());
     setPushingKey(null);
@@ -232,7 +265,7 @@ export default function App() {
       generateAbortRef.current?.abort();
     } catch (_) {}
     generateAbortRef.current = null;
-  }, [clearFetchedTicketState]);
+  }, [clearFetchedTicketState, clearMainTestCasesWorkspace]);
 
   useEffect(() => {
     const t = normTicketId(ticketId);
@@ -287,6 +320,7 @@ export default function App() {
     setDiffExpanded(false);
     setHadPriorMemory(!!d.had_previous_memory);
     setMemoryMatch(d.memory_match ?? null);
+    setAgenticLast(d?.agentic && typeof d.agentic === "object" ? d.agentic : null);
   };
 
   const auditUserOptions = useMemo(() => {
@@ -1230,6 +1264,20 @@ export default function App() {
       try {
         const c = await fetch("/api/config").then((r) => r.json());
         if (cancelled) return;
+        jiraEnvDefaultsRef.current = {
+          testProject:
+            typeof c.default_jira_test_project_key === "string"
+              ? c.default_jira_test_project_key.trim()
+              : "",
+          testIssueType:
+            (typeof c.default_jira_test_issue_type === "string"
+              ? c.default_jira_test_issue_type.trim()
+              : "") || "Test",
+          linkType:
+            (typeof c.default_jira_link_type === "string"
+              ? c.default_jira_link_type.trim()
+              : "") || "Relates",
+        };
         if (typeof c.default_jira_url === "string" && c.default_jira_url.trim())
           setJiraUrl(c.default_jira_url.trim());
         if (c.default_username) setUsername(c.default_username);
@@ -1567,7 +1615,9 @@ export default function App() {
   }, [auditModalOpen, memoryPanel, editTcIdx, deleteTcIdx, automationSkelIdx, memoryAutomationSkelIdx]);
 
   const runPasteGenerate = async () => {
+    const t = pasteTitle.trim();
     const desc = pasteText.trim();
+    const memKey = pasteMemoryKey.trim();
     if (!desc) return;
     setErr("");
     const ve = validateReqImages();
@@ -1575,33 +1625,46 @@ export default function App() {
       setErr(ve);
       return;
     }
+    const pasteRegenerate = lastGenerateAt != null;
+    if (pasteRegenerate) {
+      resetGenerationAndAttachmentDefaults();
+      resetPasteFormDefaults();
+    }
+    const effMin = pasteRegenerate ? "1" : minTestCases;
+    const effMax = pasteRegenerate ? "5" : maxTestCases;
+    const effAgentic = pasteRegenerate ? true : useAgenticGen;
+    const effRounds = pasteRegenerate ? "3" : agenticMaxRounds;
+    const effSave = pasteRegenerate ? !mock : saveToMemory && !mock;
+    const filesForPaste = pasteRegenerate ? [] : reqImageFiles;
     setHistoryJiraTicketId("");
     generationInFlightRef.current = true;
-    setReq({ title: pasteTitle.trim(), description: desc });
-    setTests(null);
+    setReq({ title: t, description: desc });
+    clearMainTestCasesWorkspace();
     setDiff(null);
-    setHadPriorMemory(false);
-    setMemoryMatch(null);
-    setBusy(useAgenticGen ? "/generate-from-paste-agentic" : "/generate-from-paste");
+    setBusy(
+      effAgentic ? "/generate-from-paste-agentic" : "/generate-from-paste",
+    );
     setAnnounce("Generating test cases…");
     const ac = new AbortController();
     generateAbortRef.current = ac;
     const fetchOpts = { signal: ac.signal };
     try {
-      const pastePath = useAgenticGen ? "/generate-from-paste-agentic" : "/generate-from-paste";
+      const pastePath = effAgentic
+        ? "/generate-from-paste-agentic"
+        : "/generate-from-paste";
       const pastePayload = {
-        title: pasteTitle.trim(),
+        title: t,
         description: desc,
-        memory_key: pasteMemoryKey.trim(),
-        save_memory: saveToMemory && !mock,
-        ...testCaseBounds(minTestCases, maxTestCases),
-        ...(useAgenticGen ? { max_rounds: clampAgenticMaxRounds(agenticMaxRounds) } : {}),
+        memory_key: memKey,
+        save_memory: effSave,
+        ...testCaseBounds(effMin, effMax),
+        ...(effAgentic ? { max_rounds: clampAgenticMaxRounds(effRounds) } : {}),
       };
       let d;
-      if (reqImgConfig.visionConfigured && reqImageFiles.length > 0) {
+      if (reqImgConfig.visionConfigured && filesForPaste.length > 0) {
         const fd = new FormData();
         fd.append("payload", JSON.stringify(pastePayload));
-        for (const f of reqImageFiles) fd.append("files", f);
+        for (const f of filesForPaste) fd.append("files", f);
         d = await apiForm(pastePath, fd, false, fetchOpts);
       } else {
         d = await api(pastePath, "POST", pastePayload, false, fetchOpts);
@@ -1652,6 +1715,7 @@ export default function App() {
         }
         const genPath = useAgenticGen ? "/generate-tests-agentic" : "/generate-tests";
         const credBody = cred();
+        clearMainTestCasesWorkspace();
         setAnnounce("Generating test cases…");
         const ac = new AbortController();
         generateAbortRef.current = ac;
@@ -1688,6 +1752,16 @@ export default function App() {
       }
 
       if (path === FETCH_TICKET) {
+        const jiraRefetch =
+          lastFetchAt != null &&
+          Boolean(key) &&
+          normTicketId(ticketId) === normTicketId(key);
+        clearMainTestCasesWorkspace();
+        setDiff(null);
+        if (jiraRefetch) {
+          resetGenerationAndAttachmentDefaults();
+          resetPasteFormDefaults();
+        }
         const d = await api(FETCH_TICKET, "POST", cred());
         if (inputModeRef.current !== "jira") {
           return;
@@ -1702,21 +1776,7 @@ export default function App() {
         setDiff(d.requirements_diff != null && d.requirements_diff !== "" ? d.requirements_diff : null);
         setDiffExpanded(false);
         setLastFetchAt(new Date().toISOString());
-        const tidFetch = normTicketId(d.ticket_id);
-        if (!mock && tidFetch) {
-          try {
-            const mem = await api(`/memory/item/${encodeURIComponent(tidFetch)}`);
-            if (Array.isArray(mem.test_cases) && mem.test_cases.length) {
-              setTests(mem.test_cases);
-            } else {
-              setTests(null);
-            }
-          } catch (_) {
-            setTests(null);
-          }
-        } else {
-          setTests(null);
-        }
+        setTests(null);
         if (d.had_saved_memory && d.requirements_diff) {
           setAnnounce("Requirements loaded. Diff vs saved history is shown below.");
         } else if (d.had_saved_memory) {
@@ -2973,6 +3033,7 @@ export default function App() {
                 />
               </FloatingTooltip>
             </div>
+            <AgenticCoveragePanel agentic={agenticLast} />
             <MainTestCasesPanel
               loadingTestCases={loadingTestCases}
               tests={tests}

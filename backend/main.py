@@ -654,6 +654,8 @@ async def _generate_and_persist(
             "error": agentic_out.get("error"),
             "generations": agentic_out.get("generations"),
             "suggestion_swap": agentic_out.get("suggestion_swap"),
+            "coverage_plan": agentic_out.get("coverage_plan"),
+            "agent_trace": agentic_out.get("agent_trace"),
         }
     return base
 

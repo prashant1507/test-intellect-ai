@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import re
 import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -22,8 +24,9 @@ from settings import settings
 
 from . import cancel
 from .bdd import parse_bdd_structured, parse_bdd_step_lines
-from .run_report_html import render_spike_run_html
+from .date_display import format_dt_display
 from .errors import SpikeUserError
+from .run_report_html import render_batch_report_html
 from .prefs import (
     get_effective_automation_browser,
     get_effective_automation_default_timeout_ms,
@@ -41,9 +44,7 @@ from .store import (
     upsert_selector_cache,
 )
 
-
-def _l(log: list[str], msg: str) -> None:
-    log.append(msg)
+_LOG = logging.getLogger(__name__)
 
 
 def _format_bdd_numbered(bdd_lines: list[str]) -> str:
@@ -355,6 +356,7 @@ def _spike_interactive_count(page: Any) -> int:
     try:
         return int(page.evaluate(_SPIKE_INV_CNT_JS) or 0)
     except Exception:
+        _LOG.debug("spike interactive element count failed", exc_info=True)
         return -1
 
 
@@ -1228,13 +1230,14 @@ def _run_spike_one_browser(
     return results
 
 
-def _write_run_html(
+def _write_spike_suite_style_report(
+    report_id: str,
     run_id: str,
     title: str,
     bdd: str,
     url: str,
     ok: bool,
-    steps: list[dict],
+    rel_steps: list[dict[str, Any]],
     log: list[str],
     *,
     analysis: str,
@@ -1243,35 +1246,45 @@ def _write_run_html(
     tag: str = "",
     requirement_ticket_id: str = "",
     run_environment: dict[str, Any] | None = None,
+    suite_started_at: str,
+    report_author: str | None = None,
 ) -> str | None:
     if not bool(getattr(settings, "automation_write_run_html", True)):
         return None
     rep = Path(settings.automation_reports_dir)
     rep.mkdir(parents=True, exist_ok=True)
-    p = rep / f"{run_id}.html"
+    p = rep / f"{report_id}.html"
     th: str | None = None
     if trace_href and get_effective_automation_trace_file_generation():
         th = trace_href
-    body = render_spike_run_html(
-        run_id,
-        title,
-        bdd,
-        url,
-        ok,
-        steps,
-        log,
-        jira_id=jira_id,
-        tag=tag,
-        requirement_ticket_id=requirement_ticket_id,
-        analysis=analysis,
-        trace_href=th,
-        run_environment=run_environment,
+    st = "PASS" if ok else "FAIL"
+    batch_item: dict[str, Any] = {
+        "run_id": str(run_id or ""),
+        "title": title,
+        "bdd": bdd,
+        "url": url,
+        "ok": ok,
+        "case_status": st,
+        "steps": rel_steps,
+        "debug_logs": list(log),
+        "analysis": analysis,
+        "jira_id": jira_id,
+        "requirement_ticket_id": requirement_ticket_id,
+        "tag": tag,
+        "trace_href": th,
+        "run_environment": run_environment or get_run_environment_for_report(),
+    }
+    body = render_batch_report_html(
+        report_id,
+        [batch_item],
+        suite_started_at=suite_started_at,
+        report_author=report_author,
     )
     try:
         p.write_text(body, encoding="utf-8")
     except OSError:
         return None
-    return f"/api/automation/reports/{p.name}"
+    return f"/api/automation/suite-reports/{p.name}"
 
 
 def _execute_spike_finalize(
@@ -1288,6 +1301,7 @@ def _execute_spike_finalize(
     used_cache: bool,
     fp: str,
     upsert_cache_on_ok: bool,
+    report_author: str | None = None,
 ) -> dict[str, Any]:
     art = Path(settings.automation_artifacts_dir)
     ok = all(x.get("pass") for x in final)
@@ -1340,9 +1354,11 @@ def _execute_spike_finalize(
     trace_href_htm = (
         f"{base_artifacts}/trace.zip" if trace_stored_ok else None
     )
-    report_url: str | None
+    report_url: str | None = None
     if write_run_html:
-        report_url = _write_run_html(
+        report_id = str(uuid.uuid4())
+        report_url = _write_spike_suite_style_report(
+            report_id,
             run_id,
             title,
             bdd,
@@ -1356,11 +1372,11 @@ def _execute_spike_finalize(
             tag=tag,
             requirement_ticket_id=requirement_ticket_id,
             run_environment=run_environment,
+            suite_started_at=format_dt_display(datetime.now().astimezone()),
+            report_author=report_author,
         )
         if report_url:
             summary["report_url"] = report_url
-    else:
-        report_url = None
     update_run(
         run_id,
         status="completed" if ok else "failed",
@@ -1411,6 +1427,7 @@ def _execute_spike_sync(
     requirement_ticket_id: str = "",
     write_run_html: bool = True,
     spike_type: str = "ui",
+    report_author: str | None = None,
 ) -> dict[str, Any]:
     st = _normalize_spike_type(spike_type)
     bdd_lines = parse_bdd_step_lines(bdd)
@@ -1420,7 +1437,7 @@ def _execute_spike_sync(
         if hint:
             _l(log, f"BDD parser: {len(hint)} structured hint(s) (heuristic).")
     except Exception:  # noqa: BLE001
-        pass
+        _LOG.debug("parse_bdd_structured skipped", exc_info=True)
     if not bdd_lines:
         raise SpikeUserError("BDD is empty (no steps).", logs=log)
     u = (url or "").strip()
@@ -1458,6 +1475,7 @@ def _execute_spike_sync(
             used_cache=False,
             fp=fp,
             upsert_cache_on_ok=False,
+            report_author=report_author,
         )
     if not u:
         raise SpikeUserError(
@@ -1506,6 +1524,7 @@ def _execute_spike_sync(
         used_cache=used_cache,
         fp=fp,
         upsert_cache_on_ok=True,
+        report_author=report_author,
     )
 
 
@@ -1520,6 +1539,7 @@ def run_automation_spike(
     requirement_ticket_id: str = "",
     write_run_html: bool = True,
     spike_type: str = "ui",
+    report_author: str | None = None,
 ) -> dict[str, Any]:
     log: list[str] = []
     u = (url or "").strip()
@@ -1547,6 +1567,7 @@ def run_automation_spike(
             requirement_ticket_id=requirement_ticket_id,
             write_run_html=write_run_html,
             spike_type=st,
+            report_author=report_author,
         )
     except SpikeUserError as e:
         setattr(e, "run_id", run_id)
@@ -1591,6 +1612,7 @@ async def run_automation_spike_async(
     requirement_ticket_id: str = "",
     write_run_html: bool = True,
     spike_type: str = "ui",
+    report_author: str | None = None,
 ) -> dict[str, Any]:
     return await asyncio.to_thread(
         run_automation_spike,
@@ -1603,4 +1625,5 @@ async def run_automation_spike_async(
         requirement_ticket_id=requirement_ticket_id,
         write_run_html=write_run_html,
         spike_type=spike_type,
+        report_author=report_author,
     )

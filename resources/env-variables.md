@@ -88,13 +88,27 @@ planning, and other text endpoints.
 | Variable                | Example                    | Description                                                                                                                                     |
 |-------------------------|----------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
 | `LLM_TEXT_URL`          | `http://127.0.0.1:1234/v1` | OpenAI-compatible API base; include `/v1` if the server uses that path. **Required** when `MOCK=false` (see validation in `settings.py`).       |
-| `LLM_TEXT_MODEL`        | `qwen/qwen2.5-7b`          | Model id for text. **Required** when `MOCK=false`.                                                                                              |
+| `LLM_TEXT_MODEL`        | `qwen/qwen3-coder-next`    | Model id for text. **Required** when `MOCK=false`.                                                                                              |
 | `LLM_TEXT_ACCESS_TOKEN` | *(empty)*                  | Bearer for the text API; leave empty for local servers.                                                                                         |
 | *Aliases (same fields)* |                            | `LLM_URL` → `LLM_TEXT_URL`, `LLM_MODEL` → `LLM_TEXT_MODEL`, `LLM_ACCESS_TOKEN` → `LLM_TEXT_ACCESS_TOKEN` (Pydantic `AliasChoices` in settings). |
 | `DOCKER_LLM_URL`        | *(empty)*                  | **Not read by the app.** Compose/docs only: map into `LLM_TEXT_URL` inside a container.                                                         |
 
 Non-secret hint: `GET /api/config` does not expose LLM URLs, models, or tokens.
 
+---
+
+## Agentic test generation
+
+Read by **`backend/agentic/graph.py`** (not `settings.py`). Controls automatic extra **generate** attempts when
+agentic validation has not passed after the UI **max rounds** limit.
+
+| Variable                                     | Example | Description                                                                                                                                                                                                                                                                     |
+|----------------------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `AGENTIC_AUTO_EXTEND_PHASES`                 | `1`     | How many times the run may **auto-extend** after the UI **max rounds** cap is hit while validation still fails. **`0`** = off; then the two vars below are unused.                                                                                                              |
+| `AGENTIC_AUTO_EXTEND_ADDITIONAL_GENERATIONS` | `3`     | **Per extension:** extra **full generator attempts** allowed (each = `generate` → `parse` → `score` when applicable). The effective round cap increases by this amount. Not “tokens” or inner-LLM steps. Clamped in code (1–8). **Legacy alias:** `AGENTIC_AUTO_EXTEND_ROUNDS`. |
+| `AGENTIC_ROUND_CAP_CEILING`                  | `10`    | Hard cap on **effective** generator attempts in one HTTP request: `min(UI max_rounds + total extension bump, ceiling)` (clamped in code, max 24).                                                                                                                               |
+
+# effective_max = min(max_rounds_from_ui + AGENTIC_AUTO_EXTEND_PHASES × AGENTIC_AUTO_EXTEND_ADDITIONAL_GENERATIONS, AGENTIC_ROUND_CAP_CEILING)
 ---
 
 ## Vision LLM (optional, OpenAI-compatible)
@@ -125,8 +139,8 @@ apply whenever vision is configured.
 
 | Variable                              | Example | Description                                                            |
 |---------------------------------------|---------|------------------------------------------------------------------------|
-| `LLM_REQUIREMENT_IMAGES_MAX_COUNT`    | `5`     | Max number of files (uploads + selected JIRA attachments) per request. |
-| `LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB` | `300`   | Max combined size of those files in MB.                                |
+| `LLM_REQUIREMENT_IMAGES_MAX_COUNT`    | `10`    | Max number of files (uploads + selected JIRA attachments) per request. |
+| `LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB` | `200`   | Max combined size of those files in MB.                                |
 
 **UI:** The paste/JIRA **upload** row and JIRA **checkboxes** for the LLM are shown when `llm_vision_configured` is
 true. JIRA can still list attachments without vision; they are not selectable for generation until vision is configured.

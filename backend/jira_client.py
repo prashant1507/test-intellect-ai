@@ -592,6 +592,7 @@ def fetch_linked_work_issues(
                 expand="renderedFields",
             )
         except Exception:
+            _LOG.debug("fetch_linked_work_issues: skip issue %s", ik, exc_info=True)
             continue
         fields = data.get("fields") or {}
         it = fields.get("issuetype") or {}
@@ -675,6 +676,7 @@ def fetch_linked_test_issues(
         try:
             meta_by_pj[pj] = get_issue_create_meta_fields_cached(base_url, user, password, pj, want)
         except Exception:
+            _LOG.debug("createmeta unavailable for project %s", pj, exc_info=True)
             meta_by_pj[pj] = {}
     out: list[dict] = []
     for ik in keys:
@@ -687,6 +689,7 @@ def fetch_linked_test_issues(
         try:
             data = _get_issue_json(base_url, user, password, ik, fields=fld, expand="renderedFields")
         except Exception:
+            _LOG.debug("fetch_linked_test_issues: skip issue %s", ik, exc_info=True)
             continue
         fields = data.get("fields") or {}
         it = fields.get("issuetype") or {}
@@ -971,6 +974,7 @@ def _default_value_for_createmeta_field(
         try:
             return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
         except Exception:
+            _LOG.debug("datetime field default microsecond format failed", exc_info=True)
             return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000") + "+0000", myself_cached
 
     if styp == "array":

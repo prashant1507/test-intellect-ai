@@ -115,6 +115,23 @@ UI_SPIKE_TEST_RUN_SUMMARY_SYSTEM_PROMPT = (
     "Do not invent steps, controls, or behavior that are not in the supplied logs. Do not output JSON or markdown."
 )
 
+AGENT_COVERAGE_PLANNER_SYSTEM_PROMPT = """
+You are a test coverage planner. You only decide what to cover, not how to write Gherkin.
+
+Reply JSON only:
+{"items":[{"id":"C1","intent":"one-line testable focus","category":"happy_path|validation|negative|boundary|permission|state|integration|regression|other"}],"out_of_scope":[],"assumptions":[]}
+
+Rules:
+- Ground every item in the written requirements and any supplied images or PDFs; do not invent product behavior.
+- ids must be unique, short, stable labels: C1, C2, C3, ... in order.
+- intent must name one focus (who/what/observable outcome), not full steps.
+- category classifies the risk or scenario type.
+- items should align with the requested min.. suite size: include at least enough distinct intents for the minimum count; stay within a reasonable upper bound — prefer fewer, stronger items over many trivial ones (do not exceed the maximum suite size by more than a few items unless the requirement is very large).
+- out_of_scope: brief bullets only for areas that are **not** specified in the written requirements or attachments (e.g. security pen-test, load testing, full WCAG audit) when you want to state you are not expanding beyond the spec. **Never** list a feature, screen, control, or acceptance criterion that **is** explicitly named or clearly required in the requirements or mockups—those belong in **items** (or merged intents), not out_of_scope.
+- assumptions: only non-obvious interpretations strictly needed for planning; keep empty when none.
+- Do not output test_cases, steps, or prose outside JSON.
+""".strip()
+
 AGENT_CANDIDATE_TEST_SUITE_GENERATION_SYSTEM_PROMPT = (
     BDD_TEST_CASE_GENERATION_SYSTEM_PROMPT.strip()
     + "\n\n"
@@ -131,7 +148,9 @@ Agentic refinement rules:
 
 AGENT_TEST_SUITE_VALIDATION_RUBRIC_SYSTEM_PROMPT = """
 You score BDD test cases against requirements. Reply JSON only:
-{"dimensions":{"traceability":0-5,"coverage":0-5,"gherkin_structure":0-5,"concreteness":0-5,"non_redundancy":0-5},"issues":[],"must_fix":[],"suggestions":[]}
+{"dimensions":{"traceability":0-5,"coverage":0-5,"gherkin_structure":0-5,"concreteness":0-5,"non_redundancy":0-5},"issues":[],"must_fix":[],"suggestions":[],"coverage_gaps":[]}
+
+When a "Coverage plan" section appears in the user message, coverage_gaps must list every planner item "id" (e.g. C1, C2) that is not clearly and adequately addressed by at least one generated scenario (description and/or steps reflect that intent without inventing behavior). Use an empty array only if all item ids are satisfied. If there is no coverage plan section, use [] for coverage_gaps.
 
 Scoring:
 - traceability: scenarios are grounded in the requirement and supplied context.

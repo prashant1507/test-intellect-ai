@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from typing import TypedDict
@@ -22,6 +23,7 @@ from ai_client import (
 )
 from prompts import (
     AGENT_CANDIDATE_TEST_SUITE_GENERATION_SYSTEM_PROMPT,
+    AGENT_COVERAGE_PLANNER_SYSTEM_PROMPT,
     AGENT_SCENARIOS_QUALITY_RANKING_SYSTEM_PROMPT,
     AGENT_SUGGESTED_SCENARIOS_GENERATION_SYSTEM_PROMPT,
     AGENT_TEST_SUITE_VALIDATION_RUBRIC_SYSTEM_PROMPT,
@@ -30,7 +32,9 @@ from prompts import (
 from requirement_images import images_to_state_payload, state_payload_to_images
 from settings import settings
 
-from .models import GenerationEnvelope, TestCaseItem, ValidatorResult
+from .models import CoveragePlan, GenerationEnvelope, TestCaseItem, ValidatorResult
+
+_LOG = logging.getLogger(__name__)
 
 AGG_MIN = 3.5
 DIM_MIN = 2
@@ -155,16 +159,79 @@ class AgentState(TypedDict, total=False):
     quality_issues: list[str]
     final_cases: list[dict]
     requirement_images: list[dict]
+    coverage_plan: dict | None
+    rounds_extension: int
+    auto_extend_remaining: int
+    agent_trace: list[dict]
 
 
-def _max_rounds_cap(state: AgentState) -> int:
-    return int(state.get("max_rounds") or 3)
+def _trace_append(state: AgentState, agent: str, detail: str, **extra: object) -> list[dict]:
+    rows = list(state.get("agent_trace") or [])
+    row: dict = {"agent": agent, "detail": detail}
+    for k, v in extra.items():
+        if v is not None:
+            row[k] = v
+    rows.append(row)
+    return rows
 
 
-def _passed(vr: ValidatorResult) -> bool:
+def _auto_extend_phases_cap() -> int:
+    try:
+        n = int((os.environ.get("AGENTIC_AUTO_EXTEND_PHASES") or "1").strip())
+    except ValueError:
+        n = 1
+    return max(0, min(n, 5))
+
+
+def _auto_extend_bump() -> int:
+    raw = (
+        os.environ.get("AGENTIC_AUTO_EXTEND_ADDITIONAL_GENERATIONS")
+        or os.environ.get("AGENTIC_AUTO_EXTEND_ROUNDS")
+        or "3"
+    )
+    try:
+        n = int(str(raw).strip())
+    except ValueError:
+        n = 3
+    return max(1, min(n, 8))
+
+
+def _round_cap_ceiling() -> int:
+    try:
+        n = int((os.environ.get("AGENTIC_ROUND_CAP_CEILING") or "12").strip())
+    except ValueError:
+        n = 12
+    return max(4, min(n, 24))
+
+
+def _effective_round_cap(state: AgentState) -> int:
+    base = max(1, int(state.get("max_rounds") or 3))
+    ext = max(0, int(state.get("rounds_extension") or 0))
+    return min(base + ext, _round_cap_ceiling())
+
+
+def _coverage_item_ids(state: AgentState) -> list[str]:
+    p = state.get("coverage_plan")
+    if not isinstance(p, dict):
+        return []
+    items = p.get("items")
+    if not isinstance(items, list):
+        return []
+    out: list[str] = []
+    for it in items:
+        if isinstance(it, dict):
+            x = str(it.get("id") or "").strip()
+            if x:
+                out.append(x)
+    return out
+
+
+def _passed(vr: ValidatorResult, state: AgentState) -> bool:
     if any((x or "").strip() for x in vr.issues):
         return False
     if any((x or "").strip() for x in vr.must_fix):
+        return False
+    if _coverage_item_ids(state) and any((x or "").strip() for x in (vr.coverage_gaps or [])):
         return False
     if vr.aggregate < AGG_MIN or vr.min_dimension() < DIM_MIN:
         return False
@@ -208,6 +275,48 @@ def _quality_feedback(issues: list[str]) -> str:
     )
 
 
+def planner_node(state: AgentState) -> dict:
+    req = json.dumps(state["requirements"], ensure_ascii=False, indent=2)
+    lo = int(state.get("min_test_cases") or 1)
+    hi = int(state.get("max_test_cases") or 10)
+    hi_note = "no hard upper cap" if not hi else str(hi)
+    user = (
+        f"Requirements:\n{req}\n\n"
+        f"Target suite size: at least {lo} scenario(s); maximum count for planning: {hi_note}.\n"
+        "Return only the coverage plan JSON."
+    )
+    imgs = state_payload_to_images(state.get("requirement_images"))
+    msgs, has_imgs = _msgs_with_images(AGENT_COVERAGE_PLANNER_SYSTEM_PROMPT, user, imgs)
+    try:
+        raw = _llm_chat(
+            msgs,
+            temperature=0.1,
+            max_tokens=2048,
+            json_response_format=True,
+            skip_json_for_vision=has_imgs,
+            for_multimodal_with_images=has_imgs,
+        )
+        data = parse_llm_json(raw)
+        plan = CoveragePlan.model_validate(data)
+        dump = plan.model_dump(mode="json")
+        n = len(dump.get("items") or [])
+        return {
+            "coverage_plan": dump,
+            "agent_trace": _trace_append(state, "planner", f"Coverage plan with {n} item(s)."),
+        }
+    except Exception:
+        _LOG.debug("coverage planner node: invalid LLM output or validation failed", exc_info=True)
+        fb_plan = {
+            "items": [],
+            "out_of_scope": [],
+            "assumptions": ["Coverage planner could not produce a valid plan; generation uses requirements only."],
+        }
+        return {
+            "coverage_plan": fb_plan,
+            "agent_trace": _trace_append(state, "planner", "Planner output invalid; requirements-only fallback."),
+        }
+
+
 def generate_node(state: AgentState) -> dict:
     gp = (state.get("generation_prompt") or "").strip()
     fb = (state.get("feedback") or "").strip()
@@ -227,6 +336,14 @@ def generate_node(state: AgentState) -> dict:
         user = gp
     if fb:
         user += f"\n\nRevise using this feedback (do not repeat the same mistakes):\n{fb}\n"
+    cp = state.get("coverage_plan")
+    if isinstance(cp, dict) and cp.get("items"):
+        user += (
+            "\n\n### Coverage plan (binding)\n"
+            "Each item has id and intent. Every id MUST be clearly addressed by at least one test case "
+            "(reflect the intent in description and/or steps). Do not drop or merge items unless the suite stays within max count and every id remains traceable.\n"
+            f"{json.dumps(cp, ensure_ascii=False, indent=2)}"
+        )
     imgs = state_payload_to_images(state.get("requirement_images"))
     if imgs:
         user += (
@@ -254,12 +371,13 @@ def generate_node(state: AgentState) -> dict:
         "validation_passed": None,
         "suggestion_swap": None,
         "quality_issues": [],
+        "agent_trace": _trace_append(state, "generator", "Generated candidate test suite (LLM).", generation=g),
     }
 
 
 def parse_node(state: AgentState) -> dict:
     raw = (state.get("raw") or "").strip()
-    mx = _max_rounds_cap(state)
+    mx = _effective_round_cap(state)
     gen = int(state.get("generation") or 0)
     try:
         data = parse_llm_json(raw)
@@ -277,6 +395,12 @@ def parse_node(state: AgentState) -> dict:
                 "quality_issues": quality_issues,
                 "parse_error": "deterministic quality checks failed",
                 "feedback": _quality_feedback(quality_issues),
+                "agent_trace": _trace_append(
+                    state,
+                    "parser",
+                    f"Deterministic quality failed ({len(quality_issues)} issue(s)); retry scheduled.",
+                    generation=gen,
+                ),
             }
         err = (
             "deterministic quality checks did not fully pass: "
@@ -284,15 +408,28 @@ def parse_node(state: AgentState) -> dict:
             if quality_issues
             else None
         )
-        return {"envelope": env, "quality_issues": quality_issues, "parse_error": None, "error": err}
+        n = len(env.test_cases)
+        return {
+            "envelope": env,
+            "quality_issues": quality_issues,
+            "parse_error": None,
+            "error": err,
+            "agent_trace": _trace_append(state, "parser", f"Parsed {n} test case(s).", generation=gen),
+        }
     except Exception as e:
         err = str(e)
         if gen >= mx:
-            return {"envelope": None, "parse_error": err, "error": err}
+            return {
+                "envelope": None,
+                "parse_error": err,
+                "error": err,
+                "agent_trace": _trace_append(state, "parser", f"Parse failed after max attempts: {err[:160]}", generation=gen),
+            }
         return {
             "envelope": None,
             "parse_error": err,
             "feedback": f"Invalid output: {err}. Return valid JSON with test_cases only.",
+            "agent_trace": _trace_append(state, "parser", f"Parse error; retry scheduled: {err[:120]}", generation=gen),
         }
 
 
@@ -301,10 +438,17 @@ def score_node(state: AgentState) -> dict:
     assert env is not None
     req = json.dumps(state["requirements"], ensure_ascii=False, indent=2)
     body = json.dumps({"test_cases": [c.model_dump() for c in env.test_cases]}, ensure_ascii=False, indent=2)
-    user = f"Requirements:\n{req}\n\nGenerated:\n{body}\n\nReturn only the scoring JSON."
+    prefix = ""
+    cp = state.get("coverage_plan")
+    if isinstance(cp, dict) and (cp.get("items") or cp.get("out_of_scope") or cp.get("assumptions")):
+        prefix = (
+            "Coverage plan:\n"
+            f"{json.dumps(cp, ensure_ascii=False, indent=2)}\n\n"
+        )
+    user = f"{prefix}Requirements:\n{req}\n\nGenerated:\n{body}\n\nReturn only the scoring JSON."
     imgs = state_payload_to_images(state.get("requirement_images"))
     msgs, has_imgs = _msgs_with_images(AGENT_TEST_SUITE_VALIDATION_RUBRIC_SYSTEM_PROMPT, user, imgs)
-    mx = _max_rounds_cap(state)
+    mx = _effective_round_cap(state)
     gen = int(state.get("generation") or 0)
     try:
         raw = _llm_chat(
@@ -319,34 +463,58 @@ def score_node(state: AgentState) -> dict:
         vr = ValidatorResult.model_validate(data)
     except Exception as e:
         msg = f"Validator failed to return valid scoring JSON: {e!s}"
+        tr = _trace_append(state, "validator", f"Scoring JSON invalid: {msg[:140]}", generation=gen)
         if gen < mx:
-            return {"validator": None, "validation_passed": False, "feedback": msg}
-        return {"validator": None, "validation_passed": False, "error": msg}
+            return {"validator": None, "validation_passed": False, "feedback": msg, "agent_trace": tr}
+        return {"validator": None, "validation_passed": False, "feedback": msg, "agent_trace": tr}
     quality_issues = _deterministic_quality_issues(env, state)
     if quality_issues:
         vr.must_fix = list(vr.must_fix) + [f"Deterministic check: {x}" for x in quality_issues]
-    ok = _passed(vr)
+    ok = _passed(vr, state)
     if ok:
-        return {"validator": vr, "validation_passed": True}
-    if gen >= mx:
-        return {"validator": vr, "validation_passed": False}
+        return {
+            "validator": vr,
+            "validation_passed": True,
+            "agent_trace": _trace_append(
+                state,
+                "validator",
+                f"Validation passed (aggregate {vr.aggregate:.2f}).",
+                generation=gen,
+            ),
+        }
     fb_parts: list[str] = []
     fb_parts.extend(vr.must_fix[:8])
     fb_parts.extend(vr.issues[:6])
+    gaps = [x for x in (vr.coverage_gaps or []) if (x or "").strip()]
+    if gaps:
+        fb_parts.append("Coverage gaps (planner ids not adequately covered): " + ", ".join(gaps))
     fb_parts.append(
         f"Scores: aggregate={vr.aggregate:.2f} (need >={AGG_MIN}), min_dim={vr.min_dimension()} (need >={DIM_MIN}). "
         "Fix all items above; output must have no remaining issues."
     )
-    return {"validator": vr, "validation_passed": False, "feedback": "\n".join(fb_parts)}
+    return {
+        "validator": vr,
+        "validation_passed": False,
+        "feedback": "\n".join(fb_parts),
+        "agent_trace": _trace_append(
+            state,
+            "validator",
+            "Validation incomplete; feedback sent to generator.",
+            generation=gen,
+        ),
+    }
 
 
 def merge_suggestions_node(state: AgentState) -> dict:
     def fail(reason: str) -> dict:
-        return {"suggestion_swap": {"done": False, "reason": reason}}
+        return {
+            "suggestion_swap": {"done": False, "reason": reason},
+            "agent_trace": _trace_append(state, "suggestion_merge", f"Skipped ({reason})."),
+        }
 
     vr = state.get("validator")
     env = state.get("envelope")
-    if not vr or not env or not _passed(vr):
+    if not vr or not env or not _passed(vr, state):
         return fail("skipped")
     sugs = [s for s in (vr.suggestions or []) if (s or "").strip()]
     if not sugs:
@@ -429,7 +597,8 @@ def merge_suggestions_node(state: AgentState) -> dict:
                 "best_candidate_index": ci,
                 "base_score": bs_f[wi],
                 "candidate_score": cs_f[ci],
-            }
+            },
+            "agent_trace": _trace_append(state, "suggestion_merge", "No swap: best candidate did not beat weakest base."),
         }
     merged = list(base_norm)
     merged[wi] = candidates_norm[ci]
@@ -443,6 +612,7 @@ def merge_suggestions_node(state: AgentState) -> dict:
             "base_score": bs_f[wi],
             "candidate_score": cs_f[ci],
         },
+        "agent_trace": _trace_append(state, "suggestion_merge", "Re-ranked scenarios and swapped in one improved case."),
     }
 
 
@@ -466,7 +636,12 @@ def finalize_node(state: AgentState) -> dict:
     vp = state.get("validation_passed")
     hi = int(state.get("max_test_cases") or 0)
     if env and vp is True:
-        return {"final_cases": _final_cases_from_env(env, pri, sev, hi), "error": None}
+        fc = _final_cases_from_env(env, pri, sev, hi)
+        return {
+            "final_cases": fc,
+            "error": None,
+            "agent_trace": _trace_append(state, "finalize", f"Done: {len(fc)} scenario(s), validation passed."),
+        }
     if env and vp is False:
         out = _final_cases_from_env(env, pri, sev, hi)
         vr = state.get("validator")
@@ -474,33 +649,54 @@ def finalize_node(state: AgentState) -> dict:
         if vr:
             parts.extend([x for x in vr.must_fix if (x or "").strip()])
             parts.extend([x for x in vr.issues if (x or "").strip()])
-        return {"final_cases": out, "error": "; ".join(parts)}
+        return {
+            "final_cases": out,
+            "error": "; ".join(parts),
+            "agent_trace": _trace_append(
+                state, "finalize", f"Done: {len(out)} scenario(s); validation incomplete."
+            ),
+        }
     err = state.get("error") or state.get("parse_error") or "failed"
-    return {"final_cases": [], "error": err}
+    return {
+        "final_cases": [],
+        "error": err,
+        "agent_trace": _trace_append(state, "finalize", f"Done: no scenarios ({err[:120]})."),
+    }
 
 
 def route_parse(state: AgentState) -> str:
     if state.get("envelope"):
         return "score"
-    if int(state.get("generation") or 0) >= _max_rounds_cap(state):
+    gen = int(state.get("generation") or 0)
+    cap = _effective_round_cap(state)
+    if gen >= cap:
+        if int(state.get("auto_extend_remaining") or 0) > 0:
+            return "auto_extend"
         return "finalize"
     return "generate"
 
 
 def route_score(state: AgentState) -> str:
     vr = state.get("validator")
+    gen = int(state.get("generation") or 0)
+    cap = _effective_round_cap(state)
+    rem = int(state.get("auto_extend_remaining") or 0)
     if not vr:
-        if state.get("feedback") and int(state.get("generation") or 0) < _max_rounds_cap(state):
+        if state.get("feedback") and gen < cap:
             return "generate"
+        if state.get("feedback") and gen >= cap and rem > 0:
+            return "auto_extend"
         return "finalize"
-    if _passed(vr):
+    if _passed(vr, state):
         sugs = [s for s in (vr.suggestions or []) if (s or "").strip()]
         if sugs and not state.get("suggestion_swap"):
             return "merge_suggestions"
         return "finalize"
-    if int(state.get("generation") or 0) >= _max_rounds_cap(state):
-        return "finalize"
-    return "generate"
+    if gen < cap:
+        return "generate"
+    if rem > 0:
+        return "auto_extend"
+    return "finalize"
 
 
 def route_suggestion_swap(state: AgentState) -> str:
@@ -510,30 +706,57 @@ def route_suggestion_swap(state: AgentState) -> str:
     return "finalize"
 
 
+def auto_extend_rounds_node(state: AgentState) -> dict:
+    bump = _auto_extend_bump()
+    prev = int(state.get("rounds_extension") or 0)
+    rem = int(state.get("auto_extend_remaining") or 0)
+    fb = (state.get("feedback") or "").strip()
+    note = "[Automatic extension: extra revision attempts; UI max rounds unchanged.]"
+    return {
+        "rounds_extension": prev + bump,
+        "auto_extend_remaining": max(0, rem - 1),
+        "feedback": f"{fb}\n\n{note}".strip() if fb else note,
+        "agent_trace": _trace_append(
+            state,
+            "auto_extend",
+            f"Extended generation budget by {bump} (phases left: {max(0, rem - 1)}).",
+        ),
+    }
+
+
 def build_graph():
     g = StateGraph(AgentState)
+    g.add_node("plan", planner_node)
     g.add_node("generate", generate_node)
     g.add_node("parse", parse_node)
     g.add_node("score", score_node)
     g.add_node("merge_suggestions", merge_suggestions_node)
+    g.add_node("auto_extend", auto_extend_rounds_node)
     g.add_node("finalize", finalize_node)
-    g.set_entry_point("generate")
+    g.set_entry_point("plan")
+    g.add_edge("plan", "generate")
     g.add_edge("generate", "parse")
     g.add_conditional_edges(
         "parse",
         route_parse,
-        {"score": "score", "generate": "generate", "finalize": "finalize"},
+        {"score": "score", "generate": "generate", "finalize": "finalize", "auto_extend": "auto_extend"},
     )
     g.add_conditional_edges(
         "score",
         route_score,
-        {"finalize": "finalize", "generate": "generate", "merge_suggestions": "merge_suggestions"},
+        {
+            "finalize": "finalize",
+            "generate": "generate",
+            "merge_suggestions": "merge_suggestions",
+            "auto_extend": "auto_extend",
+        },
     )
     g.add_conditional_edges(
         "merge_suggestions",
         route_suggestion_swap,
         {"score": "score", "finalize": "finalize"},
     )
+    g.add_edge("auto_extend", "generate")
     g.add_edge("finalize", END)
     return g.compile()
 
@@ -575,6 +798,8 @@ def run_pipeline(
         "min_test_cases": min_test_cases,
         "max_test_cases": max_test_cases,
         "max_rounds": max_rounds,
+        "rounds_extension": 0,
+        "auto_extend_remaining": _auto_extend_phases_cap(),
         "feedback": "",
         "requirement_images": ri,
     }
@@ -587,6 +812,14 @@ def run_pipeline(
     swap = out.get("suggestion_swap")
     if isinstance(swap, dict):
         swap = dict(swap)
+    cp = out.get("coverage_plan")
+    if isinstance(cp, dict):
+        cp = dict(cp)
+    else:
+        cp = None
+    trace = out.get("agent_trace")
+    if not isinstance(trace, list):
+        trace = []
     return {
         "test_cases": cases,
         "validator": vr,
@@ -594,4 +827,6 @@ def run_pipeline(
         "error": out.get("error"),
         "generations": out.get("generation"),
         "suggestion_swap": swap,
+        "coverage_plan": cp,
+        "agent_trace": trace,
     }

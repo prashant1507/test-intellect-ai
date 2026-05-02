@@ -2,6 +2,19 @@
 
 ### General
 
+- Agents:
+  - Agent 1: Planner, Agent 2: Generator, Agent 3: Validator
+  - Iteration will be as per `effective_max = min(max_rounds_from_ui + (AGENTIC_AUTO_EXTEND_PHASES × AGENTIC_AUTO_EXTEND_ADDITIONAL_GENERATIONS, AGENTIC_ROUND_CAP_CEILING))`
+  - Agent 1 will run only 1 time but Agent 2 and 3 as per `effective_max`
+  - Notes:
+    - Traceability – How well scenarios line up with the written requirements (and coverage plan ids, when a plan exists). 
+    - Coverage – How well the set of scenarios covers the important behaviors, edge cases, and plan intents—not just “more tests.” 
+    - Gherkin – Structure and clarity of Given / When / Then style flow (order, completeness, consistency). 
+    - Concrete – Specific, testable wording (real UI text, URLs, outcomes) vs vague steps. 
+    - Non-redundant – How much overlap or duplicate coverage exists across scenarios.\
+    - 5 is the top of the scale for that dimension; 4 and 3 mean “good but not strongest” on Gherkin and Concrete. 
+    - Weighted 4.50 is the overall rubric score from combining the five; it’s what you use to compare runs at a glance.
+
 - Fetched and Generated content will rest if switch between JIRA MODE and PASTE REQUIREMENT MODE
 - Fetched and Generated content will not rest if switch between 
   - JIRA MODE and AUTO TEST MODE
@@ -76,7 +89,7 @@
     - Requirement Ticket if present
     - Test Case ID if present
 - If an exiting test case is regenerated and is marked as UPDATED, then the new change will be displayed in GREEN and old one in RED
-
+- Test case section will reset if user re fetch the requirements
 
 ---
 

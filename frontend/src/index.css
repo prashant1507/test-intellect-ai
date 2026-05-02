@@ -5006,6 +5006,456 @@ button.tc-summary:focus-visible {
   width: 2.75rem;
 }
 
+.agentic-coverage-panel {
+  margin: 0.65rem 0 1rem;
+  border: 1px solid var(--border, color-mix(in srgb, var(--text) 12%, transparent));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--card-bg) 96%, var(--muted) 4%);
+}
+
+.agentic-coverage-panel__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  padding: 0.55rem 0.75rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.95rem;
+  list-style: none;
+}
+
+.agentic-coverage-panel__summary::-webkit-details-marker {
+  display: none;
+}
+
+.agentic-coverage-panel__summary::before {
+  content: "";
+  display: inline-block;
+  width: 0.45rem;
+  height: 0.45rem;
+  margin-right: 0.15rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  vertical-align: middle;
+}
+
+.agentic-coverage-panel[open] .agentic-coverage-panel__summary::before {
+  transform: rotate(45deg);
+}
+
+.agentic-coverage-panel__badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.2rem 0.45rem;
+  border-radius: 4px;
+}
+
+.agentic-coverage-panel__badge--ok {
+  color: var(--text);
+  background: color-mix(in srgb, var(--ok, #2d7a4f) 22%, var(--card-bg));
+}
+
+.agentic-coverage-panel__badge--warn {
+  color: var(--text);
+  background: color-mix(in srgb, var(--warn, #b8860b) 28%, var(--card-bg));
+}
+
+.agentic-coverage-panel__badge--muted {
+  font-weight: 500;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 14%, var(--card-bg));
+}
+
+.agentic-coverage-panel__body {
+  padding: 0 0.75rem 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.agentic-coverage-panel__block {
+  margin-top: 0.75rem;
+}
+
+.agentic-coverage-panel__block:first-child {
+  margin-top: 0.35rem;
+}
+
+.agentic-coverage-panel__trace-details {
+  border: 1px solid color-mix(in srgb, var(--text) 8%, transparent);
+  border-radius: 6px;
+  padding: 0 0.5rem 0.4rem;
+  background: color-mix(in srgb, var(--card-bg) 92%, var(--muted) 8%);
+}
+
+.agentic-coverage-panel__trace-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.5rem;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.35rem;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--label);
+  list-style: none;
+}
+
+.agentic-coverage-panel__trace-summary::-webkit-details-marker {
+  display: none;
+}
+
+.agentic-coverage-panel__trace-summary::before {
+  content: "";
+  display: inline-block;
+  width: 0.4rem;
+  height: 0.4rem;
+  margin-right: 0.35rem;
+  border-right: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(-45deg);
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.agentic-coverage-panel__trace-details[open] .agentic-coverage-panel__trace-summary::before {
+  transform: rotate(45deg);
+}
+
+.agentic-coverage-panel__trace-count {
+  margin-left: auto;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--text) 6%, var(--card-bg));
+  padding: 0.12rem 0.42rem;
+  border-radius: 999px;
+}
+
+.agentic-coverage-panel__trace-details .agentic-coverage-trace {
+  margin: 0.15rem 0 0;
+  padding: 0 0.1rem 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.agentic-coverage-trace__round {
+  margin: 0.45rem 0 0.1rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.agentic-coverage-trace__round:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.agentic-coverage-trace__round-label {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0.18rem 0.45rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--text) 8%, var(--card-bg));
+}
+
+.agentic-coverage-trace__step {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 0.35rem 0.45rem;
+  align-items: start;
+  padding: 0.45rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--text) 9%, transparent);
+  background: color-mix(in srgb, var(--card-bg) 92%, var(--muted) 8%);
+}
+
+.agentic-coverage-trace__step--ok {
+  border-left: 3px solid color-mix(in srgb, var(--ok, #2d7a4f) 72%, transparent);
+}
+
+.agentic-coverage-trace__step--warn {
+  border-left: 3px solid color-mix(in srgb, var(--warn, #b8860b) 75%, transparent);
+}
+
+.agentic-coverage-trace__step--err {
+  border-left: 3px solid color-mix(in srgb, var(--err, #c62828) 70%, transparent);
+}
+
+.agentic-coverage-trace__step--neutral {
+  border-left: 3px solid color-mix(in srgb, var(--muted) 45%, transparent);
+}
+
+.agentic-coverage-trace__idx {
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  min-width: 1.1rem;
+  text-align: right;
+  line-height: 1.55;
+}
+
+.agentic-coverage-trace__glyph {
+  font-size: 0.78rem;
+  line-height: 1.55;
+  width: 1rem;
+  text-align: center;
+}
+
+.agentic-coverage-trace__glyph--ok {
+  color: var(--ok, #2d7a4f);
+}
+
+.agentic-coverage-trace__glyph--warn {
+  color: var(--warn, #b8860b);
+}
+
+.agentic-coverage-trace__glyph--err {
+  color: var(--err, #c62828);
+}
+
+.agentic-coverage-trace__glyph--neutral {
+  color: var(--muted);
+  opacity: 0.88;
+}
+
+.agentic-coverage-trace__main {
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: 0.4rem 0.55rem;
+}
+
+.agentic-coverage-trace__agent {
+  display: inline-block;
+  flex-shrink: 0;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0.12rem 0.42rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.agentic-coverage-trace__agent--planner {
+  background: color-mix(in srgb, #7c3aed 24%, var(--card-bg));
+}
+
+.agentic-coverage-trace__agent--generator {
+  background: color-mix(in srgb, #2563eb 22%, var(--card-bg));
+}
+
+.agentic-coverage-trace__agent--parser {
+  background: color-mix(in srgb, #d97706 24%, var(--card-bg));
+}
+
+.agentic-coverage-trace__agent--validator {
+  background: color-mix(in srgb, #dc2626 20%, var(--card-bg));
+}
+
+.agentic-coverage-trace__agent--auto_extend {
+  background: color-mix(in srgb, #0d9488 22%, var(--card-bg));
+}
+
+.agentic-coverage-trace__agent--suggestion_merge {
+  background: color-mix(in srgb, #16a34a 20%, var(--card-bg));
+}
+
+.agentic-coverage-trace__agent--finalize {
+  background: color-mix(in srgb, var(--muted) 20%, var(--card-bg));
+}
+
+.agentic-coverage-trace__agent--other {
+  background: color-mix(in srgb, var(--muted) 16%, var(--card-bg));
+}
+
+.agentic-coverage-trace__what {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--foreground, inherit);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.agentic-coverage-panel__h {
+  margin: 0 0 0.4rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--label);
+}
+
+.agentic-coverage-panel__subh {
+  margin: 0.65rem 0 0.25rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--label);
+}
+
+.agentic-coverage-panel__list {
+  margin: 0.25rem 0 0;
+  padding-left: 1.15rem;
+  font-size: 0.82rem;
+}
+
+.agentic-coverage-panel__gap-ids {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.65rem;
+  list-style: none;
+  padding-left: 0;
+}
+
+.agentic-coverage-panel__gap-ids li {
+  padding: 0.12rem 0.4rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--warn, #b8860b) 20%, var(--card-bg));
+  font-size: 0.78rem;
+}
+
+.agentic-coverage-panel__callout {
+  margin-top: 0.35rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--warn, #b8860b) 35%, transparent);
+  background: color-mix(in srgb, var(--warn, #b8860b) 12%, var(--card-bg));
+  color: var(--text);
+}
+
+.agentic-coverage-panel__callout-heading {
+  margin: 0 0 0.5rem;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--label);
+}
+
+.agentic-coverage-panel__callout-heading:last-child {
+  margin-bottom: 0;
+}
+
+.agentic-coverage-panel__callout-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.agentic-coverage-panel__callout-list--below-heading {
+  margin-top: 0;
+}
+
+.agentic-coverage-panel__callout-list li + li {
+  margin-top: 0.4rem;
+}
+
+.agentic-coverage-panel__issue-list {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.3rem 0 0;
+}
+
+.agentic-coverage-panel__issue-list li {
+  padding: 0.45rem 0.55rem;
+  margin-bottom: 0.35rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  word-break: break-word;
+  background: color-mix(in srgb, var(--text) 4%, var(--card-bg));
+  border: 1px solid color-mix(in srgb, var(--text) 9%, transparent);
+}
+
+.agentic-coverage-panel__issue-list li.agentic-coverage-panel__issue--deterministic {
+  border-left: 3px solid color-mix(in srgb, var(--muted) 55%, transparent);
+  background: color-mix(in srgb, var(--muted) 14%, var(--card-bg));
+}
+
+.agentic-coverage-panel__issue-list--bullets-plain {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+
+.agentic-coverage-panel__issue-list--bullets-plain li,
+.agentic-coverage-panel__issue-list--bullets-plain li.agentic-coverage-panel__issue--deterministic {
+  background: none;
+  border: none;
+  border-radius: 0;
+  border-left: none;
+  padding: 0.15rem 0;
+  margin-bottom: 0.35rem;
+}
+
+.agentic-coverage-panel__gaps {
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--warn, #b8860b) 10%, var(--card-bg));
+}
+
+.agentic-coverage-panel__swap {
+  margin-top: 0.65rem;
+}
+
+.agentic-coverage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.agentic-coverage-table td:nth-child(3) {
+  word-break: break-word;
+  max-width: min(36rem, 55vw);
+}
+
+.agentic-coverage-table th,
+.agentic-coverage-table td {
+  text-align: left;
+  padding: 0.35rem 0.45rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  vertical-align: top;
+}
+
+.agentic-coverage-table th {
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.agentic-coverage-dims {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7rem, 1fr));
+  gap: 0.35rem 0.75rem;
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+.agentic-coverage-dims dt {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.agentic-coverage-dims dd {
+  margin: 0.1rem 0 0;
+  font-weight: 600;
+}
+
 .tc-desc {
   flex: 1 1 100%;
   font-size: 0.88rem;
