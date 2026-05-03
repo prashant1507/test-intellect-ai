@@ -335,7 +335,9 @@ def _norm(c: dict, *, default_change_status: str = "new", allowed_priorities: li
         cs = low if low in ("new", "updated", "unchanged") else default_change_status
     st = [_WS_NORM.sub(" ", _cap_gherkin_line(x)).strip() for x in st]
 
-    if c.get("jira_existing"):
+    jk = _pick_jira_issue_key(c.get("jira_issue_key"))
+    from_jira = bool(c.get("jira_existing")) or bool(jk)
+    if from_jira:
         pr = str(c.get("priority") or "").strip()
         prio = pr if pr else _norm_priority(None, allowed_priorities)
         sv = str(c.get("severity") or "").strip()
@@ -352,7 +354,7 @@ def _norm(c: dict, *, default_change_status: str = "new", allowed_priorities: li
         "priority": prio,
         "severity": sev,
     }
-    if c.get("jira_existing"):
+    if from_jira:
         out["jira_existing"] = True
     js = str(c.get("jira_status") or "").strip()
     if js:
@@ -363,7 +365,6 @@ def _norm(c: dict, *, default_change_status: str = "new", allowed_priorities: li
     pi = str(c.get("priority_icon_url") or "").strip()
     if pi:
         out["priority_icon_url"] = pi
-    jk = _pick_jira_issue_key(c.get("jira_issue_key"))
     if jk:
         out["jira_issue_key"] = jk
     sc = _clamp_score_0_10(c.get("score"))
@@ -861,6 +862,68 @@ def strip_test_case_diff_meta(tc: dict) -> dict:
     if not isinstance(tc, dict):
         return tc
     return {k: v for k, v in tc.items() if not str(k).startswith("previous_")}
+
+
+def reconcile_jira_linked_test_cases(
+    cases: list,
+    jira_entries: list | None,
+    *,
+    allowed_priorities: list[str],
+    allowed_severities: list[str],
+) -> None:
+    if not cases:
+        return
+    je_by_key: dict[str, dict] = {}
+    for je in jira_entries or []:
+        if not isinstance(je, dict):
+            continue
+        k = norm_issue_key(str(je.get("issue_key") or ""))
+        if k:
+            je_by_key[k] = je
+    for tc in cases:
+        if not isinstance(tc, dict):
+            continue
+        jk = _pick_jira_issue_key(tc.get("jira_issue_key"))
+        if not jk:
+            continue
+        tc["jira_issue_key"] = jk
+        tc["jira_existing"] = True
+        je = je_by_key.get(jk)
+        cur_n = _norm(
+            strip_test_case_diff_meta(tc),
+            default_change_status="unchanged",
+            allowed_priorities=allowed_priorities,
+            allowed_severities=allowed_severities,
+        )
+        if not je:
+            if str(tc.get("change_status") or "").lower() == "new":
+                tc["change_status"] = "unchanged"
+            continue
+        base_tc = je.get("test_case") if isinstance(je.get("test_case"), dict) else {}
+        base_n = _norm(
+            base_tc,
+            default_change_status="unchanged",
+            allowed_priorities=allowed_priorities,
+            allowed_severities=allowed_severities,
+        )
+        stn = str(je.get("status_name") or "").strip()
+        if stn and not str(tc.get("jira_status") or "").strip():
+            tc["jira_status"] = stn
+        bu = str(je.get("browse_url") or "").strip()
+        if bu and not str(tc.get("jira_browse_url") or "").strip():
+            tc["jira_browse_url"] = bu
+        same = _tc_signature_norm(cur_n) == _tc_signature_norm(base_n)
+        if same:
+            tc["change_status"] = "unchanged"
+            for fld in ("description", "preconditions", "steps", "expected_result"):
+                tc.pop(f"previous_{fld}", None)
+            continue
+        tc["change_status"] = "updated"
+        for fld in ("description", "preconditions", "steps", "expected_result"):
+            pk = f"previous_{fld}"
+            if pk in tc:
+                continue
+            tc[pk] = base_n.get("preconditions", "") if fld == "preconditions" else base_n.get(fld)
 
 
 def _fit_case_scores_0_10(arr: object, n: int) -> list[float] | None:

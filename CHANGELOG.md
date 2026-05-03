@@ -198,3 +198,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Fix issue with HTML report from Start Test
+
+---
+## [2.5.1]
+
+### Changed
+- Fix minor issues

@@ -5363,6 +5363,16 @@ button.tc-summary:focus-visible {
   margin-top: 0.4rem;
 }
 
+.agentic-coverage-panel__callout-sublist {
+  margin: 0.35rem 0 0;
+  padding-left: 1.05rem;
+  list-style: disc;
+}
+
+.agentic-coverage-panel__callout-sublist li + li {
+  margin-top: 0.28rem;
+}
+
 .agentic-coverage-panel__issue-list {
   list-style: none;
   padding-left: 0;

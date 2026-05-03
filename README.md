@@ -479,9 +479,3 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 - Choice to generate test cases based on BDD or something else
 - RAG feature
 - Link with QA test framework and DEV code
-
-## Last
-
-- Use TSX instead of JSX for frontend 
-- Provide a dropdown to select models or type model ID
-- Use a multi-model approach for Test Generation, coding, and vision

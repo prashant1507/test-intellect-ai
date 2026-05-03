@@ -29,6 +29,7 @@ class TestCaseItem(BaseModel):
     change_status: str = "new"
     priority: str
     severity: str = ""
+    jira_issue_key: str = ""
 
 
 class GenerationEnvelope(BaseModel):

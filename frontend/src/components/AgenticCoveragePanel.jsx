@@ -122,6 +122,22 @@ function splitRunSummary(err) {
   return parts.length ? parts : [s];
 }
 
+function groupScenarioFollowUps(lines) {
+  const groups = [];
+  for (const raw of lines) {
+    const line = String(raw ?? "").trim();
+    if (!line) continue;
+    if (/^scenario\s+\d+\s*:/i.test(line)) {
+      groups.push({ lead: line, nested: [] });
+    } else if (groups.length > 0) {
+      groups[groups.length - 1].nested.push(line);
+    } else {
+      groups.push({ lead: line, nested: [] });
+    }
+  }
+  return groups;
+}
+
 function calloutHeadingAndBullets(err) {
   const parts = splitRunSummary(err);
   if (
@@ -171,6 +187,8 @@ export function AgenticCoveragePanel({ agentic }) {
   const showValidator = v && typeof v === "object";
   const pipelineEntries = trace.length ? buildPipelineTraceEntries(trace) : [];
   const calloutHB = err ? calloutHeadingAndBullets(err) : { heading: null, bullets: [] };
+  const calloutGroups =
+    calloutHB.heading && calloutHB.bullets.length ? groupScenarioFollowUps(calloutHB.bullets) : null;
 
   return (
     <details className="agentic-coverage-panel">
@@ -207,9 +225,22 @@ export function AgenticCoveragePanel({ agentic }) {
                     : "agentic-coverage-panel__callout-list"
                 }
               >
-                {calloutHB.bullets.map((line, i) => (
-                  <li key={i}>{normalizeValidatorLine(line)}</li>
-                ))}
+                {calloutGroups
+                  ? calloutGroups.map((g, i) => (
+                      <li key={i}>
+                        {normalizeValidatorLine(g.lead)}
+                        {g.nested.length ? (
+                          <ul className="agentic-coverage-panel__callout-sublist">
+                            {g.nested.map((line, j) => (
+                              <li key={j}>{normalizeValidatorLine(line)}</li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </li>
+                    ))
+                  : calloutHB.bullets.map((line, i) => (
+                      <li key={i}>{normalizeValidatorLine(line)}</li>
+                    ))}
               </ul>
             ) : null}
           </div>

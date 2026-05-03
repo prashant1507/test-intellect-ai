@@ -40,6 +40,7 @@ from ai_client import (
     generate_test_cases,
     merge_ai_cases_with_jira_existing,
     merge_test_cases_with_previous,
+    reconcile_jira_linked_test_cases,
     resolve_priority_allowed_for_generation,
     resolve_severity_allowed_for_generation,
     score_merged_test_cases,
@@ -553,6 +554,12 @@ async def _finalize_cases_after_llm(
             allowed_priorities=allowed_priorities,
             allowed_severities=allowed_severities,
         )
+    reconcile_jira_linked_test_cases(
+        cases,
+        jira_entries,
+        allowed_priorities=allowed_priorities,
+        allowed_severities=allowed_severities,
+    )
     disambiguate_duplicate_test_case_descriptions(cases)
     await asyncio.to_thread(score_merged_test_cases, req, cases)
     if not settings.mock:
