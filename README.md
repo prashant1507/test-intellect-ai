@@ -79,104 +79,6 @@ flowchart LR
 ## Functionality Flowcharts
 
 <details>
-<summary><strong>JIRA Mode</strong></summary>
-
-```mermaid
-flowchart TB
-
-  subgraph ui[JIRA tab]
-    A[Enter Jira URL, username, password, ticket ID, test project]
-    B[Fetch Requirements]
-    C[Generate Test Cases — classic or agentic]
-    A --> B
-    A --> C
-  end
-
-  B -->|fetch ticket| F[Backend Jira REST]
-  F --> R[Prepare requirements and metadata]
-  R --> M{Optional memory or diff}
-  M --> UI2[Show requirements and diff]
-
-  subgraph agentic[Agentic pipeline — backend LangGraph]
-    direction TB
-    PL[Coverage planner LLM]
-    GN[Generator LLM]
-    PS[Parse JSON envelope]
-    VL[Validator rubric LLM]
-    SU[Suggestion merge optional]
-    FZ[Finalize — cases + trace]
-    AX[Auto-extend rounds optional]
-    PL --> GN --> PS
-    PS -->|valid envelope| VL
-    PS -.->|retry with feedback| GN
-    VL -->|pass / budget exhausted| FZ
-    VL -.->|refine with feedback| GN
-    VL --> SU
-    SU --> VL
-    VL -.->|extend generation budget| AX
-    AX --> GN
-  end
-
-  C -->|POST /api/generate-tests| GC[LLM single-shot BDD JSON]
-  C -->|POST /api/generate-tests-agentic| PL
-
-  GC --> MERGE[Merge linked JIRA tests, memory, reconcile, score]
-  FZ --> MERGE
-
-  MERGE --> T[Test Cases panel — Agentic Pipeline panel when agentic]
-  T -->|run auto test| SW[Switch to Auto Tests tab]
-```
-
-</details>
-
-<details>
-<summary><strong>Paste Requirements</strong></summary>
-
-```mermaid
-flowchart TB
-
-  subgraph ui[Paste Requirements]
-    P[Enter title, requirement text, optional attachments]
-    G2[Generate Test Cases — classic or agentic]
-    P --> G2
-  end
-
-  G2 --> PREP[Requirements from paste — optional memory / similarity]
-
-  subgraph agenticPaste[Agentic pipeline — backend LangGraph]
-    direction TB
-    PL[Coverage planner LLM]
-    GN[Generator LLM]
-    PS[Parse JSON envelope]
-    VL[Validator rubric LLM]
-    SU[Suggestion merge optional]
-    FZ[Finalize — cases + trace]
-    AX[Auto-extend rounds optional]
-    PL --> GN --> PS
-    PS -->|valid envelope| VL
-    PS -.->|retry with feedback| GN
-    VL -->|pass / budget exhausted| FZ
-    VL -.->|refine with feedback| GN
-    VL --> SU
-    SU --> VL
-    VL -.->|extend generation budget| AX
-    AX --> GN
-  end
-
-  PREP -->|POST /api/generate-from-paste| GC[LLM single-shot BDD JSON]
-  PREP -->|POST /api/generate-from-paste-agentic| PL
-
-  GC --> MERGE[Paste path: merge memory, reconcile keys, score]
-  FZ --> MERGE
-
-  MERGE --> TC[Test Cases panel — Agentic Pipeline panel when agentic]
-
-  TC -->|run auto test| SW2[Auto Tests tab with prefilled data]
-```
-
-</details>
-
-<details>
 <summary><strong>Auto Test (Suite Run)</strong></summary>
 
 ```mermaid
@@ -251,6 +153,7 @@ flowchart TB
 ```
 
 </details>
+
 
 <details>
 <summary><strong>Auto Test (Single Run)</strong></summary>
@@ -329,15 +232,116 @@ flowchart TB
 
 </details>
 
+<details>
+<summary><strong>JIRA Mode</strong></summary>
+
+```mermaid
+flowchart TB
+
+  subgraph ui[JIRA tab]
+    A[Enter Jira URL, username, password, ticket ID, test project]
+    B[Fetch Requirements]
+    C[Generate Test Cases — classic or agentic]
+    A --> B
+    A --> C
+  end
+
+  B -->|fetch ticket| F[Backend Jira REST]
+  F --> R[Prepare requirements and metadata]
+  R --> M{Optional memory or diff}
+  M --> UI2[Show requirements and diff]
+
+  subgraph agentic[Agentic pipeline — backend LangGraph]
+    direction TB
+    PL[Coverage planner LLM]
+    GN[Generator LLM]
+    PS[Parse JSON envelope]
+    VL[Validator rubric LLM]
+    SU[Suggestion merge optional]
+    FZ[Finalize — cases + trace]
+    AX[Auto-extend rounds optional]
+    PL --> GN --> PS
+    PS -->|valid envelope| VL
+    PS -.->|retry with feedback| GN
+    VL -->|pass / budget exhausted| FZ
+    VL -.->|refine with feedback| GN
+    VL --> SU
+    SU --> VL
+    VL -.->|extend generation budget| AX
+    AX --> GN
+  end
+
+  C -->|POST /api/generate-tests| GC[LLM single-shot BDD JSON]
+  C -->|POST /api/generate-tests-agentic| PL
+
+  GC --> MERGE[Merge linked JIRA tests, memory, reconcile, score]
+  FZ --> MERGE
+
+  MERGE --> T[Test Cases panel — Agentic Pipeline panel when agentic]
+  T -->|run auto test| SW[Switch to Auto Tests tab]
+```
+
+</details>
+
+
+<details>
+<summary><strong>Paste Requirements</strong></summary>
+
+```mermaid
+flowchart TB
+
+  subgraph ui[Paste Requirements]
+    P[Enter title, requirement text, optional attachments]
+    G2[Generate Test Cases — classic or agentic]
+    P --> G2
+  end
+
+  G2 --> PREP[Requirements from paste — optional memory / similarity]
+
+  subgraph agenticPaste[Agentic pipeline — backend LangGraph]
+    direction TB
+    PL[Coverage planner LLM]
+    GN[Generator LLM]
+    PS[Parse JSON envelope]
+    VL[Validator rubric LLM]
+    SU[Suggestion merge optional]
+    FZ[Finalize — cases + trace]
+    AX[Auto-extend rounds optional]
+    PL --> GN --> PS
+    PS -->|valid envelope| VL
+    PS -.->|retry with feedback| GN
+    VL -->|pass / budget exhausted| FZ
+    VL -.->|refine with feedback| GN
+    VL --> SU
+    SU --> VL
+    VL -.->|extend generation budget| AX
+    AX --> GN
+  end
+
+  PREP -->|POST /api/generate-from-paste| GC[LLM single-shot BDD JSON]
+  PREP -->|POST /api/generate-from-paste-agentic| PL
+
+  GC --> MERGE[Paste path: merge memory, reconcile keys, score]
+  FZ --> MERGE
+
+  MERGE --> TC[Test Cases panel — Agentic Pipeline panel when agentic]
+
+  TC -->|run auto test| SW2[Auto Tests tab with prefilled data]
+```
+
+</details>
+
+
+
 ---
 
 ## Features
 
 ### Modes (toggle via `.env`)
 
+- **Auto Tests**: Run BDD-style browser and API automation, persist suites, and produce reports.
 - **Jira**: Load a ticket and convert ADF/wiki/HTML to plain text for generation.
 - **Paste Requirements**: Generate from pasted text or Markdown without Jira.
-- **Auto Tests**: Run BDD-style browser and API automation, persist suites, and produce reports.
 
 ### AI Test Generation
 
@@ -412,9 +416,9 @@ flowchart TB
 4. **UI flags:** Set at-least one
     - `SHOW_MEMORY_UI`
     - `SHOW_AUDIT_UI`
+    - `SHOW_AUTO_TESTS_UI`
     - `SHOW_JIRA_MODE_UI`
     - `SHOW_PASTE_REQUIREMENTS_MODE_UI`
-    - `SHOW_AUTO_TESTS_UI`
 
 5. **Keycloak (optional):** `USE_KEYCLOAK=true` and realm/client/URLs; for Docker, browser-reachable `KEYCLOAK_URL` and
    often `KEYCLOAK_INTERNAL_URL` for the API. Redirect URIs in Keycloak must match the app origin/port.

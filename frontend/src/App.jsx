@@ -142,7 +142,7 @@ export default function App() {
   const [oidcUser, setOidcUser] = useState(null);
   const [idleTimeoutNotice, setIdleTimeoutNotice] = useState(false);
   const [idleMinutes, setIdleMinutes] = useState(5);
-  const [inputMode, setInputMode] = useState("jira");
+  const [inputMode, setInputMode] = useState("automation");
   const [pasteTitle, setPasteTitle] = useState("");
   const [pasteText, setPasteText] = useState("");
   const [pasteMemoryKey, setPasteMemoryKey] = useState("");
@@ -166,9 +166,9 @@ export default function App() {
 
   useEffect(() => {
     const visible = [];
+    if (showAutoTestsUi) visible.push("automation");
     if (showJiraModeUi) visible.push("jira");
     if (showPasteModeUi) visible.push("paste");
-    if (showAutoTestsUi) visible.push("automation");
     if (visible.length === 0) return;
     if (!visible.includes(inputMode)) {
       const next = visible[0];
@@ -2498,6 +2498,21 @@ export default function App() {
           <div className="card form-card">
             {showJiraModeUi || showPasteModeUi || showAutoTestsUi ? (
               <div className="mode-switch" role="tablist" aria-label="Requirement source">
+                {showAutoTestsUi ? (
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={inputMode === "automation"}
+                    className={`mode-tab${inputMode === "automation" ? " active" : ""}`}
+                    onClick={() => {
+                      if (inputMode === "automation") return;
+                      inputModeRef.current = "automation";
+                      setInputMode("automation");
+                    }}
+                  >
+                    Auto Tests
+                  </button>
+                ) : null}
                 {showJiraModeUi ? (
                   <button
                     type="button"
@@ -2532,21 +2547,6 @@ export default function App() {
                     Paste Requirements
                   </button>
                 ) : null}
-                {showAutoTestsUi ? (
-                  <button
-                    type="button"
-                    role="tab"
-                    aria-selected={inputMode === "automation"}
-                    className={`mode-tab${inputMode === "automation" ? " active" : ""}`}
-                    onClick={() => {
-                      if (inputMode === "automation") return;
-                      inputModeRef.current = "automation";
-                      setInputMode("automation");
-                    }}
-                  >
-                    Auto Tests
-                  </button>
-                ) : null}
               </div>
             ) : (
               <p className="form-hint-warn" role="status">
@@ -2558,105 +2558,6 @@ export default function App() {
               className="form-card-fieldset"
               aria-busy={generatingTestCases && inputMode !== "automation"}
             >
-            {showPasteModeUi ? (
-              <div
-                className="paste-requirements-shell"
-                hidden={inputMode !== "paste"}
-                aria-hidden={inputMode !== "paste"}
-              >
-                <div className="row cols-2">
-                  <div>
-                    <label htmlFor="pasteTitle" className="label-with-info">
-                      <span>Title (Optional)</span>
-                      <FieldInfo text="Optional short label for this pasted requirement in history." />
-                    </label>
-                    <input
-                      id="pasteTitle"
-                      value={pasteTitle}
-                      onChange={(e) => setPasteTitle(e.target.value)}
-                      placeholder=""
-                      autoComplete="off"
-                    />
-                  </div>
-                  <div>
-                    <label htmlFor="pasteMemoryKey" className="label-with-info">
-                      <span>Save as Key (Optional)</span>
-                      <FieldInfo text="Stable key for history and diffs; leave empty to auto-generate." />
-                    </label>
-                    <input
-                      id="pasteMemoryKey"
-                      value={pasteMemoryKey}
-                      onChange={(e) => setPasteMemoryKey(e.target.value)}
-                      placeholder=""
-                      autoComplete="off"
-                      aria-describedby="hint-paste-key"
-                    />
-                    <span id="hint-paste-key" className="sr-only">
-                      Stable key for history and diffs; leave empty to auto-generate.
-                    </span>
-                  </div>
-                </div>
-                <div className="row">
-                  <label htmlFor="pasteText" className="label-with-info">
-                    <span>Requirements</span>
-                    <FieldInfo text="Text the model uses to generate tests; Markdown is supported." />
-                  </label>
-                  <textarea
-                    id="pasteText"
-                    className="paste-requirements-textarea"
-                    value={pasteText}
-                    onChange={(e) => setPasteText(e.target.value)}
-                    placeholder="Paste plain text or Markdown…"
-                    rows={2}
-                    aria-required="true"
-                    aria-describedby="hint-paste-preview"
-                  />
-                  <span id="hint-paste-preview" className="sr-only">
-                    Text the model uses to generate tests; Markdown is supported.
-                  </span>
-                  <PasteRequirementsPreview text={pasteText} />
-                </div>
-                <MinMaxTestCaseFields
-                  idPrefix="paste"
-                  layout="sideBySide"
-                  minTestCases={minTestCases}
-                  maxTestCases={maxTestCases}
-                  onMinChange={setMinTestCases}
-                  onMaxChange={setMaxTestCases}
-                  parseMinTc={parseMinTc}
-                  parseMaxTc={parseMaxTc}
-                />
-                {reqImgConfig.visionConfigured && !mock && pasteText.trim() ? (
-                  <RequirementMockupsBlock
-                    title="Upload Mockups and Attachments"
-                    fieldInfoText="Mockups or documents sent to the LLM with your pasted text: PNG, JPEG, GIF, WebP, or PDF. ZIP and other archive files are not allowed."
-                    pickerId="req-image-upload-paste"
-                    disabled={generatingTestCases}
-                    onChange={onReqImageFilesInput}
-                    describedBy="hint-req-images-paste"
-                    maxCount={reqImgConfig.maxCount}
-                    combinedCount={reqImageFiles.length}
-                    atSizeLimit={reqImageAtSizeLimit}
-                    variant="paste"
-                    hintId="hint-req-images-paste"
-                    hintChildren={
-                      <>
-                        Up to {reqImgConfig.maxCount} file(s), {reqImgConfig.maxTotalMb} MB combined.
-                      </>
-                    }
-                    files={reqImageFiles}
-                    onRemoveAt={removeReqImageAt}
-                  />
-                ) : null}
-                <AgenticPipelineOptions
-                  checked={useAgenticGen}
-                  onCheckedChange={setUseAgenticGen}
-                  maxRounds={agenticMaxRounds}
-                  onMaxRoundsChange={setAgenticMaxRounds}
-                  roundsInputId="agenticRoundsPaste"
-                />
-              </div>
-            ) : null}
             {showAutoTestsUi ? (
               <div
                 hidden={inputMode !== "automation"}
@@ -2818,6 +2719,105 @@ export default function App() {
                 setAgenticMaxRounds={setAgenticMaxRounds}
               />
             ) : null}
+              </div>
+            ) : null}
+            {showPasteModeUi ? (
+              <div
+                className="paste-requirements-shell"
+                hidden={inputMode !== "paste"}
+                aria-hidden={inputMode !== "paste"}
+              >
+                <div className="row cols-2">
+                  <div>
+                    <label htmlFor="pasteTitle" className="label-with-info">
+                      <span>Title (Optional)</span>
+                      <FieldInfo text="Optional short label for this pasted requirement in history." />
+                    </label>
+                    <input
+                      id="pasteTitle"
+                      value={pasteTitle}
+                      onChange={(e) => setPasteTitle(e.target.value)}
+                      placeholder=""
+                      autoComplete="off"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="pasteMemoryKey" className="label-with-info">
+                      <span>Save as Key (Optional)</span>
+                      <FieldInfo text="Stable key for history and diffs; leave empty to auto-generate." />
+                    </label>
+                    <input
+                      id="pasteMemoryKey"
+                      value={pasteMemoryKey}
+                      onChange={(e) => setPasteMemoryKey(e.target.value)}
+                      placeholder=""
+                      autoComplete="off"
+                      aria-describedby="hint-paste-key"
+                    />
+                    <span id="hint-paste-key" className="sr-only">
+                      Stable key for history and diffs; leave empty to auto-generate.
+                    </span>
+                  </div>
+                </div>
+                <div className="row">
+                  <label htmlFor="pasteText" className="label-with-info">
+                    <span>Requirements</span>
+                    <FieldInfo text="Text the model uses to generate tests; Markdown is supported." />
+                  </label>
+                  <textarea
+                    id="pasteText"
+                    className="paste-requirements-textarea"
+                    value={pasteText}
+                    onChange={(e) => setPasteText(e.target.value)}
+                    placeholder="Paste plain text or Markdown…"
+                    rows={2}
+                    aria-required="true"
+                    aria-describedby="hint-paste-preview"
+                  />
+                  <span id="hint-paste-preview" className="sr-only">
+                    Text the model uses to generate tests; Markdown is supported.
+                  </span>
+                  <PasteRequirementsPreview text={pasteText} />
+                </div>
+                <MinMaxTestCaseFields
+                  idPrefix="paste"
+                  layout="sideBySide"
+                  minTestCases={minTestCases}
+                  maxTestCases={maxTestCases}
+                  onMinChange={setMinTestCases}
+                  onMaxChange={setMaxTestCases}
+                  parseMinTc={parseMinTc}
+                  parseMaxTc={parseMaxTc}
+                />
+                {reqImgConfig.visionConfigured && !mock && pasteText.trim() ? (
+                  <RequirementMockupsBlock
+                    title="Upload Mockups and Attachments"
+                    fieldInfoText="Mockups or documents sent to the LLM with your pasted text: PNG, JPEG, GIF, WebP, or PDF. ZIP and other archive files are not allowed."
+                    pickerId="req-image-upload-paste"
+                    disabled={generatingTestCases}
+                    onChange={onReqImageFilesInput}
+                    describedBy="hint-req-images-paste"
+                    maxCount={reqImgConfig.maxCount}
+                    combinedCount={reqImageFiles.length}
+                    atSizeLimit={reqImageAtSizeLimit}
+                    variant="paste"
+                    hintId="hint-req-images-paste"
+                    hintChildren={
+                      <>
+                        Up to {reqImgConfig.maxCount} file(s), {reqImgConfig.maxTotalMb} MB combined.
+                      </>
+                    }
+                    files={reqImageFiles}
+                    onRemoveAt={removeReqImageAt}
+                  />
+                ) : null}
+                <AgenticPipelineOptions
+                  checked={useAgenticGen}
+                  onCheckedChange={setUseAgenticGen}
+                  maxRounds={agenticMaxRounds}
+                  onMaxRoundsChange={setAgenticMaxRounds}
+                  roundsInputId="agenticRoundsPaste"
+                />
               </div>
             ) : null}
             </fieldset>
