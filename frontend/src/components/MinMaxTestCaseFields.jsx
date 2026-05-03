@@ -33,7 +33,7 @@ export function MinMaxTestCaseFields({
       <div>
         <label htmlFor={maxId} className="label-with-info">
           <span>Maximum Test Cases</span>
-          <FieldInfo text="Maximum number of test cases to generate." />
+          <FieldInfo text="Maximum number of test cases to generate (whole number ≥ 1). Must be greater than or equal to minimum." />
         </label>
         <input
           id={maxId}
@@ -42,7 +42,10 @@ export function MinMaxTestCaseFields({
           autoComplete="off"
           value={maxTestCases}
           onChange={(e) => onMaxChange(e.target.value)}
-          onBlur={() => onMaxChange(String(parseMaxTc(maxTestCases)))}
+          onBlur={() => {
+            const n = parseMaxTc(maxTestCases);
+            if (Number.isFinite(n)) onMaxChange(String(n));
+          }}
           aria-describedby={hintMaxId}
         />
         <span id={hintMaxId} className="sr-only">

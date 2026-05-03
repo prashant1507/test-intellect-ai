@@ -8,13 +8,13 @@
 [![LLM](https://img.shields.io/badge/LLM-OpenAI%20compatible-8B5CF6?style=flat-square&logo=openai&logoColor=white)](https://platform.openai.com/docs/api-reference)
 [![Keycloak](https://img.shields.io/badge/Keycloak-OIDC-5C6BC0?style=flat-square&logo=keycloak&logoColor=white)](https://www.keycloak.org/)
 
-Web app that pulls JIRA requirements (or paste text), uses OpenAI-compatible APIs to generate Gherkin-style test cases,
-push to JIRA, and run UI/API automation.
+Web app that ingests requirements from Jira or free-form text, generates Gherkin-style test cases via OpenAI-compatible
+APIs, writes them back to Jira, and runs UI and API automation.
 
 Optionally:
 
-- Save runs per ticket in SQLite 
-- Track actions in an audit log 
+- Save runs per ticket in SQLite
+- Track actions in an audit log
 - Use Keycloak to associate users with activity
 
 ---
@@ -35,15 +35,14 @@ Optionally:
 <summary><strong>Images</strong></summary>
 
 <img src="resources/product-sample/images/img-1.png" alt="UI" width="200" />
-<img src="resources/product-sample/images/img-1a.png" alt="UI" width="200" />
 <img src="resources/product-sample/images/img-2.png" alt="UI" width="200" />
 <img src="resources/product-sample/images/img-2a.png" alt="UI" width="200" />
+<img src="resources/product-sample/images/img-2b.png" alt="UI" width="200" />
 <img src="resources/product-sample/images/img-3.png" alt="UI" width="200" />
 <img src="resources/product-sample/images/img-4.png" alt="UI" width="200" />
 <img src="resources/product-sample/images/img-5.png" alt="UI" width="200" />
 <img src="resources/product-sample/images/img-6.png" alt="UI" width="200" />
 <img src="resources/product-sample/images/img-7.png" alt="UI" width="200" />
-<img src="resources/product-sample/images/img-8.png" alt="UI" width="200" />
 <img src="resources/product-sample/images/img-9.png" alt="UI" width="200" />
 <img src="resources/product-sample/images/img-10.png" alt="UI" width="200" />
 <img src="resources/product-sample/images/img-11.png" alt="UI" width="200" />
@@ -88,7 +87,7 @@ flowchart TB
   subgraph ui[JIRA tab]
     A[Enter Jira URL, username, password, ticket ID, test project]
     B[Fetch Requirements]
-    C[Generate Test Cases]
+    C[Generate Test Cases — classic or agentic]
     A --> B
     A --> C
   end
@@ -98,9 +97,33 @@ flowchart TB
   R --> M{Optional memory or diff}
   M --> UI2[Show requirements and diff]
 
-  C -->|generate tests| G[LLM creates BDD test cases]
-  G --> T[Test Cases panel]
+  subgraph agentic[Agentic pipeline — backend LangGraph]
+    direction TB
+    PL[Coverage planner LLM]
+    GN[Generator LLM]
+    PS[Parse JSON envelope]
+    VL[Validator rubric LLM]
+    SU[Suggestion merge optional]
+    FZ[Finalize — cases + trace]
+    AX[Auto-extend rounds optional]
+    PL --> GN --> PS
+    PS -->|valid envelope| VL
+    PS -.->|retry with feedback| GN
+    VL -->|pass / budget exhausted| FZ
+    VL -.->|refine with feedback| GN
+    VL --> SU
+    SU --> VL
+    VL -.->|extend generation budget| AX
+    AX --> GN
+  end
 
+  C -->|POST /api/generate-tests| GC[LLM single-shot BDD JSON]
+  C -->|POST /api/generate-tests-agentic| PL
+
+  GC --> MERGE[Merge linked JIRA tests, memory, reconcile, score]
+  FZ --> MERGE
+
+  MERGE --> T[Test Cases panel — Agentic Pipeline panel when agentic]
   T -->|run auto test| SW[Switch to Auto Tests tab]
 ```
 
@@ -114,12 +137,39 @@ flowchart TB
 
   subgraph ui[Paste Requirements]
     P[Enter title, requirement text, optional attachments]
-    G2[Generate Test Cases]
+    G2[Generate Test Cases — classic or agentic]
     P --> G2
   end
 
-  G2 -->|generate from paste| LLM[LLM creates BDD test cases JSON]
-  LLM --> TC[Test Cases panel same as Jira]
+  G2 --> PREP[Requirements from paste — optional memory / similarity]
+
+  subgraph agenticPaste[Agentic pipeline — backend LangGraph]
+    direction TB
+    PL[Coverage planner LLM]
+    GN[Generator LLM]
+    PS[Parse JSON envelope]
+    VL[Validator rubric LLM]
+    SU[Suggestion merge optional]
+    FZ[Finalize — cases + trace]
+    AX[Auto-extend rounds optional]
+    PL --> GN --> PS
+    PS -->|valid envelope| VL
+    PS -.->|retry with feedback| GN
+    VL -->|pass / budget exhausted| FZ
+    VL -.->|refine with feedback| GN
+    VL --> SU
+    SU --> VL
+    VL -.->|extend generation budget| AX
+    AX --> GN
+  end
+
+  PREP -->|POST /api/generate-from-paste| GC[LLM single-shot BDD JSON]
+  PREP -->|POST /api/generate-from-paste-agentic| PL
+
+  GC --> MERGE[Paste path: merge memory, reconcile keys, score]
+  FZ --> MERGE
+
+  MERGE --> TC[Test Cases panel — Agentic Pipeline panel when agentic]
 
   TC -->|run auto test| SW2[Auto Tests tab with prefilled data]
 ```
@@ -285,58 +335,64 @@ flowchart TB
 
 ### Modes (toggle via `.env`)
 
-- **JIRA:** Fetch ticket (ADF/wiki/HTML → text).
-- **Paste Requirements:** Generate from text/Markdown, no JIRA.
-- **Auto Tests:** BDD browser runs, saved suite, reports.
+- **Jira**: Load a ticket and convert ADF/wiki/HTML to plain text for generation.
+- **Paste Requirements**: Generate from pasted text or Markdown without Jira.
+- **Auto Tests**: Run BDD-style browser and API automation, persist suites, and produce reports.
 
-### AI test generation
+### AI Test Generation
 
-- Any OpenAI-compatible `/v1/chat/completions` (local e.g. LM Studio, or cloud).
-- **Vision:** optional requirement mockups/images to the model (enable in `.env`; use a vision-capable model).
-- Structured Gherkin scenarios, configurable **min/max** test case count (`0` = no max).
-- **Priorities:** JIRA project priorities, or `PASTE_MODE_PRIORITIES` for paste mode.
-- **Scoring:** Model scores each case (/10). **Edit/delete** generated cases; delete is limited when a case has a JIRA
-  id (see UI).
-- **Automation Skeleton:** Generate code-style skeleton per case.
-- **Agentic:** Two-step validate-and-refine pipeline.
+- **LLM backend**: Any OpenAI-compatible /v1/chat/completions endpoint (local, e.g. LM Studio, or cloud).
+- **Vision (optional)**: Send requirement mockups or images when enabled in .env; use a vision-capable model.
+- **Output**: Structured Gherkin scenarios with configurable min/max case counts in [App.jsx](frontend/src/App.jsx).
+- **Priorities**: Jira project priority list in Jira mode, or PASTE_MODE_PRIORITIES in paste mode.
+- **Scoring**: The model assigns a score (/10) per case. Edit or delete generated cases; deletes are restricted when a
+  case is linked to Jira (see UI).
+- **Automation Skeleton**: Per-case code-style automation skeleton generation.
+- **Agentic**: LangGraph flow — coverage planning → generation → parsing → validator scoring → optional suggestion
+  merge — with retries and auto-extend rounds. Exposed as /api/generate-tests-agentic (mirrored for paste mode).
 
-### Auto test execution (UI and API)
+### Auto Test Execution (UI and API)
 
-- **Saved Suite:** Store cases; run one / run all; optional **tag** and **JIRA** filters; configurable **parallel**
-  runs; env (browser, headless, timeout, trace, screenshot-on-pass, post-run analysis, HTML reports, retention of
-  artifacts).
-- **Execution history** per saved case; **HTML reports** for runs (start test and suite; retention prunes old data per
-  `AUTOMATION_RETENTION_DAYS`, default 20).
-- **Saved History** (memory dialog): open a ticket snapshot; **Run** a case into the Auto test form (prefills
-  requirement + test ids).
-- Running case indicated in the UI; suite analysis text refers to **last run** from the saved suite when applicable.
+- **Saved Suite**: Persist scenarios; run one or run all. Optional filters by tags or Jira. Parallel run count is
+  configurable. Environment: browser profile, headless, timeouts, traces, screenshots on pass, HTML reports, and
+  artifact/report retention.
+- **Run History**: Per saved case; HTML reports for individual runs and full suite runs. `AUTOMATION_RETENTION_DAYS`
+  prunes old runs/data (default 20).
+- **Saved History (memory)**: Open a ticket snapshot; Run routes a case into the Auto Tests form with requirement + test
+  issue ids prefilled.
+- **UI Feedback**: Shows which case is executing. Suite analysis text uses the last run of the saved suite when that
+  applies.
 
-### History & comparison
+### History & Comparison
 
-- SQLite stores latest requirements + tests per ticket when saving is on.
-- **Similar match:** if no exact key, optional fuzzy match via `MEMORY_SIMILARITY_THRESHOLD` (`0` = off).
-- **History sidebar:** list/filter by requirement id; open **Saved History** for full snapshot.
-- **Regenerate** with prior memory: **requirements diff** and **change status** on cases (new / updated / unchanged /
-  existing).
+- **Persistence**: With saving enabled, SQLite keeps the latest requirements and linked tests per ticket.
+- **Similar Match**: If there is no exact key, optionally match a prior row using MEMORY_SIMILARITY_THRESHOLD (fuzzy on
+  title/description); set to 0 to disable.
+- **History Sidebar**: Browse and filter by requirement id; open Saved History for the full stored snapshot.
+- **Regenerate with Memory**: Reload prior context so the UI can show a requirements diff and per-case change status (
+  e.g. new, updated, unchanged, existing).
 
-### JIRA
+### JIRA Integration
 
-- Fetch issue, **linked** work and **linked** tests, attachments.
-- **Push** test issues (create/update), **link** to requirement (`JIRA_TEST_LINK_TYPE`, e.g. Relates; direction via
-  `JIRA_LINK_INWARD_IS_REQUIREMENT`).
-- **Bulk push** (e.g. by change filter), priority names/icons mapped from JIRA.
-- `JIRA_LINKED_WORK_ISSUE_TYPES` filters which linked types appear (see `.env`).
+- **Read:** Fetch the requirement issue, **linked work** and **linked tests**, and attachments.
+- **Write:** Create or update **test** issues and **link** them to the requirement (**`JIRA_TEST_LINK_TYPE`**, e.g.
+  `Relates`; inward/outward semantics via **`JIRA_LINK_INWARD_IS_REQUIREMENT`**).
+- **Bulk push:** e.g. push by **change/status filter** (new/updated); **priorities** use Jira priority names/icons.
+- **`JIRA_LINKED_WORK_ISSUE_TYPES`:** Limits which linked-work types show in the UI (comma-separated list in `.env`).
 
 ### Audit
 
-- Logged actions (fetch, generate, JIRA push, **Auto Test suite** save/update/delete, etc.); filter; **export as PDF**
-  (UI). **Ticket ID** in the list can link to JIRA when a site URL is set and the value looks like an issue key.
+- **Events:** Logs operations such as fetch, generation, **Jira** push, and **saved Auto Test suite**
+  create/update/delete (and similar actions).
+- **Use:** Filter in-app; **export to PDF** from the UI.
+- **Issue keys:** Rows show a **ticket/issue id**; when **Jira site URL** is configured and the value looks like a *
+  *Jira key**, it links out to the issue.
 
-### Auth & dev
+### Auth & development
 
-- **Keycloak** OIDC optional for UI/API; idle timeout hint in UI.
-- **Mock (`MOCK=true`):** no real JIRA HTTP, fixture text; no audit on generate or on suite save/update/delete; no memory
-  save on generate.
+- **Keycloak:** Optional **OIDC** for the UI and API. The UI shows an **idle timeout** hint from config.
+- **Mock mode (`MOCK=true`):** Skips real **Jira** HTTP and uses fixture data. Skips audit for **generation** and for *
+  *suite** create/update/delete, and skips **memory persistence on generate**.
 
 ### UX
 
@@ -347,26 +403,28 @@ flowchart TB
 <details>
 <summary><strong>Environment</strong></summary>
 
-1. `cp .env.example .env` (repo root). See [resources/env-variables.md](resources/env-variables.md) for a full list.
+1. `cp .env.example .env`. See [resources/env-variables.md](resources/env-variables.md) for a full list.
 
 2. **Minimum (non-mock):** `LLM_TEXT_URL` + `LLM_TEXT_MODEL` (+ `LLM_TEXT_ACCESS_TOKEN` if your provider needs it). Add
-   `LLM_VISION_*` only if you want image/PDF in the model and the upload UI. **Mock:** `MOCK=true` for JIRA-free dev
-   (JIRA can be dummy values).
+   `LLM_VISION_*` only if you want image/PDF in the model and the upload UI.
+3. **Mock:** `MOCK=true` for JIRA-free DEV (JIRA can be dummy values).
 
-3. **UI flags:** `SHOW_MEMORY_UI`, `SHOW_AUDIT_UI`, `SHOW_JIRA_MODE_UI`, `SHOW_PASTE_REQUIREMENTS_MODE_UI`,
-   `SHOW_AUTO_TESTS_UI` — at least one requirement-related mode must stay on (defaults ensure this).
+4. **UI flags:** Set at-least one
+    - `SHOW_MEMORY_UI`
+    - `SHOW_AUDIT_UI`
+    - `SHOW_JIRA_MODE_UI`
+    - `SHOW_PASTE_REQUIREMENTS_MODE_UI`
+    - `SHOW_AUTO_TESTS_UI`
 
-4. **Keycloak (optional):** `USE_KEYCLOAK=true` and realm/client/URLs; for Docker, browser-reachable `KEYCLOAK_URL` and
+5. **Keycloak (optional):** `USE_KEYCLOAK=true` and realm/client/URLs; for Docker, browser-reachable `KEYCLOAK_URL` and
    often `KEYCLOAK_INTERNAL_URL` for the API. Redirect URIs in Keycloak must match the app origin/port.
-
-5. `GET /api/config` returns **safe defaults** for the UI (no passwords or LLM secrets).
 
 </details>
 
 ---
 
 <details>
-<summary><strong>Run locally</strong></summary>
+<summary><strong>Run Locally</strong></summary>
 
 **Backend (Python 3.10+):**
 
@@ -389,8 +447,8 @@ npm install
 npm run dev
 ```
 
-Open **http://127.0.0.1:5173** (Vite). Proxies `/api` → `http://127.0.0.1:8001` (see `frontend/vite.config.js`). Use a
-local LLM or cloud API; with **`MOCK=true`**, JIRA can be dummy values.
+- Open **http://127.0.0.1:5173**
+- Proxies `/api` → `http://127.0.0.1:8001` (see `frontend/vite.config.js`).
 
 </details>
 
@@ -413,29 +471,51 @@ lone `KEYCLOAK=` flag) must be `true` to enable Keycloak. See [docker-compose.ym
 ---
 
 <details>
-<summary><strong>API overview</strong></summary>
+<summary><strong>API Overview</strong></summary>
 
-| Method   | Path                                | Purpose                                                                                                                           |
-|----------|-------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------|
-| `GET`    | `/api/config`                       | UI defaults: JIRA defaults, `mock`, feature flags, Keycloak client fields, idle timeout (no secrets).                             |
-| `GET`    | `/api/memory/list`                  | Saved tickets list (Keycloak: `Authorization: Bearer`).                                                                           |
-| `GET`    | `/api/memory/item/{ticket_id}`      | Saved `requirements` + `test_cases`.                                                                                              |
-| `POST`   | `/api/memory/update-test-cases`     | Persist test case list updates.                                                                                                   |
-| `POST`   | `/api/memory/save-after-edit`       | Save after edit.                                                                                                                  |
-| `GET`    | `/api/audit/list`                   | Audit rows.                                                                                                                       |
-| `POST`   | `/api/audit/auth`                   | Login/logout (Keycloak).                                                                                                          |
-| `POST`   | `/api/fetch-ticket`                 | JIRA issue → `requirements`.                                                                                                      |
-| `POST`   | `/api/generate-tests`               | JIRA path: generate, optional memory diff, save flags, min/max cases.                                                             |
-| `POST`   | `/api/generate-from-paste`          | Paste path: `description`, optional `title`, `memory_key`.                                                                        |
-| `POST`   | `/api/jira/priorities`              | JIRA priorities (names + icon URLs).                                                                                              |
-| `POST`   | `/api/jira/push-test-case`          | Create/update test + link.                                                                                                        |
-| `POST`   | `/api/generate-automation-skeleton` | LLM automation code skeleton for a test case.                                                                                     |
-| `POST`   | `/api/automation/suite`             | Add a saved Auto Test case. With Keycloak, requires `Authorization: Bearer`; on success, writes **audit** (not when `MOCK=true`). |
-| `PUT`    | `/api/automation/suite/{case_id}`   | Update a saved case. Same auth and **audit** rules as `POST` suite.                                                               |
-| `DELETE` | `/api/automation/suite/{case_id}`   | Remove a saved case. Same auth and **audit** rules as `POST` suite.                                                               |
+| Method   | Path                                          | Purpose                                                                                                                                    |
+|----------|-----------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------|
+| `GET`    | `/api/config`                                 | UI defaults: Jira defaults, `mock`, feature flags, Keycloak client fields, idle timeout, automation env hints, vision limits (no secrets). |
+| `GET`    | `/api/memory/list`                            | Saved tickets list (Keycloak: `Authorization: Bearer`).                                                                                    |
+| `GET`    | `/api/memory/item/{ticket_id}`                | Saved `requirements` + `test_cases`.                                                                                                       |
+| `POST`   | `/api/memory/update-test-cases`               | Persist test case list updates.                                                                                                            |
+| `POST`   | `/api/memory/merge-test-case`                 | Merge a single edited test case into saved memory for a ticket.                                                                            |
+| `POST`   | `/api/memory/save-after-edit`                 | Save after edit.                                                                                                                           |
+| `GET`    | `/api/audit/list`                             | Audit rows.                                                                                                                                |
+| `POST`   | `/api/audit/auth`                             | Login/logout (Keycloak).                                                                                                                   |
+| `POST`   | `/api/fetch-ticket`                           | Jira issue → `requirements`, linked tests/work, attachments meta, optional memory diff.                                                    |
+| `POST`   | `/api/generate-tests`                         | Jira path: single-shot generate (multipart/form or JSON); optional images, memory diff, save flags, min/max cases.                         |
+| `POST`   | `/api/generate-tests-agentic`                 | Same as `generate-tests` with LangGraph agentic pipeline (`max_rounds`, retries, auto-extend via server env where configured).             |
+| `POST`   | `/api/generate-from-paste`                    | Paste path: `description`, optional `title`, `memory_key`; single-shot generation.                                                         |
+| `POST`   | `/api/generate-from-paste-agentic`            | Paste path agentic counterpart of `generate-from-paste`.                                                                                   |
+| `POST`   | `/api/jira/priorities`                        | Jira priorities (names + icon URLs); optionally severities when a test project key is supplied.                                            |
+| `POST`   | `/api/jira/push-test-case`                    | Create/update test + link to requirement.                                                                                                  |
+| `POST`   | `/api/jira/attachment-download`               | Stream a Jira attachment by id (ticket + attachment id); not available in mock mode.                                                       |
+| `POST`   | `/api/generate-automation-skeleton`           | LLM automation code skeleton for a test case.                                                                                              |
+| `GET`    | `/api/automation/env`                         | Current automation env (browser, headless lock, timeouts, trace, parallel, etc.).                                                          |
+| `POST`   | `/api/automation/browser`                     | Set stored browser; returns payload like `GET /api/automation/env`.                                                                        |
+| `POST`   | `/api/automation/env-options`                 | Set headless (if not server-locked), screenshot-on-pass, trace, default timeout, parallel execution.                                       |
+| `POST`   | `/api/automation/cancel`                      | Request stop for current spike or all suite runs (`all_in_suite`).                                                                         |
+| `POST`   | `/api/automation/spike-run`                   | Start a single UI or API BDD run (async); Keycloak may set report author.                                                                  |
+| `GET`    | `/api/automation/runs/{run_id}`               | Run metadata and step results.                                                                                                             |
+| `GET`    | `/api/automation/results/{run_id}`            | Same response as `GET /api/automation/runs/{run_id}`.                                                                                      |
+| `GET`    | `/api/automation/artifacts/{run_id}/{name}`   | Serve a run artifact file (images, trace zip, etc.).                                                                                       |
+| `GET`    | `/api/automation/selectors`                   | List cached selector rows (optional `limit`).                                                                                              |
+| `DELETE` | `/api/automation/selectors/all`               | Clear selector cache; may audit under Keycloak.                                                                                            |
+| `DELETE` | `/api/automation/selectors/{rowid}`           | Delete one selector cache row; may audit under Keycloak.                                                                                   |
+| `GET`    | `/api/automation/suite`                       | List saved suite cases.                                                                                                                    |
+| `GET`    | `/api/automation/suite/{case_id}/run-history` | Per-case execution history rows.                                                                                                           |
+| `POST`   | `/api/automation/suite`                       | Add a saved Auto Test case. With Keycloak, `Authorization: Bearer`; audit on success unless `MOCK=true`.                                   |
+| `PUT`    | `/api/automation/suite/{case_id}`             | Update a saved case. Same auth and audit rules as `POST /suite`.                                                                           |
+| `DELETE` | `/api/automation/suite/all`                   | Delete all suite cases and history (409 if suite run in progress); may audit under Keycloak.                                               |
+| `DELETE` | `/api/automation/suite/{case_id}`             | Remove one saved case. Same auth and audit rules as `POST /suite`.                                                                         |
+| `GET`    | `/api/automation/suite-run-status`            | Currently running suite case id(s).                                                                                                        |
+| `POST`   | `/api/automation/suite-run`                   | Run suite (optional case id subset, tag/Jira filters, default URL); Keycloak may set report author.                                        |
+| `GET`    | `/api/automation/reports/{name}`              | HTML report file for a single run (validated filename).                                                                                    |
+| `GET`    | `/api/automation/suite-reports-recent`        | List recent suite HTML reports within retention.                                                                                           |
+| `GET`    | `/api/automation/suite-reports/{name}`        | HTML suite report file (validated filename).                                                                                               |
 
-**Automation** (other paths): list suite, run spike, stop, suite batch run, reports, artifacts, selectors, etc. — see
-`backend/automation/routes.py` (all under `/api/automation/...`).
+Refer: [backend/automation/routes.py](backend/automation/routes.py).
 
 </details>
 
@@ -443,19 +523,15 @@ lone `KEYCLOAK=` flag) must be `true` to enable Keycloak. See [docker-compose.ym
 
 ## Notes
 
-- **Mock Mode:** No audit writes from generate or from suite save/update/delete; no history saves from generate. Audit
-  user column is empty without Keycloak
-- **JIRA Test Project:** After generating tests, configuring the test project and using **+** can pull priorities from
-  JIRA depending on setup
+- **Mock Mode:** No audit writes from generate or from suite save/update/delete; no history saves from generate. Audit user column is empty without Keycloak
+- **JIRA Test Project:** After generating tests, configuring the test project and can pull priorities from JIRA depending on setup
 - Make sure to use model that supports vision in order to use feature to pass mockups to LLM
 - Analysis for each test case will have details of last execution only if executed from 'Saved Suite'
 - Green dot will appear for the currently running test case
 - View Report will show the report from 'Start Test' as well
 - 'Run Test Case' button will be enabled when `SHOW_AUTO_TESTS_UI=true`
 - System will keep automation artifacts for last 20 days
-- If `LLM_VISION_URL` is not set, the **Upload mockups** UI and the **include attachment** checkboxes for generation are
-  hidden; JIRA can still list ticket attachments. See [resources/env-variables.md](resources/env-variables.md) for
-  details.
+- If `LLM_VISION_URL` is not set, the **Upload mockups** UI and the **include attachment** checkboxes for generation are hidden; JIRA can still list ticket attachments. See [resources/env-variables.md](resources/env-variables.md) for details.
 - If a step is passed using screenshot from Vision model then the record will not be saved in 'Saved Selectors'
 - JIRA will fetch the template of Test Project each `JIRA_CREATEMETA_TEST_TTL_SECONDS`
 
@@ -465,11 +541,11 @@ lone `KEYCLOAK=` flag) must be `true` to enable Keycloak. See [docker-compose.ym
 
 Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio on `http://127.0.0.1:1234/v1`) with:
 
-- qwen/qwen3-coder-30b
+- qwen/qwen3-vl-30b (model with vision support)
 - qwen/qwen3-coder-next
+- qwen/qwen3-coder-30b
 - openai/gpt-oss-20b
 - openai/gpt-oss-120b
-- qwen/qwen3-vl-30b (model with vision support)
 
 ---
 
@@ -479,3 +555,9 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 - Choice to generate test cases based on BDD or something else
 - RAG feature
 - Link with QA test framework and DEV code
+
+---
+
+## Known Issues
+
+- Key clock using docker-compose is not working 

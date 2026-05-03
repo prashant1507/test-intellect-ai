@@ -204,3 +204,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Fix minor issues
+
+---
+## [2.5.2]
+
+### Changed
+- Updated README.md

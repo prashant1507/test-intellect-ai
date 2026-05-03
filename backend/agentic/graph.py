@@ -242,10 +242,10 @@ def _passed(vr: ValidatorResult, state: AgentState) -> bool:
 
 def _bounds_ok(n: int, state: AgentState) -> bool:
     lo = int(state.get("min_test_cases") or 1)
-    hi = int(state.get("max_test_cases") or 10)
+    hi = int(state.get("max_test_cases", 10))
     if n < lo:
         return False
-    if hi and n > hi:
+    if n > hi:
         return False
     return True
 
@@ -260,7 +260,7 @@ def _deterministic_quality_issues(env: GenerationEnvelope, state: AgentState) ->
     return _generated_case_quality_issues(
         _cases_from_env(env, state),
         min_test_cases=int(state.get("min_test_cases") or 1),
-        max_test_cases=int(state.get("max_test_cases") or 0),
+        max_test_cases=int(state.get("max_test_cases", 10)),
         allowed_priorities=state.get("allowed_priorities") or ["Medium"],
         allowed_severities=state.get("allowed_severities") or resolve_severity_allowed_for_generation(False, None),
     )
@@ -278,8 +278,8 @@ def _quality_feedback(issues: list[str]) -> str:
 def planner_node(state: AgentState) -> dict:
     req = json.dumps(state["requirements"], ensure_ascii=False, indent=2)
     lo = int(state.get("min_test_cases") or 1)
-    hi = int(state.get("max_test_cases") or 10)
-    hi_note = "no hard upper cap" if not hi else str(hi)
+    hi = int(state.get("max_test_cases", 10))
+    hi_note = str(hi)
     user = (
         f"Requirements:\n{req}\n\n"
         f"Target suite size: at least {lo} scenario(s); maximum count for planning: {hi_note}.\n"
@@ -323,8 +323,8 @@ def generate_node(state: AgentState) -> dict:
     if not gp:
         req = json.dumps(state["requirements"], ensure_ascii=False, indent=2)
         lo = int(state.get("min_test_cases") or 1)
-        hi = int(state.get("max_test_cases") or 10)
-        hi_note = "no upper limit" if not hi else f"at most {hi}"
+        hi = int(state.get("max_test_cases", 10))
+        hi_note = f"at most {hi}"
         sev_list = state.get("allowed_severities") or resolve_severity_allowed_for_generation(False, None)
         user = (
             f"Requirements:\n{req}\n\n"
@@ -555,9 +555,8 @@ def merge_suggestions_node(state: AgentState) -> dict:
         return fail(f"candidate_generation_failed: {e!s}"[:200])
     candidates_norm = [_norm(c.model_dump(), allowed_priorities=allowed, allowed_severities=allowed_sev) for c in env_c.test_cases]
     base_norm = [_norm(c.model_dump(), allowed_priorities=allowed, allowed_severities=allowed_sev) for c in env.test_cases]
-    hi = int(state.get("max_test_cases") or 0)
-    if hi:
-        base_norm = base_norm[:hi]
+    hi = int(state.get("max_test_cases", 10))
+    base_norm = base_norm[:hi]
     if not base_norm or not candidates_norm:
         return fail("empty_base_or_candidates")
     nb, nc = len(base_norm), len(candidates_norm)
@@ -623,8 +622,7 @@ def _final_cases_from_env(
         _norm(c.model_dump(), allowed_priorities=allowed_pri, allowed_severities=allowed_sev)
         for c in env.test_cases
     ]
-    if max_hi:
-        out = out[:max_hi]
+    out = out[:max_hi]
     disambiguate_duplicate_test_case_descriptions(out)
     return out
 
@@ -634,7 +632,7 @@ def finalize_node(state: AgentState) -> dict:
     pri = state.get("allowed_priorities") or ["Medium"]
     sev = state.get("allowed_severities") or resolve_severity_allowed_for_generation(False, None)
     vp = state.get("validation_passed")
-    hi = int(state.get("max_test_cases") or 0)
+    hi = int(state.get("max_test_cases", 10))
     if env and vp is True:
         fc = _final_cases_from_env(env, pri, sev, hi)
         return {

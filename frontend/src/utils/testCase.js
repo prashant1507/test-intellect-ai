@@ -27,16 +27,32 @@ export function parseMinTc(s) {
 }
 
 export function parseMaxTc(s) {
-  return Math.max(0, parseIntTc(s, 10));
+  const n = parseIntTc(String(s ?? "").trim(), NaN);
+  return Number.isFinite(n) ? Math.max(1, n) : NaN;
 }
 
-export function testCaseBounds(minStr, maxStr) {
-  const min_test_cases = parseMinTc(minStr);
-  let max_test_cases = parseMaxTc(maxStr);
-  if (max_test_cases > 0 && max_test_cases < min_test_cases) {
-    max_test_cases = min_test_cases;
+export function validateTcBounds(minStr, maxStr) {
+  const min_test_cases = parseIntTc(String(minStr ?? "").trim(), NaN);
+  const max_test_cases = parseIntTc(String(maxStr ?? "").trim(), NaN);
+  if (!Number.isFinite(min_test_cases) || min_test_cases < 1) {
+    return {
+      ok: false,
+      message: "Minimum Test Cases must be a whole number of at least 1.",
+    };
   }
-  return { min_test_cases, max_test_cases };
+  if (!Number.isFinite(max_test_cases) || max_test_cases < 1) {
+    return {
+      ok: false,
+      message: "Maximum Test Cases must be a whole number of at least 1.",
+    };
+  }
+  if (max_test_cases < min_test_cases) {
+    return {
+      ok: false,
+      message: "Maximum Test Cases must be greater than or equal to Minimum Test Cases.",
+    };
+  }
+  return { ok: true, min_test_cases, max_test_cases };
 }
 
 export function clampAgenticMaxRounds(s) {

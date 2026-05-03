@@ -1013,7 +1013,7 @@ def _generated_case_quality_issues(
     issues: list[str] = []
     if len(cases) < min_test_cases:
         issues.append(f"Only {len(cases)} test case(s) remain after normalization; at least {min_test_cases} required.")
-    if max_test_cases and len(cases) > max_test_cases:
+    if len(cases) > max_test_cases:
         issues.append(f"{len(cases)} test case(s) returned; at most {max_test_cases} allowed.")
 
     seen_desc: set[str] = set()
@@ -1098,7 +1098,7 @@ def _quality_retry_user_prompt(
     min_test_cases: int,
     max_test_cases: int,
 ) -> str:
-    max_note = "no upper limit" if max_test_cases == 0 else f"at most {max_test_cases}"
+    max_note = f"at most {max_test_cases}"
     issue_text = "\n".join(f"- {x}" for x in issues[:12])
     draft = json.dumps({"test_cases": draft_cases}, ensure_ascii=False, indent=2)
     return (
@@ -1194,7 +1194,7 @@ def build_generation_user_prompt(
             )
             + "\n\n"
         )
-    max_note = "no upper limit" if max_test_cases == 0 else f"at most {max_test_cases}"
+    max_note = f"at most {max_test_cases}"
     pri_line = _priority_guidance(allowed_priorities, paste_mode)
     sev_line = _severity_guidance(allowed_severities, paste_mode)
     parts = [
@@ -1318,7 +1318,7 @@ async def generate_test_cases(
                 out = retry_out
         except Exception:
             _LOG.debug("LLM case-list retry after quality check failed", exc_info=True)
-    return out[:max_test_cases] if max_test_cases else out
+    return out[:max_test_cases]
 
 
 def _strip_code_fence(s: str) -> str:

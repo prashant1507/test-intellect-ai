@@ -52,7 +52,12 @@ import { remapTestCaseSeverity } from "./utils/jiraSeverityRemap";
 import { normalizeLinkedJiraFromApi } from "./utils/linkedJiraPayload";
 import { readStoredJiraLinkType, readStoredJiraTestIssueType, readStoredJiraUrl } from "./utils/storage";
 import { isAnyGenBusy, isJiraGenBusy, isPasteGenBusy } from "./utils/generationBusy";
-import { clampAgenticMaxRounds, parseMinTc, parseMaxTc, testCaseBounds } from "./utils/testCase";
+import {
+  clampAgenticMaxRounds,
+  parseMinTc,
+  parseMaxTc,
+  validateTcBounds,
+} from "./utils/testCase";
 import { settleTestCaseAfterJiraPush, stripTestCaseDiffMeta } from "./utils/testCaseDiff";
 import { FETCH_TICKET } from "./constants/apiPaths";
 import { ARCHIVE_NOT_ALLOWED_MSG, isBlockedArchiveFilename } from "./utils/requirementImageUpload";
@@ -1636,6 +1641,11 @@ export default function App() {
     const effRounds = pasteRegenerate ? "3" : agenticMaxRounds;
     const effSave = pasteRegenerate ? !mock : saveToMemory && !mock;
     const filesForPaste = pasteRegenerate ? [] : reqImageFiles;
+    const pasteBounds = validateTcBounds(effMin, effMax);
+    if (!pasteBounds.ok) {
+      setErr(pasteBounds.message);
+      return;
+    }
     setHistoryJiraTicketId("");
     generationInFlightRef.current = true;
     setReq({ title: t, description: desc });
@@ -1657,7 +1667,8 @@ export default function App() {
         description: desc,
         memory_key: memKey,
         save_memory: effSave,
-        ...testCaseBounds(effMin, effMax),
+        min_test_cases: pasteBounds.min_test_cases,
+        max_test_cases: pasteBounds.max_test_cases,
         ...(effAgentic ? { max_rounds: clampAgenticMaxRounds(effRounds) } : {}),
       };
       let d;
@@ -1713,6 +1724,14 @@ export default function App() {
           setBusy(null);
           return;
         }
+        const jiraBounds = validateTcBounds(minTestCases, maxTestCases);
+        if (!jiraBounds.ok) {
+          setErr(jiraBounds.message);
+          setAnnounce("");
+          generationInFlightRef.current = false;
+          setBusy(null);
+          return;
+        }
         const genPath = useAgenticGen ? "/generate-tests-agentic" : "/generate-tests";
         const credBody = cred();
         clearMainTestCasesWorkspace();
@@ -1724,7 +1743,8 @@ export default function App() {
           ...credBody,
           test_project_key: jiraTestProject.trim(),
           save_memory: saveToMemory && !mock,
-          ...testCaseBounds(minTestCases, maxTestCases),
+          min_test_cases: jiraBounds.min_test_cases,
+          max_test_cases: jiraBounds.max_test_cases,
           ...(useAgenticGen ? { max_rounds: clampAgenticMaxRounds(agenticMaxRounds) } : {}),
         };
         if (reqImgConfig.visionConfigured) {

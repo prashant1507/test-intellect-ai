@@ -99,8 +99,8 @@ def _require_jira_password(sent: str) -> str:
 
 
 def _validate_tc_bounds(min_test_cases: int, max_test_cases: int) -> None:
-    if 0 < max_test_cases < min_test_cases:
-        raise ValueError("max_test_cases must be >= min_test_cases, or 0 for no maximum")
+    if max_test_cases < min_test_cases:
+        raise ValueError("Maximum Test Cases must be greater than or equal to Minimum Test Cases.")
 
 
 class TicketIn(BaseModel):
@@ -254,7 +254,7 @@ async def _enrich_out_with_attachments(body: TicketIn, out: dict) -> None:
 
 class _TestCaseBounds(BaseModel):
     min_test_cases: int = Field(1, ge=1)
-    max_test_cases: int = Field(10, ge=0)
+    max_test_cases: int = Field(10, ge=1)
 
     @model_validator(mode="after")
     def _bounds(self) -> "_TestCaseBounds":
