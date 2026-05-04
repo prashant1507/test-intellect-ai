@@ -91,7 +91,6 @@ planning, and other text endpoints.
 | `LLM_TEXT_MODEL`        | `qwen/qwen3-coder-next`    | Model id for text. **Required** when `MOCK=false`.                                                                                              |
 | `LLM_TEXT_ACCESS_TOKEN` | *(empty)*                  | Bearer for the text API; leave empty for local servers.                                                                                         |
 | *Aliases (same fields)* |                            | `LLM_URL` → `LLM_TEXT_URL`, `LLM_MODEL` → `LLM_TEXT_MODEL`, `LLM_ACCESS_TOKEN` → `LLM_TEXT_ACCESS_TOKEN` (Pydantic `AliasChoices` in settings). |
-| `DOCKER_LLM_URL`        | *(empty)*                  | **Not read by the app.** Compose/docs only: map into `LLM_TEXT_URL` inside a container.                                                         |
 
 Non-secret hint: `GET /api/config` does not expose LLM URLs, models, or tokens.
 

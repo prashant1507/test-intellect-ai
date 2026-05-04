@@ -461,8 +461,9 @@ npm run dev
 <details>
 <summary><strong>Docker Compose</strong></summary>
 
-1. `docker compose up`
-2. UI is typically at `http://127.0.0.1:8001`
+1. `docker build -t test-intellect-ai:latest .`
+2. `docker compose up`
+3UI is typically at `http://127.0.0.1:8001`
 
 Containers often set `LLM_TEXT_URL` → `http://host.docker.internal:...` to reach the host’s LM Studio. `USE_KEYCLOAK` (
 not a
