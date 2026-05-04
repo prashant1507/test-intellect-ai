@@ -1,7 +1,11 @@
 services:
   test-intellect-ai:
-    image: test-intellect-ai:1.0
-    build: .
+    platform: linux/amd64
+    image: test-intellect-ai:latest
+    build:
+      context: .
+      platforms:
+        - linux/amd64
     ports:
       - "8001:8000"
     environment:

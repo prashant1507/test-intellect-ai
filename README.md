@@ -461,9 +461,8 @@ npm run dev
 <details>
 <summary><strong>Docker Compose</strong></summary>
 
-1. `docker build -t test-intellect-ai:1.0 .`
-2. Point [docker-compose.yml](docker-compose.yml) at the image, then `docker compose up`
-3. UI is typically at `http://127.0.0.1:8001`
+1. `docker compose up`
+2. UI is typically at `http://127.0.0.1:8001`
 
 Containers often set `LLM_TEXT_URL` → `http://host.docker.internal:...` to reach the host’s LM Studio. `USE_KEYCLOAK` (
 not a
@@ -561,3 +560,6 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 - Link with QA test framework and DEV code
 
 ---
+
+## Known Issue
+- Keyclock integration with docker-compose is not working
