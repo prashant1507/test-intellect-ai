@@ -60,11 +60,11 @@ Optionally:
 
 ```mermaid
 flowchart LR
-  UI["React UI"] -->|api| API["FastAPI main"]
+  UI["React UI"] -->|HTTP /api| API["FastAPI main"]
   API --> JIRA["jira_client"]
   API --> LLM["ai_client"]
   API --> AG["agentic"]
-  API --> IMG["requirement images"]
+  API --> IMG["requirement_images"]
   API --> MEM["memory_store SQLite"]
   API --> AUD["audit_store SQLite"]
   API --> ATU["automation UI"]
