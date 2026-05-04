@@ -214,6 +214,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 ## [2.5.3]
 
-### Changed
-- Fixed issues with keyclock for docker-compose
-- Minor bug fixes
+**### Changed
+- Fixed issues with key clock for docker-compose
+- Minor bug fixes**
