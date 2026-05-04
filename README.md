@@ -561,7 +561,3 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 - Link with QA test framework and DEV code
 
 ---
-
-## Known Issues
-
-- Key clock using docker-compose is not working 
