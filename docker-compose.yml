@@ -20,6 +20,8 @@ services:
       JIRA_LINK_INWARD_IS_REQUIREMENT: "true"
       JIRA_VERIFY_SSL: "false"
       JIRA_LINKED_WORK_ISSUE_TYPES: "Story,Improvement,Feature"
+      JIRA_CREATEMETA_TEST_TTL_SECONDS: "3600"
+      JIRA_TEST_SEVERITY_FIELD_ID: ""
 
       MOCK: "false"
 
@@ -33,7 +35,7 @@ services:
       KEYCLOAK_REALM: ""
       KEYCLOAK_CLIENT_ID: ""
       KEYCLOAK_CLIENT_SECRET: ""
-      KEYCLOAK_IDLE_TIMEOUT_MINUTES: "60"
+      KEYCLOAK_IDLE_TIMEOUT_MINUTES: "300"
       KEYCLOAK_INTERNAL_URL: "http://host.docker.internal:8080"
 
       LLM_TEXT_URL: "http://host.docker.internal:1234/v1"
@@ -45,11 +47,16 @@ services:
       LLM_VISION_MODEL: "qwen/qwen3-vl-30b"
       LLM_VISION_ACCESS_TOKEN: ""
 
-      LLM_REQUIREMENT_IMAGES_MAX_COUNT: "5"
-      LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB: "300"
+      LLM_REQUIREMENT_IMAGES_MAX_COUNT: "10"
+      LLM_REQUIREMENT_IMAGES_MAX_TOTAL_MB: "200"
+
+      AGENTIC_AUTO_EXTEND_PHASES: "1"
+      AGENTIC_AUTO_EXTEND_ADDITIONAL_GENERATIONS: "3"
+      AGENTIC_ROUND_CAP_CEILING: "10"
 
       MEMORY_SIMILARITY_THRESHOLD: "0.92"
       PASTE_MODE_PRIORITIES: "Highest, High, Medium, Low, Lowest"
+      PASTE_MODE_SEVERITIES: "Blocker, Critical, Major, Minor, Trivial"
 
     volumes:
       - ./data:/app/data
