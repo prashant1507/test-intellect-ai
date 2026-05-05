@@ -45,7 +45,6 @@ services:
       LLM_TEXT_URL: "http://host.docker.internal:1234/v1"
       LLM_TEXT_MODEL: "qwen/qwen3-coder-next"
       LLM_TEXT_ACCESS_TOKEN: ""
-      DOCKER_LLM_URL: ""
 
       LLM_VISION_URL: "http://host.docker.internal:1234/v1"
       LLM_VISION_MODEL: "qwen/qwen3-vl-30b"
