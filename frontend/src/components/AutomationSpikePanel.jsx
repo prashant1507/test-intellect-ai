@@ -144,6 +144,8 @@ export function AutomationSpikePanel({
     setStartBddInvalid(false);
     setSaveSuiteInfo("");
     setSaveSuiteErr("");
+    setResult(null);
+    setErr("");
     onClearAutomationPrefill?.();
   }, [onClearAutomationPrefill]);
 
@@ -607,6 +609,9 @@ export function AutomationSpikePanel({
           disabled={saveSuiteButtonDisabled}
         >
           {editingSuiteCaseId ? "Update to Suite" : "Save to Suite"}
+        </button>
+        <button type="button" className="secondary" onClick={resetAutomationForm} disabled={formLocked}>
+          Clear
         </button>
       </div>
       {saveSuiteInfo ? (

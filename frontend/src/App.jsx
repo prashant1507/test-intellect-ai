@@ -244,6 +244,12 @@ export default function App() {
     setHistoryJiraTicketId("");
   }, []);
 
+  const clearPasteModeForm = useCallback(() => {
+    resetPasteFormDefaults();
+    setReqImageFiles([]);
+    setErr("");
+  }, [resetPasteFormDefaults]);
+
   const resetWorkspaceOnInputModeChange = useCallback(() => {
     clearFetchedTicketState();
     clearMainTestCasesWorkspace();
@@ -2857,16 +2863,27 @@ export default function App() {
                   {isJiraGenBusy(busy) ? "Generating…" : "Generate Test Cases"}
                 </button>
               ) : (
-                <button
-                  type="button"
-                  className="primary has-icon"
-                  disabled={isPasteGenBusy(busy) || !canSubmitPaste}
-                  onClick={() => runPasteGenerate()}
-                  title={!canSubmitPaste ? "Paste requirements first" : undefined}
-                >
-                  {isPasteGenBusy(busy) ? <Spinner /> : null}
-                  {isPasteGenBusy(busy) ? "Generating…" : "Generate Test Cases"}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className="primary has-icon"
+                    disabled={isPasteGenBusy(busy) || !canSubmitPaste}
+                    onClick={() => runPasteGenerate()}
+                    title={!canSubmitPaste ? "Paste requirements first" : undefined}
+                  >
+                    {isPasteGenBusy(busy) ? <Spinner /> : null}
+                    {isPasteGenBusy(busy) ? "Generating…" : "Generate Test Cases"}
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={isPasteGenBusy(busy) || !canSubmitPaste}
+                    onClick={clearPasteModeForm}
+                    title={!canSubmitPaste ? "Paste requirements first" : undefined}
+                  >
+                    Clear
+                  </button>
+                </>
               )}
               {isAnyGenBusy(busy) && (inputMode === "jira" || inputMode === "paste") ? (
                 <button type="button" className="secondary" onClick={stopGeneration} aria-label="Stop test generation">
