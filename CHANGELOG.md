@@ -235,3 +235,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Updated docker-compose.yaml
+
+---
+## [2.6.2]
+
+### Changed
+- Fix bug where delete test case was not deleting from Saved History in Paste Requirement mode

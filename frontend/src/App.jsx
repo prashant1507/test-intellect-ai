@@ -279,6 +279,7 @@ export default function App() {
   }, [clearFetchedTicketState, clearMainTestCasesWorkspace]);
 
   useEffect(() => {
+    if (inputMode !== "jira") return;
     const t = normTicketId(ticketId);
     if (!t) {
       clearFetchedTicketState();
@@ -287,7 +288,7 @@ export default function App() {
     if (key && t !== normTicketId(key)) {
       clearFetchedTicketState();
     }
-  }, [ticketId, key, clearFetchedTicketState]);
+  }, [ticketId, key, clearFetchedTicketState, inputMode]);
 
   const redirectingToLoginRef = useRef(false);
   const jiraPriorityCacheRef = useRef(null);
