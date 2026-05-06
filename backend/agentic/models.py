@@ -94,6 +94,17 @@ def _coerce_validator_line(x: object) -> str:
             if dim is not None and str(dim).strip():
                 return f"{dim}: {s}"
             return s
+        pid = x.get("id")
+        if pid is not None:
+            ps = str(pid).strip()
+            if ps:
+                others = {
+                    k: v
+                    for k, v in x.items()
+                    if k != "id" and v not in (None, "", [], {})
+                }
+                if not others:
+                    return ps
         return json.dumps(x, ensure_ascii=False)
     return str(x)
 

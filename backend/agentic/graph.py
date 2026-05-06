@@ -487,7 +487,7 @@ def score_node(state: AgentState) -> dict:
     fb_parts.extend(vr.issues[:6])
     gaps = [x for x in (vr.coverage_gaps or []) if (x or "").strip()]
     if gaps:
-        fb_parts.append("Coverage gaps (planner ids not adequately covered): " + ", ".join(gaps))
+        fb_parts.append("Coverage Gaps (planner ids not adequately covered): " + ", ".join(gaps))
     fb_parts.append(
         f"Scores: aggregate={vr.aggregate:.2f} (need >={AGG_MIN}), min_dim={vr.min_dimension()} (need >={DIM_MIN}). "
         "Fix all items above; output must have no remaining issues."

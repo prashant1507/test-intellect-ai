@@ -461,7 +461,7 @@ npm run dev
 <details>
 <summary><strong>Docker Compose</strong></summary>
 
-1. `docker build -t test-intellect-ai:latest .`
+1. `docker build -t test-intellect-ai:latest .` or `docker build --platform linux/amd64 -t test-intellect-ai:latest .`
 2. `docker compose up`
 3UI is typically at `http://127.0.0.1:8001`
 

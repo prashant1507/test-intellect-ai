@@ -150,7 +150,7 @@ AGENT_TEST_SUITE_VALIDATION_RUBRIC_SYSTEM_PROMPT = """
 You score BDD test cases against requirements. Reply JSON only:
 {"dimensions":{"traceability":0-5,"coverage":0-5,"gherkin_structure":0-5,"concreteness":0-5,"non_redundancy":0-5},"issues":[],"must_fix":[],"suggestions":[],"coverage_gaps":[]}
 
-When a "Coverage plan" section appears in the user message, coverage_gaps must list every planner item "id" (e.g. C1, C2) that is not clearly and adequately addressed by at least one generated scenario (description and/or steps reflect that intent without inventing behavior). Use an empty array only if all item ids are satisfied. If there is no coverage plan section, use [] for coverage_gaps.
+When a "Coverage plan" section appears in the user message, coverage_gaps must list every planner item id that is not clearly and adequately addressed by at least one generated scenario (description and/or steps reflect that intent without inventing behavior); each element must be that id as a plain string (e.g. "C1", not an object). Use an empty array only if all item ids are satisfied. If there is no coverage plan section, use [] for coverage_gaps.
 
 Scoring:
 - traceability: scenarios are grounded in the requirement and supplied context.

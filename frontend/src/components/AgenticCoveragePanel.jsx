@@ -102,6 +102,23 @@ function normalizeValidatorLine(raw) {
   return s;
 }
 
+function formatCoverageGap(raw) {
+  const t = String(raw ?? "").trim();
+  if (!t.startsWith("{")) return t;
+  try {
+    const d = JSON.parse(t);
+    if (!d || typeof d !== "object") return t;
+    const id = d.id != null ? String(d.id).trim() : "";
+    if (!id) return t;
+    const otherKeys = Object.keys(d).filter(
+      (k) => k !== "id" && d[k] != null && String(d[k]).trim() !== "",
+    );
+    return otherKeys.length ? t : id;
+  } catch {
+    return t;
+  }
+}
+
 function capitalizeBulletLead(text) {
   const s = String(text ?? "").trim();
   if (!s) return s;
@@ -124,16 +141,26 @@ function splitRunSummary(err) {
 
 function groupScenarioFollowUps(lines) {
   const groups = [];
+  const pending = [];
   for (const raw of lines) {
     const line = String(raw ?? "").trim();
     if (!line) continue;
     if (/^scenario\s+\d+\s*:/i.test(line)) {
+      while (pending.length) {
+        groups.push({ lead: pending.shift(), nested: [] });
+      }
       groups.push({ lead: line, nested: [] });
-    } else if (groups.length > 0) {
+    } else if (
+      groups.length > 0 &&
+      /^scenario\s+\d+\s*:/i.test(String(groups[groups.length - 1].lead ?? ""))
+    ) {
       groups[groups.length - 1].nested.push(line);
     } else {
-      groups.push({ lead: line, nested: [] });
+      pending.push(line);
     }
+  }
+  while (pending.length) {
+    groups.push({ lead: pending.shift(), nested: [] });
   }
   return groups;
 }
@@ -177,7 +204,9 @@ export function AgenticCoveragePanel({ agentic }) {
   const assumptions = Array.isArray(plan?.assumptions) ? plan.assumptions.filter(Boolean) : [];
   const v = agentic.validator;
   const dims = v?.dimensions;
-  const gaps = Array.isArray(v?.coverage_gaps) ? v.coverage_gaps.filter((x) => String(x || "").trim()) : [];
+  const gaps = Array.isArray(v?.coverage_gaps)
+    ? v.coverage_gaps.map(formatCoverageGap).filter((x) => String(x || "").trim())
+    : [];
   const passed = agentic.validation_passed === true;
   const rounds = agentic.generations;
   const err = agentic.error && String(agentic.error).trim();
@@ -362,7 +391,7 @@ export function AgenticCoveragePanel({ agentic }) {
 
         {gaps.length ? (
           <div className="agentic-coverage-panel__block agentic-coverage-panel__gaps">
-            <h3 className="agentic-coverage-panel__h">Coverage gaps</h3>
+            <h3 className="agentic-coverage-panel__h">Coverage Gaps</h3>
             <p className="meta">Planner ids not fully reflected in the suite:</p>
             <ul className="agentic-coverage-panel__list agentic-coverage-panel__gap-ids">
               {gaps.map((id, i) => (
@@ -427,11 +456,11 @@ export function AgenticCoveragePanel({ agentic }) {
             {Array.isArray(v.issues) && v.issues.some((x) => String(x || "").trim()) ? (
               <>
                 <h4 className="agentic-coverage-panel__subh">Issues</h4>
-                <ul className="agentic-coverage-panel__issue-list">
+                <ul className="agentic-coverage-panel__issue-list agentic-coverage-panel__issue-list--bullets-plain">
                   {v.issues
                     .filter(Boolean)
                     .map((t, i) => {
-                      const line = normalizeValidatorLine(t);
+                      const line = capitalizeBulletLead(normalizeValidatorLine(t));
                       return (
                         <li key={i} className={validatorLineClass(line)}>
                           {line}
