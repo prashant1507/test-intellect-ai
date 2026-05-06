@@ -264,11 +264,8 @@ export default function App() {
     setDiffExpanded(false);
     setErr("");
     setAnnounce("");
-    setMinTestCases("1");
-    setMaxTestCases("5");
+    resetGenerationAndAttachmentDefaults();
     setMemoryAutomationSkelIdx(null);
-    setReqImageFiles([]);
-    setSelectedReqAttachmentIds(new Set());
     setPushingKey(null);
     setBusy(null);
     generationInFlightRef.current = false;
@@ -276,7 +273,11 @@ export default function App() {
       generateAbortRef.current?.abort();
     } catch (_) {}
     generateAbortRef.current = null;
-  }, [clearFetchedTicketState, clearMainTestCasesWorkspace]);
+  }, [
+    clearFetchedTicketState,
+    clearMainTestCasesWorkspace,
+    resetGenerationAndAttachmentDefaults,
+  ]);
 
   useEffect(() => {
     if (inputMode !== "jira") return;
