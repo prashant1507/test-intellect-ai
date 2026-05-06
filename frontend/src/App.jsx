@@ -21,6 +21,7 @@ import { AgenticPipelineOptions } from "./components/AgenticPipelineOptions";
 import { MinMaxTestCaseFields } from "./components/MinMaxTestCaseFields";
 import { RequirementMockupsBlock } from "./components/RequirementMockupsBlock";
 import { TestCaseEditModal } from "./components/TestCaseEditModal";
+import { SaveToSuiteBulkModal } from "./components/SaveToSuiteBulkModal";
 import { AutomationSpikePanel } from "./components/AutomationSpikePanel";
 import { AutomationSpikeSectionCards } from "./components/AutomationSpikeSectionCards";
 import { JiraGenerationFormFields } from "./components/JiraGenerationFormFields";
@@ -59,6 +60,7 @@ import {
   validateTcBounds,
 } from "./utils/testCase";
 import { settleTestCaseAfterJiraPush, stripTestCaseDiffMeta } from "./utils/testCaseDiff";
+import { suitePostBodyFromGeneratedCase } from "./utils/automationSuitePayload";
 import { FETCH_TICKET } from "./constants/apiPaths";
 import { ARCHIVE_NOT_ALLOWED_MSG, isBlockedArchiveFilename } from "./utils/requirementImageUpload";
 import { withOidcAuthorization } from "./utils/oidcFetchHeaders";
@@ -79,6 +81,8 @@ export default function App() {
   const [jiraUpdateSucceededKeys, setJiraUpdateSucceededKeys] = useState({});
   const [jiraHideUpdateAfterCreate, setJiraHideUpdateAfterCreate] = useState({});
   const [bulkJiraSync, setBulkJiraSync] = useState(null);
+  const [saveToSuiteBulkModal, setSaveToSuiteBulkModal] = useState(null);
+  const [bulkSaveSuiteBusy, setBulkSaveSuiteBusy] = useState(false);
   const [req, setReq] = useState(null);
   const [key, setKey] = useState("");
   const [tests, setTests] = useState(null);
@@ -1480,11 +1484,13 @@ export default function App() {
       editTcIdx != null ||
       deleteTcIdx != null ||
       automationSkelIdx != null ||
-      memoryAutomationSkelIdx != null;
+      memoryAutomationSkelIdx != null ||
+      !!saveToSuiteBulkModal;
     if (!anyOpen) return;
     const onKey = (e) => {
       if (e.key !== "Escape") return;
-      if (deleteTcIdx != null) setDeleteTcIdx(null);
+      if (saveToSuiteBulkModal && !bulkSaveSuiteBusy) setSaveToSuiteBulkModal(null);
+      else if (deleteTcIdx != null) setDeleteTcIdx(null);
       else if (editTcIdx != null) setEditTcIdx(null);
       else if (memoryAutomationSkelIdx != null) setMemoryAutomationSkelIdx(null);
       else if (automationSkelIdx != null) setAutomationSkelIdx(null);
@@ -1502,6 +1508,15 @@ export default function App() {
       const deleteTcDialog = document.getElementById("delete-tc-dialog");
       const automationSkelDialog = document.getElementById("automation-skel-dialog");
       const memoryAutomationSkelDialog = document.getElementById("automation-skel-dialog-memory");
+      const saveToSuiteBulkDialog = document.getElementById("save-to-suite-bulk-dialog");
+      if (
+        saveToSuiteBulkModal &&
+        saveToSuiteBulkDialog &&
+        !bulkSaveSuiteBusy &&
+        !saveToSuiteBulkDialog.contains(e.target)
+      ) {
+        setSaveToSuiteBulkModal(null);
+      }
       if (deleteTcIdx != null && deleteTcDialog && !deleteTcDialog.contains(e.target)) {
         setDeleteTcIdx(null);
       }
@@ -1522,6 +1537,7 @@ export default function App() {
         setAuditModalOpen(false);
       }
       if (memoryPanel && memoryDialog && !memoryDialog.contains(e.target)) {
+        if (saveToSuiteBulkModal) return;
         const memorySkelBackdrop = document.getElementById("memory-automation-skel-backdrop");
         if (memorySkelBackdrop && memorySkelBackdrop.contains(e.target)) return;
         setMemoryPanel(null);
@@ -1537,7 +1553,16 @@ export default function App() {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [auditModalOpen, memoryPanel, editTcIdx, deleteTcIdx, automationSkelIdx, memoryAutomationSkelIdx]);
+  }, [
+    auditModalOpen,
+    memoryPanel,
+    editTcIdx,
+    deleteTcIdx,
+    automationSkelIdx,
+    memoryAutomationSkelIdx,
+    saveToSuiteBulkModal,
+    bulkSaveSuiteBusy,
+  ]);
 
   useEffect(() => {
     if (!oidcMgr || !useKeycloak) return undefined;
@@ -1618,14 +1643,23 @@ export default function App() {
       editTcIdx == null &&
       deleteTcIdx == null &&
       automationSkelIdx == null &&
-      memoryAutomationSkelIdx == null
+      memoryAutomationSkelIdx == null &&
+      !saveToSuiteBulkModal
     )
       return undefined;
     const id = requestAnimationFrame(() => {
       document.getElementById("app-theme-toggle")?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     return () => cancelAnimationFrame(id);
-  }, [auditModalOpen, memoryPanel, editTcIdx, deleteTcIdx, automationSkelIdx, memoryAutomationSkelIdx]);
+  }, [
+    auditModalOpen,
+    memoryPanel,
+    editTcIdx,
+    deleteTcIdx,
+    automationSkelIdx,
+    memoryAutomationSkelIdx,
+    saveToSuiteBulkModal,
+  ]);
 
   const runPasteGenerate = async () => {
     const t = pasteTitle.trim();
@@ -1862,7 +1896,7 @@ export default function App() {
     (isPasteGenBusy(busy) && !req);
   const loadingTestCases = (isJiraGenBusy(busy) && !!req) || isPasteGenBusy(busy);
   const generatingTestCases = isAnyGenBusy(busy);
-  const genOrBulkBusy = generatingTestCases || bulkJiraSync?.running;
+  const genOrBulkBusy = generatingTestCases || bulkJiraSync?.running || bulkSaveSuiteBusy;
 
   const pasteRequirementsHeadingKey = useMemo(() => {
     const h = normTicketId(historyJiraTicketId);
@@ -1927,6 +1961,60 @@ export default function App() {
     },
     [showAutoTestsUi],
   );
+
+  const openSaveToSuiteBulkModal = useCallback(
+    async (list, requirementTicketId) => {
+      if (!Array.isArray(list) || !list.length) {
+        setAnnounce("No test cases to save.");
+        return;
+      }
+      const cleaned = list.filter((tc) => tc && typeof tc === "object");
+      if (!cleaned.length) return;
+      setErr("");
+      let suiteCases = [];
+      try {
+        const d = await api("/automation/suite");
+        suiteCases = Array.isArray(d?.cases) ? d.cases : [];
+      } catch {
+        suiteCases = [];
+      }
+      setSaveToSuiteBulkModal({
+        tests: cleaned,
+        requirementTicketId: normTicketId(requirementTicketId),
+        suiteCases,
+      });
+    },
+    [api],
+  );
+
+  const handleSaveToSuiteBulkConfirm = useCallback(async (testType, selectedTests, reqTicketId) => {
+    if (!selectedTests.length) return;
+    setBulkSaveSuiteBusy(true);
+    try {
+      let ok = 0;
+      let dup = 0;
+      let fail = 0;
+      for (const tc of selectedTests) {
+        try {
+          const body = suitePostBodyFromGeneratedCase(tc, reqTicketId, testType);
+          await api("/automation/suite", "POST", body);
+          ok += 1;
+        } catch (e) {
+          const m = String(e?.message || e || "");
+          if (/already exists/i.test(m)) dup += 1;
+          else fail += 1;
+        }
+      }
+      const parts = [`${ok} saved`];
+      if (dup) parts.push(`${dup} skipped (duplicate)`);
+      if (fail) parts.push(`${fail} failed`);
+      setAnnounce(`${parts.join(", ")}.`);
+      setSaveToSuiteBulkModal(null);
+      setAutomationListRefresh((n) => n + 1);
+    } finally {
+      setBulkSaveSuiteBusy(false);
+    }
+  }, [api]);
 
   const memoryPushTicketId =
     memoryPanel?.phase === "ok" ? normTicketId(memoryPanel.ticket_id) || null : null;
@@ -2345,6 +2433,18 @@ export default function App() {
             </div>
           ) : null}
 
+          {saveToSuiteBulkModal ? (
+            <SaveToSuiteBulkModal
+              open
+              tests={saveToSuiteBulkModal.tests}
+              suiteCases={saveToSuiteBulkModal.suiteCases}
+              requirementTicketId={saveToSuiteBulkModal.requirementTicketId}
+              busy={bulkSaveSuiteBusy}
+              onClose={() => !bulkSaveSuiteBusy && setSaveToSuiteBulkModal(null)}
+              onConfirm={(testType, picked, rid) => void handleSaveToSuiteBulkConfirm(testType, picked, rid)}
+            />
+          ) : null}
+
           {deleteTcIdx != null && tests?.[deleteTcIdx] ? (
             <div
               className="modal-backdrop modal-backdrop--main-area"
@@ -2459,6 +2559,17 @@ export default function App() {
                       setMemoryAutomationSkelIdx(idx);
                     }}
                     automationSkeletonDisabled={genOrBulkBusy}
+                    onOpenSaveToSuiteBulk={
+                      showAutoTestsUi
+                        ? () => {
+                            if (memoryPanel.phase !== "ok" || !memoryPanel.test_cases?.length) return;
+                            openSaveToSuiteBulkModal(
+                              memoryPanel.test_cases,
+                              memoryPushTicketId || "",
+                            );
+                          }
+                        : undefined
+                    }
                     showAutoTestRunButton={showAutoTestsUi}
                     onRunInAutoTest={
                       showAutoTestsUi
@@ -2514,8 +2625,10 @@ export default function App() {
                     className={`mode-tab${inputMode === "automation" ? " active" : ""}`}
                     onClick={() => {
                       if (inputMode === "automation") return;
+                      const prev = inputMode;
                       inputModeRef.current = "automation";
                       setInputMode("automation");
+                      if (prev === "paste") clearMainTestCasesWorkspace();
                     }}
                   >
                     Auto Tests
@@ -2889,7 +3002,7 @@ export default function App() {
               )}
               {isAnyGenBusy(busy) && (inputMode === "jira" || inputMode === "paste") ? (
                 <button type="button" className="secondary" onClick={stopGeneration} aria-label="Stop test generation">
-                  Stop Test Generation
+                  Stop Generation
                 </button>
               ) : null}
             </div>
@@ -3083,6 +3196,11 @@ export default function App() {
               onTcFilter={setTcFilter}
               bulkJiraSync={bulkJiraSync}
               onStartBulkSync={startBulkSync}
+              onOpenSaveToSuiteBulk={
+                showAutoTestsUi && (inputMode === "jira" || inputMode === "paste")
+                  ? () => openSaveToSuiteBulkModal(tests || [], mainRequirementKey)
+                  : undefined
+              }
               mock={mock}
               inputMode={inputMode}
               pushingKey={pushingKey}

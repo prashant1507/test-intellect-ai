@@ -91,6 +91,7 @@
 - If an exiting test case is regenerated and is marked as UPDATED, then the new change will be displayed in GREEN and old one in RED
 - Test case section will reset if user re fetch the requirements
 - JIRA_CREATEMETA_TEST_TTL_SECONDS based on this system with fetch the template or let say meta template from JIRA (0 means get every time before doing any JIRA action)
+- Button to save all generated test cases to Saved suite, addition will block if any test case is already in suite
 
 ---
 
@@ -104,6 +105,7 @@
     - All generated test cases
     - Copy specific test case
 - Expand and Collapse all generated test cases
+- Stop generation button
 
 ---
 
@@ -112,6 +114,7 @@
 - 'Generated Test Cases' if 'Save generated tests to history' is checked before generating test cases
 - Has: Run auto test, generate skeleton code
 - Filter by Requirement ID
+- Button to save all generated test cases to Saved suite, addition will block if any test case is already in suite
 
 ---
 
