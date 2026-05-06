@@ -21,6 +21,7 @@ from .tag_csv import normalize_tag_csv
 from .errors import SpikeUserError
 from .spike import run_automation_spike_async
 from .prefs import (
+    automation_parallel_cap,
     get_effective_automation_browser,
     get_effective_automation_default_timeout_ms,
     get_effective_automation_headless,
@@ -190,7 +191,13 @@ class AutomationEnvOptionsIn(BaseModel):
     automation_screenshot_on_pass: bool
     automation_trace_file_generation: bool
     automation_default_timeout_ms: int = Field(..., ge=1000, le=600_000)
-    automation_parallel_execution: int = Field(1, ge=1, le=4)
+    automation_parallel_execution: int = Field(1, ge=1)
+
+    @field_validator("automation_parallel_execution", mode="after")
+    @classmethod
+    def _parallel_le_cap(cls, v: int) -> int:
+        cap = automation_parallel_cap()
+        return min(max(int(v), 1), cap)
 
 
 def _automation_env_payload() -> dict[str, Any]:
@@ -204,6 +211,7 @@ def _automation_env_payload() -> dict[str, Any]:
         "automation_post_analysis": get_effective_automation_post_analysis(),
         "automation_default_timeout_ms": get_effective_automation_default_timeout_ms(),
         "automation_parallel_execution": get_effective_automation_parallel_execution(),
+        "automation_parallel_execution_max": automation_parallel_cap(),
     }
 
 

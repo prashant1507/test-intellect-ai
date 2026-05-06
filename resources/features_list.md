@@ -83,7 +83,7 @@
     - Priority from JIRA if test case has JIRA ID
 - Type: 'All, Existing, Unchanged, Updated, New'
 - Stop test Generation will stop and make the app ready (but LLM will continue to run if it received the prompt)
-- Clicking on run auto test will navigate to Auto Test mode and auto fill
+- Clicking on run auto test will navigate to Auto Test mode and autofill
     - Scenario
     - Test Steps
     - Requirement Ticket if present
@@ -121,6 +121,7 @@
 - If requirement is already in Saved History the the Title and key will be auto filled
 - If Title and key is not provided then key will be auto filed as `TEST-`
 - Reset everything will work as JIRA mode
+- Added Clear button
 
 ---
 
@@ -155,6 +156,10 @@
 - Environment changes will be save din DB
 - Artifacts will be deleted after `AUTOMATION_RETENTION_DAYS` days
 - Delete all button for Save Selectors and Saved Suite
+- In Auto Tests mode, if there is a filter in Run Filter or Search then it will be highlighted with a clear filter icon
+- Added Clear button in Start Test form
+- Parallel execution can be set from .env file (1 <= AUTOMATION_PARALLEL_EXECUTION <=5)
+
 
 ---
 

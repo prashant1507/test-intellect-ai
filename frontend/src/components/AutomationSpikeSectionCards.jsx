@@ -35,13 +35,24 @@ const SAVED_LINKED_LIST_VISIBLE_ROWS = 4;
 const SAVED_SELECTORS_VISIBLE_ROWS = 2;
 const SUITE_REPORTS_RECENT_LS_KEY = "automation-suite-reports-recent-open";
 
+function parallelCapFromEnv(envObj) {
+  if (!envObj || typeof envObj !== "object") return 5;
+  const m = envObj.automation_parallel_execution_max;
+  if (typeof m === "number" && !Number.isNaN(m)) {
+    return Math.min(Math.max(Math.floor(m), 1), 5);
+  }
+  return 5;
+}
+
 function defaultParallelFromEnv(envObj) {
+  const cap = parallelCapFromEnv(envObj);
   const p = envObj.automation_parallel_execution;
-  if (typeof p === "number" && p >= 1 && p <= 4) return p;
-  return 1;
+  if (typeof p === "number" && p >= 1 && p <= cap) return p;
+  return Math.min(Math.max(1, typeof p === "number" && !Number.isNaN(p) ? Math.floor(p) : 1), cap);
 }
 
 function buildEnvOptionsBody(envObj, patch) {
+  const cap = parallelCapFromEnv(envObj);
   const defTo =
     typeof envObj.automation_default_timeout_ms === "number" &&
     !Number.isNaN(envObj.automation_default_timeout_ms)
@@ -59,7 +70,7 @@ function buildEnvOptionsBody(envObj, patch) {
     automation_parallel_execution:
       typeof patch.automation_parallel_execution === "number" &&
       patch.automation_parallel_execution >= 1 &&
-      patch.automation_parallel_execution <= 4
+      patch.automation_parallel_execution <= cap
         ? patch.automation_parallel_execution
         : defPar,
   };
@@ -111,8 +122,6 @@ const AUTOMATION_BROWSER_OPTIONS = [
 ];
 
 const BROWSER_RADIO_VALUES = AUTOMATION_BROWSER_OPTIONS.map((o) => o.value);
-
-const PARALLEL_EXECUTION_CHOICES = [1, 2, 3, 4];
 
 const SKIP_PREV_FAIL_ERR = /^skipped \(previous step failed\)$/i;
 
@@ -777,6 +786,9 @@ export function AutomationSpikeSectionCards({
   const suiteListFiltersActive =
     suiteListTitleFilter.trim() !== "" || suiteListFilterSelectedTags.length > 0;
 
+  const suiteRunFiltersActive =
+    suiteRunFilterSelectedTags.length > 0 || suiteRunFilterSelectedJiras.length > 0;
+
   useEffect(() => {
     const ts = new Set(suiteTagFilterOptions);
     setSuiteRunFilterSelectedTags((p) => p.filter((x) => ts.has(x)));
@@ -829,6 +841,22 @@ export function AutomationSpikeSectionCards({
 
   const removeSuiteListFilterTag = useCallback((t) => {
     setSuiteListFilterSelectedTags((prev) => prev.filter((x) => x !== t));
+  }, []);
+
+  const clearSuiteRunFilters = useCallback(() => {
+    setSuiteRunFilterSelectedTags([]);
+    setSuiteRunFilterSelectedJiras([]);
+    setSuiteRunFilterTagInput("");
+    setSuiteRunFilterJiraInput("");
+    setSuiteRunFilterTagSuggestOpen(false);
+    setSuiteRunFilterJiraSuggestOpen(false);
+  }, []);
+
+  const clearSuiteListFilters = useCallback(() => {
+    setSuiteListTitleFilter("");
+    setSuiteListFilterSelectedTags([]);
+    setSuiteListFilterTagInput("");
+    setSuiteListFilterTagSuggestOpen(false);
   }, []);
 
   useEffect(() => {
@@ -947,6 +975,11 @@ export function AutomationSpikeSectionCards({
     () => (env && typeof env === "object" ? envBoolToggleRows(env) : []),
     [env],
   );
+
+  const parallelExecutionChoices = useMemo(() => {
+    const cap = parallelCapFromEnv(env && typeof env === "object" ? env : {});
+    return Array.from({ length: cap }, (_, i) => i + 1);
+  }, [env]);
 
   const parallelExecutionValue = useMemo(
     () => defaultParallelFromEnv(env && typeof env === "object" ? env : {}),
@@ -1753,7 +1786,11 @@ export function AutomationSpikeSectionCards({
           {suiteCases.length > 0 ? (
           <div className="automation-spike-saved-suite-filter-cluster">
           <details
-            className="automation-saved-suite-run-filters"
+            className={
+              suiteRunFiltersActive
+                ? "automation-saved-suite-run-filters automation-saved-suite-run-filters--filter-active"
+                : "automation-saved-suite-run-filters"
+            }
             open={suiteToolbarFilterAccordion === "run"}
             onToggle={(e) => {
               const el = e.currentTarget;
@@ -1764,15 +1801,40 @@ export function AutomationSpikeSectionCards({
             }}
           >
             <summary className="automation-saved-suite-run-filters-summary">
-              <span className="automation-saved-suite-run-filters-chevron" aria-hidden>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 18l6-6-6-6" />
-                </svg>
+              <span className="automation-saved-suite-run-filters-summary-lead">
+                <span className="automation-saved-suite-run-filters-chevron" aria-hidden>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
+                </span>
+                <span className="automation-saved-suite-run-filters-title">
+                  Run Filter
+                  <span className="automation-saved-suite-run-filters-hint">(Optional)</span>
+                </span>
               </span>
-              <span className="automation-saved-suite-run-filters-title">
-                Run Filter
-                <span className="automation-saved-suite-run-filters-hint">(Optional)</span>
-              </span>
+              {suiteRunFiltersActive ? (
+                <FloatingTooltip text="Clear filters">
+                  <button
+                    type="button"
+                    className="automation-saved-suite-run-filters-clear"
+                    aria-label="Clear filters"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      clearSuiteRunFilters();
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M9 9l6 6M15 9l-6 6" />
+                    </svg>
+                  </button>
+                </FloatingTooltip>
+              ) : null}
             </summary>
             <div className="automation-saved-suite-run-filters-body">
             <div className="automation-saved-suite-run-filters-field">
@@ -1996,7 +2058,11 @@ export function AutomationSpikeSectionCards({
             </div>
           </details>
           <details
-            className="automation-saved-suite-run-filters"
+            className={
+              suiteListFiltersActive
+                ? "automation-saved-suite-run-filters automation-saved-suite-run-filters--filter-active"
+                : "automation-saved-suite-run-filters"
+            }
             open={suiteToolbarFilterAccordion === "list"}
             onToggle={(e) => {
               const el = e.currentTarget;
@@ -2007,15 +2073,40 @@ export function AutomationSpikeSectionCards({
             }}
           >
             <summary className="automation-saved-suite-run-filters-summary">
-              <span className="automation-saved-suite-run-filters-chevron" aria-hidden>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M9 18l6-6-6-6" />
-                </svg>
+              <span className="automation-saved-suite-run-filters-summary-lead">
+                <span className="automation-saved-suite-run-filters-chevron" aria-hidden>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 18l6-6-6-6" />
+                  </svg>
+                </span>
+                <span className="automation-saved-suite-run-filters-title">
+                  Search
+                  <span className="automation-saved-suite-run-filters-hint">(Optional)</span>
+                </span>
               </span>
-              <span className="automation-saved-suite-run-filters-title">
-                List Filter
-                <span className="automation-saved-suite-run-filters-hint">(Optional)</span>
-              </span>
+              {suiteListFiltersActive ? (
+                <FloatingTooltip text="Clear filters">
+                  <button
+                    type="button"
+                    className="automation-saved-suite-run-filters-clear"
+                    aria-label="Clear filters"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      clearSuiteListFilters();
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                      <circle cx="12" cy="12" r="9" />
+                      <path d="M9 9l6 6M15 9l-6 6" />
+                    </svg>
+                  </button>
+                </FloatingTooltip>
+              ) : null}
             </summary>
             <div className="automation-saved-suite-run-filters-body">
               <div className="automation-saved-suite-list-filters-inner">
@@ -2566,7 +2657,7 @@ export function AutomationSpikeSectionCards({
                 >
                   <span className="label-with-info">
                     <span>Parallel Execution</span>
-                    <FieldInfo text="Number of parallel tests to be executed in the saved suite (Run all). 1 = one at a time." />
+                    <FieldInfo text="Number of parallel tests to be executed in the saved suite (Run all)" />
                   </span>
                 </span>
                 <div className="automation-spike-env-grid-control">
@@ -2575,7 +2666,7 @@ export function AutomationSpikeSectionCards({
                     role="radiogroup"
                     aria-labelledby="automation-env-opt-parallel"
                   >
-                    {PARALLEL_EXECUTION_CHOICES.map((n) => (
+                    {parallelExecutionChoices.map((n) => (
                       <label key={n} className="automation-spike-browser-radio">
                         <input
                           type="radio"
@@ -2598,7 +2689,7 @@ export function AutomationSpikeSectionCards({
                 >
                   <span className="label-with-info">
                     <span>Default Timeout (ms)</span>
-                    <FieldInfo text="Playwright default action timeout. Range 1000–600000." />
+                    <FieldInfo text="Playwright default action timeout. Range 1000–600000" />
                   </span>
                 </span>
                 <div className="automation-spike-env-grid-control">

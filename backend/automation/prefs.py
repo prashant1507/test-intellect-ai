@@ -70,9 +70,14 @@ def get_effective_automation_default_timeout_ms() -> int:
     )
 
 
+def automation_parallel_cap() -> int:
+    return min(max(int(settings.automation_parallel_execution), 1), 5)
+
+
 def get_effective_automation_parallel_execution() -> int:
-    d = min(max(int(settings.automation_parallel_execution), 1), 4)
-    return _int_from_kv_parsed("parallel_execution", 1, 4, on_missing=d, on_bad=d)
+    cap = automation_parallel_cap()
+    d = min(max(int(settings.automation_parallel_execution), 1), cap)
+    return _int_from_kv_parsed("parallel_execution", 1, cap, on_missing=d, on_bad=d)
 
 
 def get_run_environment_for_report() -> dict[str, str | int | bool]:

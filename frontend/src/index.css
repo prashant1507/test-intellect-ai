@@ -1361,6 +1361,14 @@ button.automation-spike-run-artifact-dl.req-attach-dl {
   font-size: 0.72rem;
 }
 
+.automation-saved-suite-run-filters.automation-saved-suite-run-filters--filter-active {
+  border-color: color-mix(in srgb, #e8d88a 58%, var(--card-border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, #f5e6a3 32%, transparent),
+    0 1px 0 color-mix(in srgb, var(--text) 6%, transparent);
+  background: color-mix(in srgb, #f5e6a3 11%, var(--section-bg, var(--card-bg, #0f1419)));
+}
+
 .automation-spike-saved-suite-toolbar .automation-spike-suite-actions {
   flex: 0 0 auto;
   flex-shrink: 0;
@@ -1445,12 +1453,10 @@ button.automation-spike-run-artifact-dl.req-attach-dl {
   margin-bottom: 0;
 }
 
-.automation-saved-suite-list-filters-inner > .automation-saved-suite-list-filters-field--scenario {
-  flex: 1 1 12rem;
-}
-
+.automation-saved-suite-list-filters-inner > .automation-saved-suite-list-filters-field--scenario,
 .automation-saved-suite-list-filters-inner > .automation-saved-suite-list-filters-field--tags {
-  flex: 2 1 16rem;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .automation-saved-suite-list-filters-inner input.automation-saved-suite-list-filters-title-input {
@@ -1495,6 +1501,7 @@ input.automation-saved-suite-list-filters-title-input:focus {
   cursor: pointer;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.5rem;
   list-style: none;
   padding: 0.6rem 0.75rem 0.65rem;
@@ -1504,6 +1511,42 @@ input.automation-saved-suite-list-filters-title-input:focus {
   color: var(--text);
   -webkit-tap-highlight-color: transparent;
   transition: background 0.15s ease;
+}
+
+.automation-saved-suite-run-filters-summary-lead {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.automation-saved-suite-run-filters-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0.2rem;
+  margin: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted, #94a3b8);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
+}
+
+.automation-saved-suite-run-filters-clear:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.automation-saved-suite-run-filters-clear:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .automation-saved-suite-run-filters-summary:hover {

@@ -145,7 +145,7 @@ class Settings(BaseSettings):
     @classmethod
     def _automation_parallel(cls, v: object) -> int:
         n = int(v or 1)
-        return min(max(n, 1), 4)
+        return min(max(n, 1), 5)
 
     @field_validator("automation_retention_days", mode="before")
     @classmethod
