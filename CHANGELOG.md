@@ -223,9 +223,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Added a 'Clear' button in Auto Tests and Paste Requirements mode
-- In Auto Tests mode, if there is a filter in Run Filter or Search then it will be highlighted
+- In Auto Tests mode, if there is a filter in Run Filter or Search, then it will be highlighted
 - Added Clear filter icon for Run Filter and Search
-- Now Parallel execution can be set from .env file (1 <= AUTOMATION_PARALLEL_EXECUTION <=5)
+- Now, Parallel execution can be set from the .env file (1 <= AUTOMATION_PARALLEL_EXECUTION <=5)
 
 ### Changed
 - Minor bug fixes
