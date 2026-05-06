@@ -229,3 +229,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Minor bug fixes
+
+---
+## [2.6.1]
+
+### Changed
+- Updated docker-compose.yaml

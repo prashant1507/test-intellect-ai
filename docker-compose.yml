@@ -1,13 +1,9 @@
 services:
   test-intellect-ai:
-    platform: linux/amd64
     image: test-intellect-ai:latest
-    build:
-      context: .
-      platforms:
-        - linux/amd64
     ports:
       - "8001:8000"
+    shm_size: "1gb"
     environment:
       SHOW_MEMORY_UI: "true"
       SHOW_AUDIT_UI: "true"

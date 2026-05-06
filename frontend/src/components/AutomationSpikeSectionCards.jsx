@@ -88,7 +88,7 @@ function envBoolToggleRows(env) {
       patchOff: { automation_headless: false },
       lockRow: env.automation_headless_locked === true,
       labelInfo: env.automation_headless_locked
-        ? "Set by AUTOMATION_HEADLESS on the server."
+        ? "Headless mode is On for docker containers"
         : null,
     },
     {

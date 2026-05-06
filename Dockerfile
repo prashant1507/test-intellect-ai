@@ -1,11 +1,12 @@
-FROM node:20-alpine AS frontend
+ARG TARGETPLATFORM=linux/amd64
+FROM --platform=${TARGETPLATFORM} node:20-alpine AS frontend
 WORKDIR /build
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-FROM mcr.microsoft.com/playwright/python:v1.58.0-noble
+FROM --platform=${TARGETPLATFORM} mcr.microsoft.com/playwright/python:v1.59.0-noble
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
