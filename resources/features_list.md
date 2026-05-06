@@ -90,6 +90,7 @@
     - Test Case ID if present
 - If an exiting test case is regenerated and is marked as UPDATED, then the new change will be displayed in GREEN and old one in RED
 - Test case section will reset if user re fetch the requirements
+- JIRA_CREATEMETA_TEST_TTL_SECONDS based on this system with fetch the template or let say meta template from JIRA (0 means get every time before doing any JIRA action)
 
 ---
 
