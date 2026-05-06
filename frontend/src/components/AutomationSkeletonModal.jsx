@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { jiraBrowseHref } from "../utils/audit";
 import { normTicketId } from "../utils/format";
 import { Copy, FloatingTooltip, Spinner } from "./common";
@@ -64,6 +64,7 @@ export function AutomationSkeletonModal({ tc, jiraBaseUrl, api, onClose, onAnnou
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
+  const skelAbortRef = useRef(null);
 
   const fwOpts = useMemo(() => frameworksFor(language), [language]);
   useEffect(() => {
@@ -71,23 +72,54 @@ export function AutomationSkeletonModal({ tc, jiraBaseUrl, api, onClose, onAnnou
     setFramework((f) => (ids.has(f) ? f : fwOpts[0][0]));
   }, [fwOpts]);
 
+  useEffect(() => () => skelAbortRef.current?.abort(), []);
+
+  useEffect(() => {
+    skelAbortRef.current?.abort();
+    skelAbortRef.current = null;
+    setLoading(false);
+  }, [tc]);
+
+  const stopSkeletonGeneration = useCallback(() => {
+    try {
+      skelAbortRef.current?.abort();
+    } catch (_) {}
+  }, []);
+
   const generate = useCallback(async () => {
     setErr("");
+    skelAbortRef.current?.abort();
+    const ac = new AbortController();
+    skelAbortRef.current = ac;
     setLoading(true);
     try {
-      const d = await api("/generate-automation-skeleton", "POST", {
-        test_case: tc,
-        language,
-        framework,
-        ticket_id: String(tc?.jira_issue_key || "").trim(),
-      });
+      const d = await api(
+        "/generate-automation-skeleton",
+        "POST",
+        {
+          test_case: tc,
+          language,
+          framework,
+          ticket_id: String(tc?.jira_issue_key || "").trim(),
+        },
+        false,
+        { signal: ac.signal },
+      );
       const c = typeof d?.code === "string" ? d.code : "";
       setCode(c);
       onAnnounce?.("Automation skeleton generated.");
     } catch (e) {
-      setErr(e?.message || "Generation failed");
+      if (e?.name === "AbortError") {
+        setErr("");
+        onAnnounce?.("Skeleton generation stopped.");
+      } else {
+        setErr(e?.message || "Generation failed");
+      }
     } finally {
-      setLoading(false);
+      if (skelAbortRef.current === ac) {
+        skelAbortRef.current = null;
+        setLoading(false);
+      }
     }
   }, [api, tc, language, framework, onAnnounce]);
 
@@ -166,15 +198,27 @@ export function AutomationSkeletonModal({ tc, jiraBaseUrl, api, onClose, onAnnou
               ))}
             </select>
           </div>
-          <button
-            type="button"
-            className="automation-skel-generate-btn"
-            onClick={() => void generate()}
-            disabled={loading}
-          >
-            {loading ? <Spinner /> : null}
-            {loading ? " Generating…" : "Generate"}
-          </button>
+          <div className="automation-skel-actions">
+            <button
+              type="button"
+              className="automation-skel-generate-btn"
+              onClick={() => void generate()}
+              disabled={loading}
+            >
+              {loading ? <Spinner /> : null}
+              {loading ? " Generating…" : "Generate"}
+            </button>
+            {loading ? (
+              <button
+                type="button"
+                className="secondary"
+                onClick={stopSkeletonGeneration}
+                aria-label="Stop Generation"
+              >
+                Stop Generation
+              </button>
+            ) : null}
+          </div>
         </div>
         {err ? (
           <p className="err automation-skel-err" role="alert">

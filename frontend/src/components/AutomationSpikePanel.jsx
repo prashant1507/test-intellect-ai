@@ -384,7 +384,7 @@ export function AutomationSpikePanel({
           >
             <div className="label-with-info" id="automation-spike-test-type-label">
               <span>Test Type</span>
-              <FieldInfo text="Saved as a tag (UI or API) with your other tags." />
+              <FieldInfo text="Saved as a tag (UI or API) with your other tags" />
             </div>
             <div
               className="automation-spike-test-type-radios"
@@ -434,8 +434,8 @@ export function AutomationSpikePanel({
             <FieldInfo
               text={
                 testType === "API"
-                  ? "API base URL (e.g. https://api.example.com). BDD uses paths like /auth relative to this."
-                  : "Application URL. Use a full URL (e.g. https://example.com)."
+                  ? "API base URL (e.g. https://api.example.com)"
+                  : "Application URL. Use a full URL (e.g. https://example.com)"
               }
             />
           </label>
@@ -462,7 +462,7 @@ export function AutomationSpikePanel({
         <div className="automation-spike-field-col">
           <label htmlFor="automation-spike-tag" className="label-with-info">
             <span>Tag</span>
-            <FieldInfo text="Comma-separated (e.g. Smoke, Regression, Login). Test Type is added when you save to suite." />
+            <FieldInfo text="Comma-separated (e.g. Smoke, Regression, Login). Test Type is added when you save to suite" />
           </label>
           <input
             id="automation-spike-tag"
@@ -484,7 +484,7 @@ export function AutomationSpikePanel({
             className="label-with-info"
           >
             <span>Requirement Ticket ID</span>
-            <FieldInfo text="Requirement / Story ticket." />
+            <FieldInfo text="Requirement / Story ticket" />
           </label>
           <input
             id="automation-spike-requirement-ticket-id"
@@ -504,7 +504,7 @@ export function AutomationSpikePanel({
         <div className="automation-spike-field-col">
           <label htmlFor="automation-spike-jira-id" className="label-with-info">
             <span>Test ID</span>
-            <FieldInfo text="Test ID from JIRA." />
+            <FieldInfo text="Test ID from JIRA" />
           </label>
           <input
             id="automation-spike-jira-id"
@@ -521,7 +521,7 @@ export function AutomationSpikePanel({
         <div className="automation-spike-field-col">
           <label htmlFor="automation-spike-scenario" className="label-with-info">
             <span>Scenario</span>
-            <FieldInfo text="Required for Start test. Also required when saving to suite." />
+            <FieldInfo text="Required for Start test. Also required when saving to suite" />
           </label>
           <input
             id="automation-spike-scenario"
@@ -551,7 +551,7 @@ export function AutomationSpikePanel({
       <div className="row">
         <label htmlFor="automation-spike-test-steps" className="label-with-info">
           <span>Test Steps</span>
-          <FieldInfo text="BDD-style steps (Given / When / Then) that describe what the automation should do on the page." />
+          <FieldInfo text="BDD-style steps (Given / When / Then) that describe what the automation should do on the page" />
         </label>
         <textarea
           id="automation-spike-test-steps"

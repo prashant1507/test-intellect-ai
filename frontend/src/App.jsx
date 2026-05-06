@@ -2080,7 +2080,7 @@ export default function App() {
                     <div className="memory-filter">
                       <label htmlFor="memoryFilter" className="label-with-info">
                         <span>Filter by Ticket</span>
-                        <FieldInfo text="Narrows the saved history list by requirement ticket id." />
+                        <FieldInfo text="Narrows the saved history list by requirement ticket id" />
                       </label>
                       <input
                         id="memoryFilter"
@@ -2184,7 +2184,7 @@ export default function App() {
                     <div className="audit-filter-field">
                       <label htmlFor="audit-filter-user" className="label-with-info">
                         <span>User</span>
-                        <FieldInfo text="Filter rows by who performed the action." />
+                        <FieldInfo text="Filter rows by who performed the action" />
                       </label>
                       <select
                         id="audit-filter-user"
@@ -2203,7 +2203,7 @@ export default function App() {
                     <div className="audit-filter-field">
                       <label htmlFor="audit-filter-ticket" className="label-with-info">
                         <span>Ticket ID</span>
-                        <FieldInfo text="Filter by requirement ticket id." />
+                        <FieldInfo text="Filter by requirement ticket id" />
                       </label>
                       <select
                         id="audit-filter-ticket"
@@ -2225,7 +2225,7 @@ export default function App() {
                     <div className="audit-filter-field">
                       <label htmlFor="audit-filter-jira-user" className="label-with-info">
                         <span>JIRA User</span>
-                        <FieldInfo text="Filter by JIRA user." />
+                        <FieldInfo text="Filter by JIRA user" />
                       </label>
                       <select
                         id="audit-filter-jira-user"
@@ -2247,7 +2247,7 @@ export default function App() {
                     <div className="audit-filter-field">
                       <label htmlFor="audit-filter-action" className="label-with-info">
                         <span>Action</span>
-                        <FieldInfo text="Filter by Audit event." />
+                        <FieldInfo text="Filter by Audit event" />
                       </label>
                       <select
                         id="audit-filter-action"
@@ -2595,7 +2595,7 @@ export default function App() {
                 <div>
                   <label htmlFor="jiraUrl" className="label-with-info">
                     <span>JIRA URL</span>
-                    <FieldInfo text="Your JIRA site base URL (e.g. https://company.atlassian.net)." />
+                    <FieldInfo text="Your JIRA site base URL (e.g. https://company.atlassian.net)" />
                   </label>
                   <input
                     id="jiraUrl"
@@ -2614,7 +2614,7 @@ export default function App() {
                 <div>
                   <label htmlFor="username" className="label-with-info">
                     <span>JIRA Username</span>
-                    <FieldInfo text="Login name or email for JIRA API access." />
+                    <FieldInfo text="Login name or email for JIRA API access" />
                   </label>
                   <input
                     id="username"
@@ -2632,7 +2632,7 @@ export default function App() {
                 <div>
                   <label htmlFor="password" className="label-with-info">
                     <span>JIRA Password / Token</span>
-                    <FieldInfo text="Account password or API token. Leave empty if JIRA_PASSWORD is set on the server (the value is never shown in the browser)." />
+                    <FieldInfo text="Account password or API token. Leave empty if JIRA_PASSWORD is set on the server (the value is never shown in the browser)" />
                   </label>
                   <div className="input-with-toggle">
                     <input
@@ -2677,7 +2677,7 @@ export default function App() {
                 <div>
                   <label htmlFor="ticketId" className="label-with-info">
                     <span>Requirement Ticket ID</span>
-                    <FieldInfo text="Requirement / Story ticket ID." />
+                    <FieldInfo text="Requirement / Story ticket ID" />
                   </label>
                   <input
                     id="ticketId"
@@ -2739,7 +2739,7 @@ export default function App() {
                   <div>
                     <label htmlFor="pasteTitle" className="label-with-info">
                       <span>Title (Optional)</span>
-                      <FieldInfo text="Optional short label for this pasted requirement in history." />
+                      <FieldInfo text="Optional short label for this pasted requirement in history" />
                     </label>
                     <input
                       id="pasteTitle"
@@ -2752,7 +2752,7 @@ export default function App() {
                   <div>
                     <label htmlFor="pasteMemoryKey" className="label-with-info">
                       <span>Save as Key (Optional)</span>
-                      <FieldInfo text="Stable key for history and diffs; leave empty to auto-generate." />
+                      <FieldInfo text="Stable key for history and diffs; leave empty to auto-generate" />
                     </label>
                     <input
                       id="pasteMemoryKey"
@@ -2770,7 +2770,7 @@ export default function App() {
                 <div className="row">
                   <label htmlFor="pasteText" className="label-with-info">
                     <span>Requirements</span>
-                    <FieldInfo text="Text the model uses to generate tests; Markdown is supported." />
+                    <FieldInfo text="Text the model uses to generate tests; Markdown is supported" />
                   </label>
                   <textarea
                     id="pasteText"
@@ -2800,7 +2800,7 @@ export default function App() {
                 {reqImgConfig.visionConfigured && !mock && pasteText.trim() ? (
                   <RequirementMockupsBlock
                     title="Upload Mockups and Attachments"
-                    fieldInfoText="Mockups or documents sent to the LLM with your pasted text: PNG, JPEG, GIF, WebP, or PDF. ZIP and other archive files are not allowed."
+                    fieldInfoText="Mockups or documents sent to the LLM with your pasted text: PNG, JPEG, GIF, WebP, or PDF. ZIP and other archive files are not allowed"
                     pickerId="req-image-upload-paste"
                     disabled={generatingTestCases}
                     onChange={onReqImageFilesInput}
@@ -2979,7 +2979,7 @@ export default function App() {
                     <RequirementMockupsBlock
                       className="req-images-block--in-requirements"
                       title="Upload Mockups and Attachments"
-                      fieldInfoText="Attachments sent to the LLM with your requirements. Combined with selected ticket attachments below (if any). PNG, JPEG, GIF, WebP, or PDF; ZIP and other archives are not allowed."
+                      fieldInfoText="Attachments sent to the LLM with your requirements. Combined with selected ticket attachments below (if any). PNG, JPEG, GIF, WebP, or PDF; ZIP and other archives are not allowed"
                       pickerId="req-image-upload-jira"
                       disabled={generatingTestCases}
                       onChange={onReqImageFilesInput}

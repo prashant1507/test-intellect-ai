@@ -3,9 +3,9 @@ import { FieldInfo } from "./common";
 import { clampAgenticMaxRounds } from "../utils/testCase";
 
 const AGENTIC_VALIDATION_INFO =
-  "• 3: Good default—enough retries to fix JSON or validation issues without many extra calls.\n" +
-  "• 4–5: Use for complex or messy requirements where failures are more likely; stop when gains level off.\n" +
-  "• 6–10: Only if quality matters more than cost and latency; this is a tradeoff, not always better.";
+  "• 3: Good default—enough retries to fix JSON or validation issues without many extra calls\n" +
+  "• 4–5: Use for complex or messy requirements where failures are more likely; stop when gains level off\n" +
+  "• 6–10: Only if quality matters more than cost and latency; this is a tradeoff, not always better";
 
 export function AgenticPipelineOptions({ checked, onCheckedChange, maxRounds, onMaxRoundsChange, roundsInputId }) {
   const agenticCheckboxId = useId();

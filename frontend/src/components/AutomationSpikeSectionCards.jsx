@@ -524,7 +524,7 @@ function SuiteCaseRow({
         <SuiteCaseJiraScenarioLine c={c} />
       </span>
       <div className="automation-spike-suite-item-actions">
-        <FloatingTooltip text="Edit this test case.">
+        <FloatingTooltip text="Edit this test case">
           <button
             type="button"
             className="tc-edit-icon-btn"
@@ -579,13 +579,13 @@ function SuiteCaseRow({
             ariaLabel="Run this saved case"
           />
         </FloatingTooltip>
-        <FloatingTooltip text="View run analysis. This shows analysis for the last run only.">
+        <FloatingTooltip text="View run analysis. This shows analysis for the last run only">
           <button
             type="button"
             className="tc-edit-icon-btn"
             onClick={() => onAnalysis(c)}
             disabled={runDisabled || !hasSuiteAnalysis}
-            aria-label="View run analysis. This shows analysis for the last run only."
+            aria-label="View run analysis. This shows analysis for the last run only"
           >
             <svg
               width="18"
@@ -1760,7 +1760,7 @@ export function AutomationSpikeSectionCards({
           <h2>
             <span className="label-with-info">
               <span>Saved Suite</span>
-              <FieldInfo text="Saves test scenarios. 'Run All' runs every case in order." />
+              <FieldInfo text="Saves test scenarios. 'Run All' runs every case in order" />
             </span>
           </h2>
           <span className="linked-jira-tests-count">
@@ -1842,7 +1842,7 @@ export function AutomationSpikeSectionCards({
                 <span className="automation-saved-suite-run-filters-k">Tag</span>
                 <span className="label-with-info automation-saved-suite-run-filters-or-with-info">
                   <span className="automation-saved-suite-run-filters-pill">OR match</span>
-                  <FieldInfo text="A test runs if it has at least one of these tags (OR)." />
+                  <FieldInfo text="A test runs if it has at least one of these tags (OR)" />
                 </span>
               </div>
               {suiteTagFilterOptions.length === 0 ? (
@@ -1951,7 +1951,7 @@ export function AutomationSpikeSectionCards({
                 <span className="automation-saved-suite-run-filters-k">JIRA ID</span>
                 <span className="label-with-info automation-saved-suite-run-filters-or-with-info">
                   <span className="automation-saved-suite-run-filters-pill">OR match</span>
-                  <FieldInfo text="A test runs if its JIRA key matches one of these (OR)." />
+                  <FieldInfo text="A test runs if its JIRA key matches one of these (OR)" />
                 </span>
               </div>
               {suiteJiraFilterOptions.length === 0 ? (
@@ -2491,7 +2491,7 @@ export function AutomationSpikeSectionCards({
           <h2>
             <span className="label-with-info">
               <span>Environment</span>
-              <FieldInfo text="Saved in the automation database." />
+              <FieldInfo text="Saved in the automation database" />
             </span>
           </h2>
         </div>
@@ -2767,7 +2767,7 @@ export function AutomationSpikeSectionCards({
           <h2>
             <span className="label-with-info">
               <span>Saved Selectors</span>
-              <FieldInfo text="Cached selectors from successful runs, so later runs can resolve steps more quickly when the app matches a known state." />
+              <FieldInfo text="Cached selectors from successful runs, so later runs can resolve steps more quickly when the app matches a known state" />
             </span>
           </h2>
           <span className="automation-spike-saved-selectors-head-tail">
@@ -2777,7 +2777,7 @@ export function AutomationSpikeSectionCards({
                 text={
                   runOrSuiteBusy
                     ? "Cannot remove while a test run is in progress"
-                    : "Delete all saved selectors. The next runs may rebuild the cache via the LLM."
+                    : "Delete all saved selectors. The next runs may rebuild the cache via the LLM"
                 }
               >
                 <button

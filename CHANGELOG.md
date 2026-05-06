@@ -239,6 +239,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 ## [2.6.2]
 
+### Added
+- Added 'Stop Generation' button for Generate Skeleton
+
 ### Changed
 - Fix bug where delete test case was not deleting from Saved History in Paste Requirement mode
 - Fix bug where switching between JIRA and Paste Requirement mode was not resetting the fields
+- Minor improvements

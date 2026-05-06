@@ -26,7 +26,7 @@ export function JiraGenerationFormFields({
         <div>
           <label htmlFor="jiraTestProject" className="label-with-info">
             <span>JIRA Test Project</span>
-            <FieldInfo text="Project key where new test cases are created." />
+            <FieldInfo text="Project key where new test cases are created" />
           </label>
           <input
             id="jiraTestProject"
@@ -43,7 +43,7 @@ export function JiraGenerationFormFields({
         <div>
           <label htmlFor="jiraTestIssueType" className="label-with-info">
             <span>Test Issue Type</span>
-            <FieldInfo text="Exact name of an issue type in your test project (e.g. Test, Task, or a custom type)." />
+            <FieldInfo text="Exact name of an issue type in your test project (e.g. Test, Task, or a custom type)" />
           </label>
           <input
             id="jiraTestIssueType"
@@ -60,7 +60,7 @@ export function JiraGenerationFormFields({
         <div>
           <label htmlFor="jiraLinkType" className="label-with-info">
             <span>Issue Link Type</span>
-            <FieldInfo text="Exact link type name from JIRA (Project settings → Issue linking). Often Relates — not the UI sentence “relates to”." />
+            <FieldInfo text="Exact link type name from JIRA (Project settings → Issue linking). Often Relates — not the UI sentence “relates to”" />
           </label>
           <input
             id="jiraLinkType"
