@@ -208,7 +208,7 @@ export function formatHistoryDate(iso) {
 export function formatHistoryTime(iso) {
   const d = _parseIso(iso);
   if (!d) return "—";
-  return _fmtTimeHm(d);
+  return _fmtTimeHms(d);
 }
 
 export function formatReportListAt(iso) {
