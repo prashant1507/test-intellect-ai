@@ -2974,7 +2974,7 @@ export default function App() {
                         <>
                           Maximum {reqImgConfig.maxCount} attachments with {reqImgConfig.maxTotalMb} MB combined.
                           {reqAttachments?.length
-                            ? " Select attachments below to include them when generating."
+                            ? " Select attachments below to include them when generating test cases."
                             : ""}
                         </>
                       }

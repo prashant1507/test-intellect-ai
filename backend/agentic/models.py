@@ -67,9 +67,15 @@ def _coerce_validator_line(x: object) -> str:
         return x
     if isinstance(x, dict):
         rsn = x.get("reason")
+        rsn_p = x.get("Reason")
         sidx = x.get("scenario_index", x.get("scenarioIndex"))
-        if rsn is not None and str(rsn).strip() and sidx is not None and str(sidx).strip() != "":
-            return f"Scenario {sidx}: {str(rsn).strip()}"
+        line_rsn = ""
+        if rsn is not None and str(rsn).strip():
+            line_rsn = str(rsn).strip()
+        elif rsn_p is not None and str(rsn_p).strip():
+            line_rsn = str(rsn_p).strip()
+        if line_rsn and sidx is not None and str(sidx).strip() != "":
+            return f"Scenario {sidx}: {line_rsn}"
         sug = x.get("suggestion")
         if sug is not None and str(sug).strip():
             s = str(sug).strip()
@@ -84,6 +90,15 @@ def _coerce_validator_line(x: object) -> str:
             lead = f"[{str(sev).strip()}] " if sev is not None and str(sev).strip() else ""
             tail = f" ({str(ref).strip()})" if ref is not None and str(ref).strip() else ""
             return f"{lead}{s}{tail}"
+        if x.get("scenario_index") is None and x.get("scenarioIndex") is None:
+            br = x.get("Reason")
+            lr = x.get("reason")
+            rb_raw = br if br is not None else lr
+            act_bf = x.get("action") or x.get("Action")
+            if rb_raw is not None and str(rb_raw).strip():
+                rb = str(rb_raw).strip()
+                ac = str(act_bf).strip() if act_bf is not None else ""
+                return f"{rb} — {ac}" if ac else rb
         dim = x.get("dimension")
         body = next(
             (x.get(k) for k in ("text", "message", "detail", "description", "finding") if x.get(k)),

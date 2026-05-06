@@ -76,9 +76,12 @@ function normalizeValidatorLine(raw) {
     try {
       const d = JSON.parse(s);
       if (d && typeof d === "object") {
-        if (d.reason != null && (d.scenario_index != null || d.scenarioIndex != null)) {
+        if (
+          (d.scenario_index != null || d.scenarioIndex != null) &&
+          (d.reason != null || d.Reason != null)
+        ) {
           const idx = d.scenario_index != null ? d.scenario_index : d.scenarioIndex;
-          const r = String(d.reason).trim();
+          const r = String(d.reason != null ? d.reason : d.Reason).trim();
           if (r) return `Scenario ${idx}: ${r}`;
         }
         if (d.suggestion != null) {
@@ -93,6 +96,15 @@ function normalizeValidatorLine(raw) {
           const lead = sev ? `[${sev}] ` : "";
           const tail = r ? ` (${r})` : "";
           return `${lead}${b}${tail}`;
+        }
+        const sx = d.scenario_index ?? d.scenarioIndex;
+        if (sx == null) {
+          const rub = d.Reason != null ? String(d.Reason).trim() : "";
+          const rlow = d.reason != null ? String(d.reason).trim() : "";
+          const rb = rub || rlow;
+          const act =
+            d.action != null ? String(d.action).trim() : d.Action != null ? String(d.Action).trim() : "";
+          if (rb) return act ? `${rb} — ${act}` : rb;
         }
       }
     } catch {
@@ -135,7 +147,44 @@ function capitalizeBulletLead(text) {
 function splitRunSummary(err) {
   const s = String(err || "").trim();
   if (!s) return [];
-  const parts = s.split(/;\s+/).map((x) => x.trim()).filter(Boolean);
+  const parts = [];
+  let start = 0;
+  let i = 0;
+  let inStr = false;
+  let esc = false;
+  let depth = 0;
+  while (i < s.length) {
+    const c = s[i];
+    if (esc) {
+      esc = false;
+      i++;
+      continue;
+    }
+    if (inStr) {
+      if (c === "\\") esc = true;
+      else if (c === '"') inStr = false;
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      inStr = true;
+      i++;
+      continue;
+    }
+    if (c === "{") depth++;
+    else if (c === "}") depth = Math.max(0, depth - 1);
+    if (depth === 0 && c === ";" && /\s/.test(s[i + 1] ?? "")) {
+      const chunk = s.slice(start, i).trim();
+      if (chunk) parts.push(chunk);
+      i++;
+      while (i < s.length && /\s/.test(s[i])) i++;
+      start = i;
+      continue;
+    }
+    i++;
+  }
+  const last = s.slice(start).trim();
+  if (last) parts.push(last);
   return parts.length ? parts : [s];
 }
 
@@ -174,7 +223,7 @@ function calloutHeadingAndBullets(err) {
   ) {
     return {
       heading: "Validation did not fully pass. Returning best attempt.",
-      bullets: parts.slice(2).map(capitalizeBulletLead),
+      bullets: parts.slice(2).map((line) => capitalizeBulletLead(normalizeValidatorLine(line))),
     };
   }
   return { heading: null, bullets: parts };
@@ -257,18 +306,18 @@ export function AgenticCoveragePanel({ agentic }) {
                 {calloutGroups
                   ? calloutGroups.map((g, i) => (
                       <li key={i}>
-                        {normalizeValidatorLine(g.lead)}
+                        {capitalizeBulletLead(normalizeValidatorLine(g.lead))}
                         {g.nested.length ? (
                           <ul className="agentic-coverage-panel__callout-sublist">
                             {g.nested.map((line, j) => (
-                              <li key={j}>{normalizeValidatorLine(line)}</li>
+                              <li key={j}>{capitalizeBulletLead(normalizeValidatorLine(line))}</li>
                             ))}
                           </ul>
                         ) : null}
                       </li>
                     ))
                   : calloutHB.bullets.map((line, i) => (
-                      <li key={i}>{normalizeValidatorLine(line)}</li>
+                      <li key={i}>{capitalizeBulletLead(normalizeValidatorLine(line))}</li>
                     ))}
               </ul>
             ) : null}
