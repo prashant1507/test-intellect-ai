@@ -153,9 +153,20 @@ export function fmtTestsMarkdown(t) {
     .join("\n\n---\n\n");
 }
 
-export function formatSizeMb(n) {
-  if (n == null || typeof n !== "number" || n < 0) return "";
-  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+export function attachmentSizeBytes(raw) {
+  if (raw == null) return null;
+  if (typeof raw === "number" && Number.isFinite(raw) && raw >= 0) return Math.trunc(raw);
+  const p = Number.parseInt(String(raw).trim(), 10);
+  return Number.isFinite(p) && p >= 0 ? p : null;
+}
+
+export function formatFileSize(n) {
+  if (n == null || typeof n !== "number" || !Number.isFinite(n) || n < 0) return "";
+  if (n < 1024) return `${Math.round(n)} B`;
+  const kb = n / 1024;
+  if (kb < 1024) return kb < 10 ? `${kb.toFixed(1)} KB` : `${Math.round(kb)} KB`;
+  const mb = kb / 1024;
+  return mb < 10 ? `${mb.toFixed(2)} MB` : `${mb.toFixed(1)} MB`;
 }
 
 function _parseIso(iso) {

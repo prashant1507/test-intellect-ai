@@ -1,5 +1,5 @@
 import { FieldInfo } from "./common";
-import { formatSizeMb } from "../utils/format";
+import { formatFileSize } from "../utils/format";
 
 function MockupFilePicker({
   id,
@@ -107,7 +107,7 @@ export function RequirementMockupsBlock({
               <span className="req-images-file-name" title={f.name}>
                 {f.name}
               </span>{" "}
-              <span className="req-images-file-size">({formatSizeMb(f.size) || "—"})</span>{" "}
+              <span className="req-images-file-size">({formatFileSize(f.size) || "—"})</span>{" "}
               <button
                 type="button"
                 className="linkish"

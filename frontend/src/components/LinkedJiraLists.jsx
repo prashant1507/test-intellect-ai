@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { formatSizeMb } from "../utils/format";
+import { attachmentSizeBytes, formatFileSize } from "../utils/format";
 import { PriorityTag } from "./PriorityTag";
 
 const VISIBLE_ROWS = 2;
@@ -237,7 +237,7 @@ export function RequirementAttachmentsInline({
         .map((a) => ({
           id: String(a.id ?? "").trim(),
           name: String(a.filename || "file").trim() || "file",
-          size: typeof a.size === "number" && a.size >= 0 ? a.size : null,
+          size: attachmentSizeBytes(a.size ?? a.file_size ?? a.fileSize),
         }))
         .filter((r) => r.id),
     [attachments],
@@ -251,7 +251,7 @@ export function RequirementAttachmentsInline({
   const list = (
     <ul ref={listRef} className="linked-jira-tests-list">
       {rows.map((r) => {
-        const sizeLabel = r.size != null ? formatSizeMb(r.size) : "";
+        const sizeLabel = r.size != null ? formatFileSize(r.size) : "";
         return (
           <li key={r.id} className="linked-jira-tests-line">
             <div className="req-attach-row">
@@ -266,7 +266,7 @@ export function RequirementAttachmentsInline({
                   />
                 </label>
               ) : null}
-              <span className="req-attach-name" title={r.name}>
+              <span className="req-attach-name">
                 {r.name}
                 {sizeLabel ? <span className="req-attach-size"> · {sizeLabel}</span> : null}
               </span>
