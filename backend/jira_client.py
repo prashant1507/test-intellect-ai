@@ -1134,6 +1134,16 @@ def push_test_case_to_jira(
         inward_key, outward_key = req_k, new_key
     else:
         inward_key, outward_key = new_key, req_k
+    if settings.jira_issue_link_swap_inward_outward:
+        inward_key, outward_key = outward_key, inward_key
+    _LOG.debug(
+        "JIRA issueLink type=%s inward=%s outward=%s inward_is_req=%s swap=%s",
+        link_type,
+        inward_key,
+        outward_key,
+        settings.jira_link_inward_is_requirement,
+        settings.jira_issue_link_swap_inward_outward,
+    )
     link_payload = {
         "type": {"name": link_type},
         "inwardIssue": {"key": inward_key},

@@ -346,6 +346,8 @@ class ConfigResponse(BaseModel):
     default_jira_test_project_key: str = ""
     default_jira_test_issue_type: str = "Test"
     default_jira_link_type: str = "Relates"
+    jira_link_inward_is_requirement: bool = True
+    jira_issue_link_swap_inward_outward: bool = False
     mock: bool = False
     show_memory_ui: bool = True
     show_audit_ui: bool = True
@@ -919,6 +921,8 @@ def get_config():
         default_jira_test_project_key=_strip(s.jira_test_project_key),
         default_jira_test_issue_type=_strip(s.jira_test_issue_type) or "Test",
         default_jira_link_type=_strip(s.jira_test_link_type) or "Relates",
+        jira_link_inward_is_requirement=s.jira_link_inward_is_requirement,
+        jira_issue_link_swap_inward_outward=s.jira_issue_link_swap_inward_outward,
         mock=s.mock,
         show_memory_ui=s.show_memory_ui,
         show_audit_ui=s.show_audit_ui,

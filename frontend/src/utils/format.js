@@ -185,14 +185,6 @@ function _fmtDayMonthYear(d) {
   });
 }
 
-function _fmtTimeHm(d) {
-  return d.toLocaleTimeString(DISPLAY_LOCALE, {
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: false,
-  });
-}
-
 function _fmtTimeHms(d) {
   const pad = (n) => String(n).padStart(2, "0");
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;

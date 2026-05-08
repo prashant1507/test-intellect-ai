@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     @field_validator(
         "jira_link_inward_is_requirement",
+        "jira_issue_link_swap_inward_outward",
         "jira_verify_ssl",
         "mock",
         "show_memory_ui",
@@ -53,6 +54,7 @@ class Settings(BaseSettings):
     jira_test_issue_type: str = "Test"
     jira_test_link_type: str = "Relates"
     jira_link_inward_is_requirement: bool = True
+    jira_issue_link_swap_inward_outward: bool = False
     jira_linked_work_issue_types: str = ""
     jira_createmeta_test_ttl_seconds: int = 3600
     mock: bool = False

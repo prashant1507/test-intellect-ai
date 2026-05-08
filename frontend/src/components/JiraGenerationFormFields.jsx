@@ -60,7 +60,7 @@ export function JiraGenerationFormFields({
         <div>
           <label htmlFor="jiraLinkType" className="label-with-info">
             <span>Issue Link Type</span>
-            <FieldInfo text="Exact link type name from JIRA (Project settings → Issue linking). Often Relates — not the UI sentence “relates to”" />
+            <FieldInfo text="Link type name from JIRA" />
           </label>
           <input
             id="jiraLinkType"

@@ -255,3 +255,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Minor improvements
+
+---
+## [2.7.1]
+
+### Changed
+- Fixed JIRA issue linking issue
