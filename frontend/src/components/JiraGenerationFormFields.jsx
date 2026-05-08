@@ -67,7 +67,7 @@ export function JiraGenerationFormFields({
         <div>
           <label htmlFor={selId} className="label-with-info">
             <span>Issue Link Type</span>
-            <FieldInfo text="Options load from JIRA when URL, user, and password are set. Hover an option for inward/outward phrases. If loading fails or the list is empty, type the global link type Name." />
+            <FieldInfo text="Issue link type from JIRA" />
           </label>
           {showLoadingSelect ? (
             <select id={selId} className="jira-issue-link-type-select" disabled aria-busy="true">
