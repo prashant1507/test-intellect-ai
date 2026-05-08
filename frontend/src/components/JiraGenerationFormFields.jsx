@@ -19,7 +19,14 @@ export function JiraGenerationFormFields({
   setUseAgenticGen,
   agenticMaxRounds,
   setAgenticMaxRounds,
+  issueLinkTypes = [],
+  issueLinkTypesStatus = "idle",
 }) {
+  const selId = "jiraLinkTypeCtrl";
+  const useSelect =
+    issueLinkTypesStatus === "ok" && Array.isArray(issueLinkTypes) && issueLinkTypes.length > 0;
+  const showLoadingSelect = issueLinkTypesStatus === "loading";
+
   return (
     <>
       <div className="row cols-3 jira-credentials-row-equal">
@@ -58,20 +65,48 @@ export function JiraGenerationFormFields({
           </span>
         </div>
         <div>
-          <label htmlFor="jiraLinkType" className="label-with-info">
+          <label htmlFor={selId} className="label-with-info">
             <span>Issue Link Type</span>
-            <FieldInfo text="Link type name from JIRA" />
+            <FieldInfo text="Options load from JIRA when URL, user, and password are set. Hover an option for inward/outward phrases. If loading fails or the list is empty, type the global link type Name." />
           </label>
-          <input
-            id="jiraLinkType"
-            value={jiraLinkType}
-            onChange={(e) => setJiraLinkType(e.target.value)}
-            placeholder="Relates"
-            autoComplete="off"
-            aria-describedby="hint-jira-link-type"
-          />
+          {showLoadingSelect ? (
+            <select id={selId} className="jira-issue-link-type-select" disabled aria-busy="true">
+              <option value={jiraLinkType}>Loading issue link types…</option>
+            </select>
+          ) : useSelect ? (
+            <select
+              id={selId}
+              className="jira-issue-link-type-select"
+              value={jiraLinkType}
+              onChange={(e) => setJiraLinkType(e.target.value)}
+              aria-describedby="hint-jira-link-type"
+            >
+              {issueLinkTypes.map((lt) => (
+                <option
+                  key={`${lt.id}-${lt.name}`}
+                  value={lt.name}
+                  title={
+                    lt.inward && lt.outward
+                      ? `${lt.inward} / ${lt.outward}`
+                      : lt.inward || lt.outward || undefined
+                  }
+                >
+                  {lt.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              id={selId}
+              value={jiraLinkType}
+              onChange={(e) => setJiraLinkType(e.target.value)}
+              placeholder="Relates"
+              autoComplete="off"
+              aria-describedby="hint-jira-link-type"
+            />
+          )}
           <span id="hint-jira-link-type" className="sr-only">
-            JIRA issue link type name used when linking the new test issue to the requirement ticket.
+            JIRA issue link type Name used when linking the new test issue to the requirement ticket.
           </span>
         </div>
       </div>

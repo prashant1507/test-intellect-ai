@@ -16,7 +16,6 @@ services:
       JIRA_PASSWORD: ""
       JIRA_TEST_PROJECT_KEY: ""
       JIRA_TEST_ISSUE_TYPE: Test
-      JIRA_TEST_LINK_TYPE: Relates
       JIRA_LINK_INWARD_IS_REQUIREMENT: "true"
       JIRA_ISSUE_LINK_SWAP_INWARD_OUTWARD: "true"
       JIRA_VERIFY_SSL: "false"

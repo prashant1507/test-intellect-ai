@@ -64,6 +64,45 @@ def fetch_priorities(base_url: str, user: str, password: str) -> list[dict]:
     return sorted(data, key=sort_key)
 
 
+def fetch_issue_link_types(base_url: str, user: str, password: str) -> list[dict[str, str]]:
+    verify = _requests_verify()
+    base = base_url.rstrip("/")
+    auth = (user, password)
+    headers = {"Accept": "application/json"}
+    r = requests.get(
+        f"{base}/rest/api/2/issueLinkType",
+        auth=auth,
+        headers=headers,
+        timeout=60,
+        verify=verify,
+    )
+    r.raise_for_status()
+    data = r.json()
+    raw: list = []
+    if isinstance(data, list):
+        raw = data
+    elif isinstance(data, dict):
+        nested = data.get("issueLinkTypes")
+        raw = nested if isinstance(nested, list) else []
+    out: list[dict[str, str]] = []
+    for x in raw:
+        if not isinstance(x, dict):
+            continue
+        name = str(x.get("name") or "").strip()
+        if not name:
+            continue
+        out.append(
+            {
+                "id": str(x.get("id") or ""),
+                "name": name,
+                "inward": str(x.get("inward") or "").strip(),
+                "outward": str(x.get("outward") or "").strip(),
+            }
+        )
+    out.sort(key=lambda z: z["name"].casefold())
+    return out
+
+
 def build_ai_to_jira_priority_map(jira_priorities: list[dict]) -> dict[str, str]:
     labels = _semantic_tier_labels_for_jira_mapping()
     if not labels or not jira_priorities:
@@ -1128,7 +1167,7 @@ def push_test_case_to_jira(
     if not new_key:
         raise ValueError("JIRA did not return an issue key")
     raw_link = (link_type_override or "").strip() or None
-    link_type = (raw_link or settings.jira_test_link_type or "Relates").strip() or "Relates"
+    link_type = (raw_link or "Relates").strip() or "Relates"
     req_k = norm_issue_key(requirement_key)
     if settings.jira_link_inward_is_requirement:
         inward_key, outward_key = req_k, new_key

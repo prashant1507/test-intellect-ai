@@ -379,8 +379,7 @@ flowchart TB
 ### JIRA Integration
 
 - **Read:** Fetch the requirement issue, **linked work** and **linked tests**, and attachments.
-- **Write:** Create or update **test** issues and **link** them to the requirement (**`JIRA_TEST_LINK_TYPE`**, e.g.
-  `Relates`; inward/outward semantics via **`JIRA_LINK_INWARD_IS_REQUIREMENT`**).
+- **Write:** Create or update **test** issues and **link** them to the requirement.
 - **Bulk push:** e.g. push by **change/status filter** (new/updated); **priorities** use Jira priority names/icons.
 - **`JIRA_LINKED_WORK_ISSUE_TYPES`:** Limits which linked-work types show in the UI (comma-separated list in `.env`).
 
@@ -493,6 +492,7 @@ lone `KEYCLOAK=` flag) must be `true` to enable Keycloak. See [docker-compose.ym
 | `POST`   | `/api/generate-from-paste`                    | Paste path: `description`, optional `title`, `memory_key`; single-shot generation.                                                         |
 | `POST`   | `/api/generate-from-paste-agentic`            | Paste path agentic counterpart of `generate-from-paste`.                                                                                   |
 | `POST`   | `/api/jira/priorities`                        | Jira priorities (names + icon URLs); optionally severities when a test project key is supplied.                                            |
+| `POST`   | `/api/jira/issue-link-types`                  | Global issue link types (`name`, inward/outward phrases) for UI dropdown when pushing tests; mock returns `[]`.                            |
 | `POST`   | `/api/jira/push-test-case`                    | Create/update test + link to requirement.                                                                                                  |
 | `POST`   | `/api/jira/attachment-download`               | Stream a Jira attachment by id (ticket + attachment id); not available in mock mode.                                                       |
 | `POST`   | `/api/generate-automation-skeleton`           | LLM automation code skeleton for a test case.                                                                                              |

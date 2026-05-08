@@ -76,6 +76,8 @@ export default function App() {
   const [jiraTestProject, setJiraTestProject] = useState("");
   const [jiraTestIssueType, setJiraTestIssueType] = useState(readStoredJiraTestIssueType);
   const [jiraLinkType, setJiraLinkType] = useState(readStoredJiraLinkType);
+  const [jiraIssueLinkTypes, setJiraIssueLinkTypes] = useState([]);
+  const [jiraIssueLinkTypesStatus, setJiraIssueLinkTypesStatus] = useState("idle");
   const [pushingKey, setPushingKey] = useState(null);
   const [jiraPushed, setJiraPushed] = useState(loadJiraPushedMap);
   const [jiraUpdateSucceededKeys, setJiraUpdateSucceededKeys] = useState({});
@@ -473,6 +475,51 @@ export default function App() {
     },
     [oidcUser, useKeycloak, oidcMgr, redirectToKeycloakLogin],
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    if (mock || inputMode !== "jira" || !jiraPasswordOk || !jiraUrl.trim() || !username.trim()) {
+      setJiraIssueLinkTypes([]);
+      setJiraIssueLinkTypesStatus("idle");
+      return undefined;
+    }
+    setJiraIssueLinkTypesStatus("loading");
+    api("/jira/issue-link-types", "POST", {
+      jira_url: jiraUrl.trim(),
+      username,
+      password,
+    })
+      .then((d) => {
+        if (!cancelled) {
+          const list = Array.isArray(d.issue_link_types) ? d.issue_link_types : [];
+          setJiraIssueLinkTypes(list);
+          setJiraIssueLinkTypesStatus("ok");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setJiraIssueLinkTypes([]);
+          setJiraIssueLinkTypesStatus("error");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mock, inputMode, jiraPasswordOk, jiraUrl, username, password, api]);
+
+  useEffect(() => {
+    if (jiraIssueLinkTypesStatus !== "ok" || jiraIssueLinkTypes.length === 0) return;
+    setJiraLinkType((cur) => {
+      const t = cur.trim();
+      const names = new Set(jiraIssueLinkTypes.map((x) => x.name));
+      if (t && names.has(t)) return cur;
+      const defLink = (jiraEnvDefaultsRef.current?.linkType || "").trim();
+      if (defLink && names.has(defLink)) return defLink;
+      const relates = jiraIssueLinkTypes.find((x) => x.name === "Relates")?.name;
+      if (relates) return relates;
+      return jiraIssueLinkTypes[0]?.name || t || "Relates";
+    });
+  }, [jiraIssueLinkTypes, jiraIssueLinkTypesStatus]);
 
   const stopGeneration = useCallback(() => {
     try {
@@ -1290,10 +1337,7 @@ export default function App() {
             (typeof c.default_jira_test_issue_type === "string"
               ? c.default_jira_test_issue_type.trim()
               : "") || "Test",
-          linkType:
-            (typeof c.default_jira_link_type === "string"
-              ? c.default_jira_link_type.trim()
-              : "") || "Relates",
+          linkType: "Relates",
         };
         if (typeof c.default_jira_url === "string" && c.default_jira_url.trim())
           setJiraUrl(c.default_jira_url.trim());
@@ -1310,17 +1354,6 @@ export default function App() {
           }
         } catch (e) {
           if (import.meta.env.DEV) console.warn("default jira test issue type from config", e);
-        }
-        try {
-          if (
-            typeof c.default_jira_link_type === "string" &&
-            c.default_jira_link_type &&
-            !localStorage.getItem("jira-ai-jira-link-type")
-          ) {
-            setJiraLinkType(c.default_jira_link_type);
-          }
-        } catch (e) {
-          if (import.meta.env.DEV) console.warn("default jira link type from config", e);
         }
         if (
           typeof c.llm_vision_configured === "boolean" ||
@@ -2838,6 +2871,8 @@ export default function App() {
                 setUseAgenticGen={setUseAgenticGen}
                 agenticMaxRounds={agenticMaxRounds}
                 setAgenticMaxRounds={setAgenticMaxRounds}
+                issueLinkTypes={jiraIssueLinkTypes}
+                issueLinkTypesStatus={jiraIssueLinkTypesStatus}
               />
             ) : null}
               </div>

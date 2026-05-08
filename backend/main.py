@@ -22,6 +22,7 @@ from jira_client import (
     download_attachment_for_ticket,
     fetch_issue,
     fetch_issue_attachment_meta,
+    fetch_issue_link_types,
     fetch_linked_test_issues,
     fetch_linked_work_issues,
     fetch_priorities,
@@ -339,13 +340,18 @@ class JiraPrioritiesIn(BaseModel):
     test_project_key: str = ""
 
 
+class JiraCredentialsIn(BaseModel):
+    jira_url: str = Field(..., min_length=1)
+    username: str = Field(..., min_length=1)
+    password: str = ""
+
+
 class ConfigResponse(BaseModel):
     default_jira_url: str = ""
     default_username: str = ""
     jira_password_configured: bool = False
     default_jira_test_project_key: str = ""
     default_jira_test_issue_type: str = "Test"
-    default_jira_link_type: str = "Relates"
     jira_link_inward_is_requirement: bool = True
     jira_issue_link_swap_inward_outward: bool = False
     mock: bool = False
@@ -920,7 +926,6 @@ def get_config():
         jira_password_configured=bool(_strip(s.jira_password)),
         default_jira_test_project_key=_strip(s.jira_test_project_key),
         default_jira_test_issue_type=_strip(s.jira_test_issue_type) or "Test",
-        default_jira_link_type=_strip(s.jira_test_link_type) or "Relates",
         jira_link_inward_is_requirement=s.jira_link_inward_is_requirement,
         jira_issue_link_swap_inward_outward=s.jira_issue_link_swap_inward_outward,
         mock=s.mock,
@@ -1004,6 +1009,23 @@ async def jira_priorities(body: JiraPrioritiesIn, kc: Kc):
         except Exception:
             _LOG.debug("JIRA severities meta for priorities endpoint failed", exc_info=True)
     return out
+
+
+@api.post("/jira/issue-link-types")
+async def jira_issue_link_types(body: JiraCredentialsIn, _kc: Kc):
+    if settings.mock:
+        return {"issue_link_types": []}
+    pw = _require_jira_password(body.password)
+    try:
+        items = await asyncio.to_thread(
+            fetch_issue_link_types,
+            body.jira_url.strip(),
+            body.username,
+            pw,
+        )
+    except RequestException as e:
+        raise _jira_request_http_exception(e) from e
+    return {"issue_link_types": items}
 
 
 @api.post("/jira/push-test-case")
