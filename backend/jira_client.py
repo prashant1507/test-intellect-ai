@@ -1167,7 +1167,7 @@ def push_test_case_to_jira(
     if not new_key:
         raise ValueError("JIRA did not return an issue key")
     raw_link = (link_type_override or "").strip() or None
-    link_type = (raw_link or "Relates").strip() or "Relates"
+    link_type = (raw_link or "Test").strip() or "Relates"
     req_k = norm_issue_key(requirement_key)
     if settings.jira_link_inward_is_requirement:
         inward_key, outward_key = req_k, new_key

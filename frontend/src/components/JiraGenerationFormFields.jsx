@@ -100,7 +100,7 @@ export function JiraGenerationFormFields({
               id={selId}
               value={jiraLinkType}
               onChange={(e) => setJiraLinkType(e.target.value)}
-              placeholder="Relates"
+              placeholder="Test"
               autoComplete="off"
               aria-describedby="hint-jira-link-type"
             />

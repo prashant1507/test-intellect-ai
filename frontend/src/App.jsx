@@ -157,7 +157,7 @@ export default function App() {
   const jiraEnvDefaultsRef = useRef({
     testProject: "",
     testIssueType: "Test",
-    linkType: "Relates",
+    linkType: "Test",
   });
   const [memoryPanel, setMemoryPanel] = useState(null);
 
@@ -513,10 +513,10 @@ export default function App() {
       const t = cur.trim();
       const names = new Set(jiraIssueLinkTypes.map((x) => x.name));
       if (t && names.has(t)) return cur;
-      const defLink = (jiraEnvDefaultsRef.current?.linkType || "").trim();
-      if (defLink && names.has(defLink)) return defLink;
-      const relates = jiraIssueLinkTypes.find((x) => x.name === "Relates")?.name;
-      if (relates) return relates;
+      const pickTest = jiraIssueLinkTypes.find((x) => x.name === "Test")?.name;
+      if (pickTest) return pickTest;
+      const pickRelates = jiraIssueLinkTypes.find((x) => x.name === "Relates")?.name;
+      if (pickRelates) return pickRelates;
       return jiraIssueLinkTypes[0]?.name || t || "Relates";
     });
   }, [jiraIssueLinkTypes, jiraIssueLinkTypesStatus]);
@@ -922,7 +922,7 @@ export default function App() {
           requirement_key: rk,
           test_project_key: updateExisting ? "" : jiraTestProject.trim(),
           jira_test_issue_type: jiraTestIssueType.trim() || "Test",
-          jira_link_type: jiraLinkType.trim() || "Relates",
+          jira_link_type: jiraLinkType.trim() || "Test",
           test_case: stripTestCaseDiffMeta(tcToSend),
           existing_issue_key: updateExisting ? existingKey : "",
         });
@@ -1337,7 +1337,7 @@ export default function App() {
             (typeof c.default_jira_test_issue_type === "string"
               ? c.default_jira_test_issue_type.trim()
               : "") || "Test",
-          linkType: "Relates",
+          linkType: "Test",
         };
         if (typeof c.default_jira_url === "string" && c.default_jira_url.trim())
           setJiraUrl(c.default_jira_url.trim());

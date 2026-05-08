@@ -18,7 +18,7 @@ export function readStoredJiraTestIssueType() {
 
 export function readStoredJiraLinkType() {
   const t = getLocalStorageString("jira-ai-jira-link-type", "").trim();
-  if (!t) return "Relates";
+  if (!t) return "Test";
   if (t === "Relates to") return "Relates";
   return t;
 }
