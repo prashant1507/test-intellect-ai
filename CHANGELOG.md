@@ -260,6 +260,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.7.1]
 
 ### Added
-- 'Issue Link Type' will be fetched form JIRA now
+- 'Issue Link Type' will be fetched from JIRA now
+
 ### Changed
 - Fixed JIRA issue linking issue

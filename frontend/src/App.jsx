@@ -101,6 +101,7 @@ export default function App() {
   const [agenticMaxRounds, setAgenticMaxRounds] = useState("3");
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState("");
+  const genFormErrRef = useRef(null);
   const [lastFetchAt, setLastFetchAt] = useState(null);
   const [linkedJiraTests, setLinkedJiraTests] = useState([]);
   const [linkedJiraWork, setLinkedJiraWork] = useState([]);
@@ -154,6 +155,7 @@ export default function App() {
   const [pasteMemoryKey, setPasteMemoryKey] = useState("");
   const [historyJiraTicketId, setHistoryJiraTicketId] = useState("");
   const inputModeRef = useRef(inputMode);
+  const jiraIssueLinkFetchGen = useRef(0);
   const jiraEnvDefaultsRef = useRef({
     testProject: "",
     testIssueType: "Test",
@@ -388,7 +390,7 @@ export default function App() {
     username,
     password,
     ticket_id: ticketId,
-    jira_test_issue_type: jiraTestIssueType.trim(),
+    jira_test_issue_creation_type: jiraTestIssueType.trim(),
   });
 
   const apiForm = useCallback(
@@ -477,35 +479,33 @@ export default function App() {
   );
 
   useEffect(() => {
-    let cancelled = false;
-    if (mock || inputMode !== "jira" || !jiraPasswordOk || !jiraUrl.trim() || !username.trim()) {
+    if (mock || inputMode !== "jira") {
+      jiraIssueLinkFetchGen.current += 1;
       setJiraIssueLinkTypes([]);
       setJiraIssueLinkTypesStatus("idle");
-      return undefined;
     }
+  }, [mock, inputMode]);
+
+  const loadJiraIssueLinkTypes = useCallback(async () => {
+    if (mock || !jiraPasswordOk || !jiraUrl.trim() || !username.trim()) return;
+    const fetchId = (jiraIssueLinkFetchGen.current += 1);
     setJiraIssueLinkTypesStatus("loading");
-    api("/jira/issue-link-types", "POST", {
-      jira_url: jiraUrl.trim(),
-      username,
-      password,
-    })
-      .then((d) => {
-        if (!cancelled) {
-          const list = Array.isArray(d.issue_link_types) ? d.issue_link_types : [];
-          setJiraIssueLinkTypes(list);
-          setJiraIssueLinkTypesStatus("ok");
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setJiraIssueLinkTypes([]);
-          setJiraIssueLinkTypesStatus("error");
-        }
+    try {
+      const d = await api("/jira/issue-link-types", "POST", {
+        jira_url: jiraUrl.trim(),
+        username,
+        password,
       });
-    return () => {
-      cancelled = true;
-    };
-  }, [mock, inputMode, jiraPasswordOk, jiraUrl, username, password, api]);
+      if (fetchId !== jiraIssueLinkFetchGen.current) return;
+      const list = Array.isArray(d.issue_link_types) ? d.issue_link_types : [];
+      setJiraIssueLinkTypes(list);
+      setJiraIssueLinkTypesStatus("ok");
+    } catch {
+      if (fetchId !== jiraIssueLinkFetchGen.current) return;
+      setJiraIssueLinkTypes([]);
+      setJiraIssueLinkTypesStatus("error");
+    }
+  }, [mock, jiraPasswordOk, jiraUrl, username, password, api]);
 
   useEffect(() => {
     if (jiraIssueLinkTypesStatus !== "ok" || jiraIssueLinkTypes.length === 0) return;
@@ -687,7 +687,7 @@ export default function App() {
           username,
           password,
           ticket_id: ticketId,
-          jira_test_issue_type: jiraTestIssueType.trim(),
+          jira_test_issue_creation_type: jiraTestIssueType.trim(),
           attachment_id: attachmentId,
         });
         let headers = await withOidcAuthorization(
@@ -921,7 +921,7 @@ export default function App() {
           password,
           requirement_key: rk,
           test_project_key: updateExisting ? "" : jiraTestProject.trim(),
-          jira_test_issue_type: jiraTestIssueType.trim() || "Test",
+          jira_test_issue_creation_type: jiraTestIssueType.trim() || "Test",
           jira_link_type: jiraLinkType.trim() || "Test",
           test_case: stripTestCaseDiffMeta(tcToSend),
           existing_issue_key: updateExisting ? existingKey : "",
@@ -1323,6 +1323,18 @@ export default function App() {
   }, [theme]);
 
   useEffect(() => {
+    if (!String(err || "").trim()) return;
+    const el = genFormErrRef.current;
+    if (!el) return;
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+      try {
+        el.focus({ preventScroll: true });
+      } catch (_) {}
+    });
+  }, [err]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
@@ -1334,8 +1346,8 @@ export default function App() {
               ? c.default_jira_test_project_key.trim()
               : "",
           testIssueType:
-            (typeof c.default_jira_test_issue_type === "string"
-              ? c.default_jira_test_issue_type.trim()
+            (typeof c.default_jira_test_issue_creation_type === "string"
+              ? c.default_jira_test_issue_creation_type.trim()
               : "") || "Test",
           linkType: "Test",
         };
@@ -1346,11 +1358,11 @@ export default function App() {
         if (typeof c.default_jira_test_project_key === "string") setJiraTestProject(c.default_jira_test_project_key);
         try {
           if (
-            typeof c.default_jira_test_issue_type === "string" &&
-            c.default_jira_test_issue_type &&
+            typeof c.default_jira_test_issue_creation_type === "string" &&
+            c.default_jira_test_issue_creation_type &&
             !localStorage.getItem("jira-ai-jira-test-issue-type")
           ) {
-            setJiraTestIssueType(c.default_jira_test_issue_type);
+            setJiraTestIssueType(c.default_jira_test_issue_creation_type);
           }
         } catch (e) {
           if (import.meta.env.DEV) console.warn("default jira test issue type from config", e);
@@ -1879,6 +1891,7 @@ export default function App() {
         } else {
           setAnnounce("Requirements loaded.");
         }
+        void loadJiraIssueLinkTypes();
         await syncLists();
         return;
       }
@@ -3053,7 +3066,12 @@ export default function App() {
             </>
             ) : null}
             {err ? (
-              <div className="err" role="alert">
+              <div
+                ref={genFormErrRef}
+                className="err"
+                role="alert"
+                tabIndex={-1}
+              >
                 <strong>Error.</strong> {err}
               </div>
             ) : null}

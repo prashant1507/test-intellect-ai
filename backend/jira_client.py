@@ -617,7 +617,7 @@ def fetch_linked_work_issues(
         want_cf.add(req_type.casefold())
     if not want_cf:
         return [], req_type
-    test_cf = (test_issue_type_name or "").strip().casefold() or (settings.jira_test_issue_type or "Test").casefold()
+    test_cf = (test_issue_type_name or "").strip().casefold() or (settings.jira_test_issue_creation_type or "Test").casefold()
     keys = list_linked_issue_keys(base_url, user, password, requirement_key)
     out: list[dict] = []
     for ik in keys:
@@ -1131,7 +1131,7 @@ def push_test_case_to_jira(
     auth = (user, password)
     headers = {"Accept": "application/json", "Content-Type": "application/json"}
     raw_type = (issue_type_override or "").strip() or None
-    issue_type = (raw_type or settings.jira_test_issue_type or "Test").strip() or "Test"
+    issue_type = (raw_type or settings.jira_test_issue_creation_type or "Test").strip() or "Test"
     proj = norm_issue_key(test_project_key)
     fld = _issue_fields_summary_desc_priority(base_url, user, password, test_case)
     meta_fields = get_issue_create_meta_fields_cached(
@@ -1217,7 +1217,7 @@ def update_test_case_in_jira(
     fproj = proj_data.get("fields") or {}
     pj = norm_issue_key(str((fproj.get("project") or {}).get("key") or ""))
     itn = str((fproj.get("issuetype") or {}).get("name") or "").strip() or (
-        settings.jira_test_issue_type or "Test"
+        settings.jira_test_issue_creation_type or "Test"
     ).strip()
     meta_fields = get_issue_create_meta_fields_cached(base_url, user, password, pj, itn)
     fld = _issue_fields_summary_desc_priority(base_url, user, password, test_case)

@@ -50,7 +50,7 @@ export function JiraGenerationFormFields({
         <div>
           <label htmlFor="jiraTestIssueType" className="label-with-info">
             <span>Test Issue Type</span>
-            <FieldInfo text="Exact name of an issue type in your test project (e.g. Test, Task, or a custom type)" />
+            <FieldInfo text="Exact name of an issue type in your test project to create test cases" />
           </label>
           <input
             id="jiraTestIssueType"
@@ -67,7 +67,7 @@ export function JiraGenerationFormFields({
         <div>
           <label htmlFor={selId} className="label-with-info">
             <span>Issue Link Type</span>
-            <FieldInfo text="Issue link type from JIRA" />
+            <FieldInfo text="Issue relationship type to link test cases to requirement tickets" />
           </label>
           {showLoadingSelect ? (
             <select id={selId} className="jira-issue-link-type-select" disabled aria-busy="true">

@@ -4497,6 +4497,7 @@ button.copy-icon svg {
 }
 
 .err {
+  scroll-margin-top: 0.85rem;
   color: var(--err);
   font-size: 0.85rem;
   margin-top: 0.75rem;

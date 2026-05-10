@@ -20,7 +20,7 @@ export function AgenticPipelineOptions({ checked, onCheckedChange, maxRounds, on
         />
         <span className="label-with-info">
           <label className="agentic-gen-check__label" htmlFor={agenticCheckboxId}>
-            Agentic Validation and Scoring.
+            Agentic Validation and Scoring
           </label>
           <FieldInfo text={AGENTIC_VALIDATION_INFO} />
         </span>

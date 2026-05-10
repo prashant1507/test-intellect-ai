@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     jira_password: str = ""
     jira_verify_ssl: bool = True
     jira_test_project_key: str = ""
-    jira_test_issue_type: str = "Test"
+    jira_test_issue_creation_type: str = "Test"
     jira_link_inward_is_requirement: bool = True
     jira_issue_link_swap_inward_outward: bool = False
     jira_linked_work_issue_types: str = ""

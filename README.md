@@ -381,6 +381,7 @@ flowchart TB
 - **Read:** Fetch the requirement issue, **linked work** and **linked tests**, and attachments.
 - **Write:** Create or update **test** issues and **link** them to the requirement.
 - **Bulk push:** e.g. push by **change/status filter** (new/updated); **priorities** use Jira priority names/icons.
+- **`JIRA_TEST_ISSUE_CREATION_TYPE`:** Issue **type name** used when **creating** test-case issues in the test project (must exist in Jira); also exposed as `default_jira_test_issue_creation_type` from `GET /api/config`.
 - **`JIRA_LINKED_WORK_ISSUE_TYPES`:** Limits which linked-work types show in the UI (comma-separated list in `.env`).
 
 ### Audit
