@@ -22,6 +22,7 @@ import {
   suiteApiPayloadFromPrefillCase,
   suiteApiPayloadsEqual,
 } from "../utils/automationSuitePayload";
+import { devWarn } from "../utils/devWarn";
 
 function spikeRunStatusDisplay(status) {
   const s = String(status || "").toLowerCase();
@@ -367,7 +368,8 @@ export function AutomationSpikePanel({
     await yieldToPaint();
     try {
       await api("/automation/cancel", "POST", { all_in_suite: false });
-    } catch (_) {
+    } catch (e) {
+      devWarn("requestStopCurrentTest cancel failed", e);
     } finally {
       setStopInProgress(false);
     }

@@ -24,8 +24,7 @@ variables accept **legacy aliases** (see LLM table).
 | `SHOW_PASTE_REQUIREMENTS_MODE_UI` | `true`  | Exposed via `GET /api/config`: show or hide **Paste Requirements** mode.          |
 | `SHOW_AUTO_TESTS_UI`              | `true`  | Exposed via `GET /api/config`: show or hide **Auto Tests** (BDD/Playwright) mode. |
 
-If all three of `SHOW_JIRA_MODE_UI`, `SHOW_PASTE_REQUIREMENTS_MODE_UI`, and `SHOW_AUTO_TESTS_UI` are off, the server
-sets `SHOW_JIRA_MODE_UI` back to `true` so at least one mode stays available.
+If all three of `SHOW_JIRA_MODE_UI`, `SHOW_PASTE_REQUIREMENTS_MODE_UI`, and `SHOW_AUTO_TESTS_UI` are off, the server sets `SHOW_JIRA_MODE_UI` back to `true` so at least one mode stays available.
 
 ---
 

@@ -1,4 +1,5 @@
 import { isUnifiedGherkin } from "./testCase";
+import { devWarn } from "./devWarn";
 
 function jiraDoubleBraceToMdInlineCode(md) {
   return md.replace(/\{\{([\s\S]*?)\}\}/g, (_, inner) => {
@@ -225,7 +226,9 @@ export function readTheme() {
     const t = localStorage.getItem("theme");
     if (t === "dark" || t === "light") return t;
     if (t === "soft") return "light";
-  } catch (_) {}
+  } catch (e) {
+    devWarn("readTheme: localStorage unavailable", e);
+  }
   if (typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches) return "dark";
   return "light";
 }

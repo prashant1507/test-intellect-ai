@@ -64,6 +64,7 @@ import { suitePostBodyFromGeneratedCase } from "./utils/automationSuitePayload";
 import { FETCH_TICKET } from "./constants/apiPaths";
 import { ARCHIVE_NOT_ALLOWED_MSG, isBlockedArchiveFilename } from "./utils/requirementImageUpload";
 import { withOidcAuthorization } from "./utils/oidcFetchHeaders";
+import { devWarn } from "./utils/devWarn";
 
 export default function App() {
   const [theme, setTheme] = useState(readTheme);
@@ -271,7 +272,9 @@ export default function App() {
     generationInFlightRef.current = false;
     try {
       generateAbortRef.current?.abort();
-    } catch (_) {}
+    } catch (e) {
+      devWarn("resetWorkspaceOnInputModeChange: abort failed", e);
+    }
     generateAbortRef.current = null;
   }, [
     clearFetchedTicketState,
@@ -301,17 +304,24 @@ export default function App() {
     try {
       try {
         sessionStorage.setItem("idle_timeout_notice", "1");
-      } catch (_) {}
+      } catch (e) {
+        devWarn("sessionStorage idle_timeout_notice", e);
+      }
       try {
         const u = await oidcMgr.getUser();
         await postAuthAuditEvent(u?.access_token, "logout");
-      } catch (_) {}
+      } catch (e) {
+        devWarn("logout audit or getUser before redirect", e);
+      }
       try {
         await oidcMgr.removeUser();
-      } catch (_) {}
+      } catch (e) {
+        devWarn("removeUser before signinRedirect", e);
+      }
       setOidcUser(null);
       await oidcMgr.signinRedirect();
-    } catch (_) {
+    } catch (e) {
+      devWarn("redirectToKeycloakLogin failed", e);
       redirectingToLoginRef.current = false;
     }
   }, [oidcMgr]);
@@ -411,7 +421,9 @@ export default function App() {
               setOidcUser(u2);
               return apiForm(path, formData, true, fetchOptions);
             }
-          } catch (_) {}
+          } catch (e) {
+            devWarn("signinSilent after 401 (apiForm)", e);
+          }
           if (generationInFlightRef.current) {
             throw new Error(
               `${parseApiError(d)} — generation was not interrupted; sign in again in another tab if needed.`,
@@ -454,7 +466,9 @@ export default function App() {
               setOidcUser(u2);
               return api(path, method, body, true, fetchOptions);
             }
-          } catch (_) {}
+          } catch (e) {
+            devWarn("signinSilent after 401 (api)", e);
+          }
           if (generationInFlightRef.current) {
             throw new Error(
               `${parseApiError(d)} — generation was not interrupted; sign in again in another tab if needed.`,
@@ -472,7 +486,9 @@ export default function App() {
   const stopGeneration = useCallback(() => {
     try {
       generateAbortRef.current?.abort();
-    } catch (_) {}
+    } catch (e) {
+      devWarn("stopGeneration: abort failed", e);
+    }
   }, []);
 
   const validateReqImages = useCallback(() => {
@@ -654,7 +670,9 @@ export default function App() {
               );
               r = await fetch("/api/jira/attachment-download", { method: "POST", headers, body });
             }
-          } catch (_) {}
+          } catch (e) {
+            devWarn("signinSilent before attachment download retry", e);
+          }
         }
         if (!r.ok) {
           let d = {};
@@ -692,7 +710,8 @@ export default function App() {
         const a = await api("/audit/list");
         setAuditEntries(Array.isArray(a.entries) ? a.entries : []);
       }
-    } catch {
+    } catch (e) {
+      devWarn("syncLists failed", e);
       setMemoryEntries([]);
       setAuditEntries([]);
     }
@@ -1273,7 +1292,9 @@ export default function App() {
       el.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
       try {
         el.focus({ preventScroll: true });
-      } catch (_) {}
+      } catch (e) {
+        devWarn("genFormErr focus skipped", e);
+      }
     });
   }, [err]);
 
@@ -1539,7 +1560,9 @@ export default function App() {
           setOidcUser(u);
           return;
         }
-      } catch (_) {}
+      } catch (e) {
+        devWarn("signinSilent on token expired", e);
+      }
       void redirectToKeycloakLogin();
     });
     return () => {
@@ -1589,7 +1612,9 @@ export default function App() {
         sessionStorage.removeItem("idle_timeout_notice");
         setIdleTimeoutNotice(true);
       }
-    } catch (_) {}
+    } catch (e) {
+      devWarn("idle_timeout_notice sessionStorage", e);
+    }
   }, [bootPhase, oidcUser, useKeycloak]);
 
   useEffect(() => {

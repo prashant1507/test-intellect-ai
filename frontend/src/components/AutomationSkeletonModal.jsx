@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { jiraBrowseHref } from "../utils/audit";
 import { normTicketId } from "../utils/format";
 import { Copy, FloatingTooltip, Spinner } from "./common";
+import { devWarn } from "../utils/devWarn";
 
 const LANG_OPTIONS = [
   ["python", "Python"],
@@ -83,7 +84,9 @@ export function AutomationSkeletonModal({ tc, jiraBaseUrl, api, onClose, onAnnou
   const stopSkeletonGeneration = useCallback(() => {
     try {
       skelAbortRef.current?.abort();
-    } catch (_) {}
+    } catch (e) {
+      devWarn("stopSkeletonGeneration abort failed", e);
+    }
   }, []);
 
   const generate = useCallback(async () => {

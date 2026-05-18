@@ -30,6 +30,7 @@ import {
   formatSuiteAnalysisAt,
 } from "../utils/format";
 import { parseBddStepLines as parseBddStepLinesForAnalysis } from "../utils/bddStepLines";
+import { devWarn } from "../utils/devWarn";
 
 const SAVED_LINKED_LIST_VISIBLE_ROWS = 4;
 const SAVED_SELECTORS_VISIBLE_ROWS = 2;
@@ -990,11 +991,15 @@ export function AutomationSpikeSectionCards({
     try {
       const d = await api("/automation/suite");
       if (Array.isArray(d.cases)) setSuiteCases(d.cases);
-    } catch (_) {}
+    } catch (e) {
+      devWarn("refreshLists suite failed", e);
+    }
     try {
       const d = await api("/automation/selectors?limit=80");
       if (Array.isArray(d.rows)) setSelectors(d.rows);
-    } catch (_) {}
+    } catch (e) {
+      devWarn("refreshLists selectors failed", e);
+    }
   }, [api]);
 
   useEffect(() => {
@@ -1733,7 +1738,8 @@ export function AutomationSpikeSectionCards({
     await yieldToPaint();
     try {
       await api("/automation/cancel", "POST", { all_in_suite: false });
-    } catch (_) {
+    } catch (e) {
+      devWarn("requestStopCurrentTest suite cancel failed", e);
     } finally {
       setSuiteStopKind(null);
     }
@@ -1747,7 +1753,8 @@ export function AutomationSpikeSectionCards({
     await yieldToPaint();
     try {
       await api("/automation/cancel", "POST", { all_in_suite: true });
-    } catch (_) {
+    } catch (e) {
+      devWarn("requestStopAllSuite cancel failed", e);
     } finally {
       setSuiteStopKind(null);
     }

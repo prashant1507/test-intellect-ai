@@ -693,8 +693,13 @@ def _maybe_audit(kc: dict | None, key: str, action: str, jira_username: str | No
 
 def _raise_llm_route_error(e: Exception) -> None:
     if isinstance(e, ValueError):
+        _LOG.warning("LLM/generation validation error: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from e
-    raise HTTPException(status_code=502, detail=f"LLM error: {e}") from e
+    _LOG.exception("LLM or generation request failed")
+    raise HTTPException(
+        status_code=502,
+        detail="The AI service did not complete successfully. Try again later.",
+    ) from e
 
 
 async def _read_generate_body(request: Request, model_cls: type[BaseModel]) -> tuple[BaseModel, list[UploadFile]]:
@@ -1021,6 +1026,7 @@ async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
         except RequestException as e:
             raise _jira_request_http_exception(e) from e
         except ValueError as e:
+            _LOG.warning("JIRA update test issue failed: %s", e)
             raise HTTPException(status_code=500, detail=str(e)) from e
         _maybe_audit(kc, rk, f"Updated {result['key']}", body.username)
         return {"created_key": result["key"], "self": result.get("self", ""), "updated": True}
@@ -1045,6 +1051,7 @@ async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
     except RequestException as e:
         raise _jira_request_http_exception(e) from e
     except ValueError as e:
+        _LOG.warning("JIRA create test issue failed: %s", e)
         raise HTTPException(status_code=500, detail=str(e)) from e
     _maybe_audit(kc, rk, f"Created {result['key']}", body.username)
     return {"created_key": result["key"], "self": result.get("self", ""), "updated": False}
@@ -1099,6 +1106,7 @@ async def jira_attachment_download(body: AttachmentDownloadIn, _kc: Kc):
             key,
         )
     except ValueError as e:
+        _LOG.warning("JIRA attachment download rejected: %s", e)
         raise HTTPException(status_code=400, detail=str(e)) from e
     except RequestException as e:
         raise _jira_request_http_exception(e) from e

@@ -1,4 +1,5 @@
 import { UserManager, WebStorageStateStore } from "oidc-client-ts";
+import { devWarn } from "../utils/devWarn";
 
 export function clearOidcSessionStorageKeys() {
   try {
@@ -6,7 +7,9 @@ export function clearOidcSessionStorageKeys() {
       const k = sessionStorage.key(i);
       if (k && k.startsWith("oidc.")) sessionStorage.removeItem(k);
     }
-  } catch (_) {}
+  } catch (e) {
+    devWarn("clearOidcSessionStorageKeys failed", e);
+  }
 }
 
 export async function postAuthAuditEvent(accessToken, event) {
@@ -17,7 +20,9 @@ export async function postAuthAuditEvent(accessToken, event) {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
       body: JSON.stringify({ event }),
     });
-  } catch (_) {}
+  } catch (e) {
+    console.warn("postAuthAuditEvent failed", e);
+  }
 }
 
 export async function initKeycloakSession(cfg) {
@@ -43,14 +48,17 @@ export async function initKeycloakSession(cfg) {
     let desc = params.get("error_description") || oauthErr;
     try {
       desc = decodeURIComponent(String(desc).replace(/\+/g, " "));
-    } catch (_) {
+    } catch (e) {
+      devWarn("oauth error_description decode failed", e);
       desc = String(desc);
     }
     window.history.replaceState({}, document.title, window.location.pathname);
     try {
       await mgr.removeUser();
       await mgr.clearStaleState();
-    } catch (_) {}
+    } catch (e) {
+      devWarn("Keycloak cleanup after oauth error failed", e);
+    }
     clearOidcSessionStorageKeys();
     throw new Error(`Sign-in was rejected: ${desc}`);
   }
@@ -69,7 +77,9 @@ export async function initKeycloakSession(cfg) {
       try {
         await mgr.removeUser();
         await mgr.clearStaleState();
-      } catch (_) {}
+      } catch (cleanupErr) {
+        devWarn("Keycloak cleanup after signinRedirectCallback failure", cleanupErr);
+      }
       clearOidcSessionStorageKeys();
       const msg = e?.error_description || e?.message || String(e);
       throw new Error(
