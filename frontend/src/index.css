@@ -4270,50 +4270,6 @@ textarea.paste-requirements-textarea {
   min-width: 0;
 }
 
-.jira-issue-link-type-select {
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 100%;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  padding: 0.5rem 2.25rem 0.5rem 0.6rem;
-  font-family: inherit;
-  font-size: 0.95rem;
-  line-height: inherit;
-  border: 1px solid var(--input-border);
-  border-radius: 6px;
-  background-color: var(--input-bg);
-  background-repeat: no-repeat;
-  background-position: right 0.65rem center;
-  background-size: 11px 11px;
-  color: var(--text);
-  cursor: pointer;
-}
-
-[data-theme="light"] .jira-issue-link-type-select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%235c5c66' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round' d='M3 4.25 6 7.75 9 4.25'/%3E%3C/svg%3E");
-}
-
-[data-theme="dark"] .jira-issue-link-type-select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%238b98a5' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round' d='M3 4.25 6 7.75 9 4.25'/%3E%3C/svg%3E");
-}
-
-.jira-issue-link-type-select:focus {
-  outline: 2px solid var(--focus);
-  border-color: var(--focus);
-}
-
-.jira-issue-link-type-select:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 1px;
-}
-
-.jira-issue-link-type-select:disabled {
-  opacity: 0.85;
-  cursor: not-allowed;
-}
-
 .jira-fetch-requirements-row .jira-fetch-requirements-cell {
   display: flex;
   align-items: flex-end;

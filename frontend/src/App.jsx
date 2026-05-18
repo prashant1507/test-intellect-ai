@@ -51,7 +51,7 @@ import { loadJiraPushedMap, persistJiraPushedMap } from "./utils/jiraPushedStora
 import { remapTestCasePriority } from "./utils/jiraPriorityRemap";
 import { remapTestCaseSeverity } from "./utils/jiraSeverityRemap";
 import { normalizeLinkedJiraFromApi } from "./utils/linkedJiraPayload";
-import { readStoredJiraLinkType, readStoredJiraTestIssueType, readStoredJiraUrl } from "./utils/storage";
+import { readStoredJiraUrl } from "./utils/storage";
 import { isAnyGenBusy, isJiraGenBusy, isPasteGenBusy } from "./utils/generationBusy";
 import {
   clampAgenticMaxRounds,
@@ -74,10 +74,7 @@ export default function App() {
   const [showPw, setShowPw] = useState(false);
   const [ticketId, setTicketId] = useState("");
   const [jiraTestProject, setJiraTestProject] = useState("");
-  const [jiraTestIssueType, setJiraTestIssueType] = useState(readStoredJiraTestIssueType);
-  const [jiraLinkType, setJiraLinkType] = useState(readStoredJiraLinkType);
-  const [jiraIssueLinkTypes, setJiraIssueLinkTypes] = useState([]);
-  const [jiraIssueLinkTypesStatus, setJiraIssueLinkTypesStatus] = useState("idle");
+  const [linkedJiraTestsTypeLabel, setLinkedJiraTestsTypeLabel] = useState("Test");
   const [pushingKey, setPushingKey] = useState(null);
   const [jiraPushed, setJiraPushed] = useState(loadJiraPushedMap);
   const [jiraUpdateSucceededKeys, setJiraUpdateSucceededKeys] = useState({});
@@ -155,11 +152,8 @@ export default function App() {
   const [pasteMemoryKey, setPasteMemoryKey] = useState("");
   const [historyJiraTicketId, setHistoryJiraTicketId] = useState("");
   const inputModeRef = useRef(inputMode);
-  const jiraIssueLinkFetchGen = useRef(0);
   const jiraEnvDefaultsRef = useRef({
     testProject: "",
-    testIssueType: "Test",
-    linkType: "Test",
   });
   const [memoryPanel, setMemoryPanel] = useState(null);
 
@@ -234,8 +228,6 @@ export default function App() {
   const resetGenerationAndAttachmentDefaults = useCallback(() => {
     const d = jiraEnvDefaultsRef.current;
     setJiraTestProject(d.testProject);
-    setJiraTestIssueType(d.testIssueType);
-    setJiraLinkType(d.linkType);
     setMinTestCases("1");
     setMaxTestCases("5");
     setUseAgenticGen(true);
@@ -390,7 +382,6 @@ export default function App() {
     username,
     password,
     ticket_id: ticketId,
-    jira_test_issue_creation_type: jiraTestIssueType.trim(),
   });
 
   const apiForm = useCallback(
@@ -477,49 +468,6 @@ export default function App() {
     },
     [oidcUser, useKeycloak, oidcMgr, redirectToKeycloakLogin],
   );
-
-  useEffect(() => {
-    if (mock || inputMode !== "jira") {
-      jiraIssueLinkFetchGen.current += 1;
-      setJiraIssueLinkTypes([]);
-      setJiraIssueLinkTypesStatus("idle");
-    }
-  }, [mock, inputMode]);
-
-  const loadJiraIssueLinkTypes = useCallback(async () => {
-    if (mock || !jiraPasswordOk || !jiraUrl.trim() || !username.trim()) return;
-    const fetchId = (jiraIssueLinkFetchGen.current += 1);
-    setJiraIssueLinkTypesStatus("loading");
-    try {
-      const d = await api("/jira/issue-link-types", "POST", {
-        jira_url: jiraUrl.trim(),
-        username,
-        password,
-      });
-      if (fetchId !== jiraIssueLinkFetchGen.current) return;
-      const list = Array.isArray(d.issue_link_types) ? d.issue_link_types : [];
-      setJiraIssueLinkTypes(list);
-      setJiraIssueLinkTypesStatus("ok");
-    } catch {
-      if (fetchId !== jiraIssueLinkFetchGen.current) return;
-      setJiraIssueLinkTypes([]);
-      setJiraIssueLinkTypesStatus("error");
-    }
-  }, [mock, jiraPasswordOk, jiraUrl, username, password, api]);
-
-  useEffect(() => {
-    if (jiraIssueLinkTypesStatus !== "ok" || jiraIssueLinkTypes.length === 0) return;
-    setJiraLinkType((cur) => {
-      const t = cur.trim();
-      const names = new Set(jiraIssueLinkTypes.map((x) => x.name));
-      if (t && names.has(t)) return cur;
-      const pickTest = jiraIssueLinkTypes.find((x) => x.name === "Test")?.name;
-      if (pickTest) return pickTest;
-      const pickRelates = jiraIssueLinkTypes.find((x) => x.name === "Relates")?.name;
-      if (pickRelates) return pickRelates;
-      return jiraIssueLinkTypes[0]?.name || t || "Relates";
-    });
-  }, [jiraIssueLinkTypes, jiraIssueLinkTypesStatus]);
 
   const stopGeneration = useCallback(() => {
     try {
@@ -687,7 +635,6 @@ export default function App() {
           username,
           password,
           ticket_id: ticketId,
-          jira_test_issue_creation_type: jiraTestIssueType.trim(),
           attachment_id: attachmentId,
         });
         let headers = await withOidcAuthorization(
@@ -732,7 +679,7 @@ export default function App() {
         setErr(e?.message || "Download failed");
       }
     },
-    [jiraUrl, username, password, ticketId, jiraTestIssueType, oidcUser, useKeycloak, oidcMgr],
+    [jiraUrl, username, password, ticketId, oidcUser, useKeycloak, oidcMgr],
   );
 
   const syncLists = useCallback(async () => {
@@ -921,8 +868,6 @@ export default function App() {
           password,
           requirement_key: rk,
           test_project_key: updateExisting ? "" : jiraTestProject.trim(),
-          jira_test_issue_creation_type: jiraTestIssueType.trim() || "Test",
-          jira_link_type: jiraLinkType.trim() || "Test",
           test_case: stripTestCaseDiffMeta(tcToSend),
           existing_issue_key: updateExisting ? existingKey : "",
         });
@@ -1014,8 +959,6 @@ export default function App() {
       ticketId,
       key,
       jiraTestProject,
-      jiraTestIssueType,
-      jiraLinkType,
       inputMode,
       mock,
       req,
@@ -1345,28 +1288,18 @@ export default function App() {
             typeof c.default_jira_test_project_key === "string"
               ? c.default_jira_test_project_key.trim()
               : "",
-          testIssueType:
-            (typeof c.default_jira_test_issue_creation_type === "string"
-              ? c.default_jira_test_issue_creation_type.trim()
-              : "") || "Test",
-          linkType: "Test",
         };
+        setLinkedJiraTestsTypeLabel(
+          typeof c.default_jira_test_issue_creation_type === "string" &&
+            c.default_jira_test_issue_creation_type.trim()
+            ? c.default_jira_test_issue_creation_type.trim()
+            : "Test",
+        );
         if (typeof c.default_jira_url === "string" && c.default_jira_url.trim())
           setJiraUrl(c.default_jira_url.trim());
         if (c.default_username) setUsername(c.default_username);
         setJiraPasswordFromEnv(Boolean(c.jira_password_configured));
         if (typeof c.default_jira_test_project_key === "string") setJiraTestProject(c.default_jira_test_project_key);
-        try {
-          if (
-            typeof c.default_jira_test_issue_creation_type === "string" &&
-            c.default_jira_test_issue_creation_type &&
-            !localStorage.getItem("jira-ai-jira-test-issue-type")
-          ) {
-            setJiraTestIssueType(c.default_jira_test_issue_creation_type);
-          }
-        } catch (e) {
-          if (import.meta.env.DEV) console.warn("default jira test issue type from config", e);
-        }
         if (
           typeof c.llm_vision_configured === "boolean" ||
           typeof c.llm_requirement_images_max_count === "number" ||
@@ -1486,22 +1419,6 @@ export default function App() {
       if (import.meta.env.DEV) console.warn("persist jira-ai-jira-url", e);
     }
   }, [jiraUrl]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("jira-ai-jira-test-issue-type", jiraTestIssueType);
-    } catch (e) {
-      if (import.meta.env.DEV) console.warn("persist jira-ai-jira-test-issue-type", e);
-    }
-  }, [jiraTestIssueType]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem("jira-ai-jira-link-type", jiraLinkType);
-    } catch (e) {
-      if (import.meta.env.DEV) console.warn("persist jira-ai-jira-link-type", e);
-    }
-  }, [jiraLinkType]);
 
   useEffect(() => {
     if (memoryPanel?.phase !== "ok") return;
@@ -1891,7 +1808,6 @@ export default function App() {
         } else {
           setAnnounce("Requirements loaded.");
         }
-        void loadJiraIssueLinkTypes();
         await syncLists();
         return;
       }
@@ -2870,10 +2786,6 @@ export default function App() {
               <JiraGenerationFormFields
                 jiraTestProject={jiraTestProject}
                 setJiraTestProject={setJiraTestProject}
-                jiraTestIssueType={jiraTestIssueType}
-                setJiraTestIssueType={setJiraTestIssueType}
-                jiraLinkType={jiraLinkType}
-                setJiraLinkType={setJiraLinkType}
                 minTestCases={minTestCases}
                 maxTestCases={maxTestCases}
                 setMinTestCases={setMinTestCases}
@@ -2884,8 +2796,6 @@ export default function App() {
                 setUseAgenticGen={setUseAgenticGen}
                 agenticMaxRounds={agenticMaxRounds}
                 setAgenticMaxRounds={setAgenticMaxRounds}
-                issueLinkTypes={jiraIssueLinkTypes}
-                issueLinkTypesStatus={jiraIssueLinkTypesStatus}
               />
             ) : null}
               </div>
@@ -3180,7 +3090,7 @@ export default function App() {
                   {inputMode === "jira" && linkedJiraTests?.length ? (
                     <LinkedJiraTestsBlock
                       rows={linkedJiraTests}
-                      heading={`Linked ${jiraTestIssueType.trim() || "Test"}`}
+                      heading={`Linked ${linkedJiraTestsTypeLabel}`}
                     />
                   ) : null}
                   {inputMode === "jira" && linkedJiraWork?.length ? (

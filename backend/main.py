@@ -22,7 +22,6 @@ from jira_client import (
     download_attachment_for_ticket,
     fetch_issue,
     fetch_issue_attachment_meta,
-    fetch_issue_link_types,
     fetch_linked_test_issues,
     fetch_linked_work_issues,
     fetch_priorities,
@@ -109,15 +108,14 @@ class TicketIn(BaseModel):
     username: str = Field(..., min_length=1)
     password: str = ""
     ticket_id: str = Field(..., min_length=1)
-    jira_test_issue_creation_type: str = ""
 
 
 class AttachmentDownloadIn(TicketIn):
     attachment_id: str = Field(..., min_length=1)
 
 
-def _jira_test_issue_creation_type_from_body(body: TicketIn) -> str:
-    return (body.jira_test_issue_creation_type or "").strip() or settings.jira_test_issue_creation_type or "Test"
+def _effective_jira_test_issue_creation_type() -> str:
+    return (settings.jira_test_issue_creation_type or "Test").strip() or "Test"
 
 
 def _linked_jira_issue_rows(entries: list, *, work: bool) -> list[dict]:
@@ -192,7 +190,7 @@ async def _load_ticket_linked_jira(body: TicketIn, key: str) -> tuple[list, list
     ju = body.jira_url.strip()
     user = body.username
     pw = _require_jira_password(body.password)
-    tt = _jira_test_issue_creation_type_from_body(body)
+    tt = _effective_jira_test_issue_creation_type()
     linked: list = []
     try:
         linked = await asyncio.to_thread(
@@ -327,8 +325,6 @@ class PushTestToJiraIn(BaseModel):
     password: str = ""
     requirement_key: str = Field(..., min_length=1)
     test_project_key: str = ""
-    jira_test_issue_creation_type: str = ""
-    jira_link_type: str = ""
     test_case: dict = Field(default_factory=dict)
     existing_issue_key: str = ""
 
@@ -338,12 +334,6 @@ class JiraPrioritiesIn(BaseModel):
     username: str = Field(..., min_length=1)
     password: str = ""
     test_project_key: str = ""
-
-
-class JiraCredentialsIn(BaseModel):
-    jira_url: str = Field(..., min_length=1)
-    username: str = Field(..., min_length=1)
-    password: str = ""
 
 
 class ConfigResponse(BaseModel):
@@ -440,7 +430,7 @@ async def _maybe_fetch_jira_severity_names_for_generate(body: GenerateIn) -> lis
             body.username,
             _require_jira_password(body.password),
             norm_issue_key(body.test_project_key.strip()),
-            _jira_test_issue_creation_type_from_body(body),
+            _effective_jira_test_issue_creation_type(),
         )
         fid = find_severity_field_id(meta or {})
         if not fid or not isinstance(meta, dict):
@@ -1011,23 +1001,6 @@ async def jira_priorities(body: JiraPrioritiesIn, kc: Kc):
     return out
 
 
-@api.post("/jira/issue-link-types")
-async def jira_issue_link_types(body: JiraCredentialsIn, _kc: Kc):
-    if settings.mock:
-        return {"issue_link_types": []}
-    pw = _require_jira_password(body.password)
-    try:
-        items = await asyncio.to_thread(
-            fetch_issue_link_types,
-            body.jira_url.strip(),
-            body.username,
-            pw,
-        )
-    except RequestException as e:
-        raise _jira_request_http_exception(e) from e
-    return {"issue_link_types": items}
-
-
 @api.post("/jira/push-test-case")
 async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
     if settings.mock:
@@ -1066,8 +1039,8 @@ async def jira_push_test_case(body: PushTestToJiraIn, kc: Kc):
             rk,
             tpk,
             tc_jira,
-            body.jira_test_issue_creation_type.strip() or None,
-            body.jira_link_type.strip() or None,
+            None,
+            None,
         )
     except RequestException as e:
         raise _jira_request_http_exception(e) from e
@@ -1114,7 +1087,7 @@ async def jira_attachment_download(body: AttachmentDownloadIn, _kc: Kc):
             body.username,
             _require_jira_password(body.password),
             pk,
-            _jira_test_issue_creation_type_from_body(body),
+            _effective_jira_test_issue_creation_type(),
         )
     try:
         content, filename, ctype = await asyncio.to_thread(

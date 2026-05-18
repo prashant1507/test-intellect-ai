@@ -264,3 +264,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Fixed JIRA issue linking issue
+
+---
+## [2.8.0]
+
+### Changed
+
+- Removed 'Test Issue Type' from UI and can be set only from .env file
+- Removed 'Issue Link Type' from UI and can be set only from .env file
