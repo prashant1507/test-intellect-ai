@@ -24,7 +24,8 @@ variables accept **legacy aliases** (see LLM table).
 | `SHOW_PASTE_REQUIREMENTS_MODE_UI` | `true`  | Exposed via `GET /api/config`: show or hide **Paste Requirements** mode.          |
 | `SHOW_AUTO_TESTS_UI`              | `true`  | Exposed via `GET /api/config`: show or hide **Auto Tests** (BDD/Playwright) mode. |
 
-If all three of `SHOW_JIRA_MODE_UI`, `SHOW_PASTE_REQUIREMENTS_MODE_UI`, and `SHOW_AUTO_TESTS_UI` are off, the server sets `SHOW_JIRA_MODE_UI` back to `true` so at least one mode stays available.
+If all three of `SHOW_JIRA_MODE_UI`, `SHOW_PASTE_REQUIREMENTS_MODE_UI`, and `SHOW_AUTO_TESTS_UI` are off, the server
+sets `SHOW_JIRA_MODE_UI` back to `true` so at least one mode stays available.
 
 ---
 
@@ -78,6 +79,17 @@ If all three of `SHOW_JIRA_MODE_UI`, `SHOW_PASTE_REQUIREMENTS_MODE_UI`, and `SHO
 | `KEYCLOAK_CLIENT_SECRET`        | *(empty)* | Client secret (if the client type requires it).                                                                            |
 | `KEYCLOAK_IDLE_TIMEOUT_MINUTES` | `60`      | Idle timeout (minutes) exposed to the UI.                                                                                  |
 | `KEYCLOAK_INTERNAL_URL`         | *(empty)* | For token/JWKS from the server when it differs from `KEYCLOAK_URL` (e.g. Docker). Empty uses `KEYCLOAK_URL` for local API. |
+
+---
+
+## HTTP / CORS
+
+| Variable       | Example                                               | Description                                                                                                                                                                                                                                                                         |
+|----------------|-------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `CORS_ORIGINS` | `https://app.example.com,https://staging.example.com` | Comma-separated **browser** origins allowed for cross-origin API requests **with credentials** (`Access-Control-Allow-Origin` per request must match an entry). When **empty**, the API uses built-in defaults: local Vite (`5173`) and `http://localhost:8001` / `127.0.0.1:8001`. |
+
+When the UI and API are on different production hostnames, set this to every origin that should call the API (scheme +
+host + port, no path).
 
 ---
 

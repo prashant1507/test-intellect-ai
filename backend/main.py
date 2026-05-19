@@ -77,6 +77,20 @@ from settings import settings
 
 _LOG = logging.getLogger(__name__)
 
+_DEFAULT_CORS_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:8001",
+    "http://127.0.0.1:8001",
+]
+
+
+def _cors_allow_origins() -> list[str]:
+    raw = (settings.cors_origins or "").strip()
+    if raw:
+        return [x.strip() for x in raw.split(",") if x.strip()]
+    return list(_DEFAULT_CORS_ORIGINS)
+
 
 def _strip(s: str) -> str:
     return (s or "").strip()
@@ -827,12 +841,7 @@ async def _jira_generate_route_kwargs(body: GenerateIn) -> tuple[str, dict, dict
 app = FastAPI(title="Test Intellect AI", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:8001",
-        "http://127.0.0.1:8001",
-    ],
+    allow_origins=_cors_allow_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

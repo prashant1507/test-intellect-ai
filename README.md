@@ -463,12 +463,16 @@ npm run dev
 
 1. `docker build --build-arg TARGETPLATFORM=linux/amd64 -t test-intellect-ai:latest .`
 2. `docker compose up`
-3UI is typically at `http://127.0.0.1:8001`
+3. UI is typically at `http://127.0.0.1:8001`
 
 Containers often set `LLM_TEXT_URL` → `http://host.docker.internal:...` to reach the host’s LM Studio. `USE_KEYCLOAK` (
 not a
 lone `KEYCLOAK=` flag) must be `true` to enable Keycloak. See [docker-compose.yml](docker-compose.yml) for
 `KEYCLOAK_INTERNAL_URL` defaults.
+
+**Secrets:** Do not put real `KEYCLOAK_CLIENT_SECRET`, API tokens, or Jira passwords in committed compose files. Use a
+root `.env` (Compose substitutes `${VAR}`) or your orchestrator’s secret store. The sample compose uses
+`${KEYCLOAK_CLIENT_SECRET:-}` so the variable can be omitted when Keycloak is off.
 
 </details>
 
@@ -551,6 +555,14 @@ Development testing has used a local OpenAI-compatible endpoint (e.g. LM Studio 
 - qwen/qwen3-coder-30b
 - openai/gpt-oss-20b
 - openai/gpt-oss-120b
+
+---
+
+## Production hardening notes
+
+- **CORS:** For deployments where the UI is not served from the default dev origins, set `CORS_ORIGINS` in `.env` (comma-separated exact origins, including `https://` and port if non-standard). See [resources/env-variables.md](resources/env-variables.md).
+- **Docker:** Keep `KEYCLOAK_CLIENT_SECRET` and other secrets out of version control; use a root `.env` or your platform’s secret injection (Compose substitutes `${KEYCLOAK_CLIENT_SECRET}` from the environment).
+- **UI:** An error boundary wraps the React tree so a render failure shows a recovery message instead of a blank screen.
 
 ---
 

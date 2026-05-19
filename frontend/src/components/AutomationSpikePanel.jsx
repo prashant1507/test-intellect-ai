@@ -282,7 +282,6 @@ export function AutomationSpikePanel({
     setSaveBddInvalid(false);
     setSaveTestTypeInvalid(false);
     const titleT = title.trim();
-    const reqT = requirementTicketId.trim();
     const jiraT = jiraId.trim();
     const okTitle = Boolean(titleT);
     const okBdd = Boolean(bdd.trim());
@@ -741,7 +740,7 @@ export function AutomationSpikePanel({
           (Array.isArray(result.steps) && result.steps.length > 0) ? (
             <details
               className="automation-spike-analysis"
-              defaultOpen={Boolean(result.error)}
+              defaultOpen={Boolean(result.error)} // eslint-disable-line react/no-unknown-property
             >
               <summary className="automation-spike-analysis-summary">
                 <svg

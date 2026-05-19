@@ -23,6 +23,7 @@ services:
       JIRA_LINKED_WORK_ISSUE_TYPES: "Story,Improvement,Feature"
       JIRA_CREATEMETA_TEST_TTL_SECONDS: "3600"
       JIRA_TEST_SEVERITY_FIELD_ID: ""
+#      CORS_ORIGINS: ""
 
       MOCK: "false"
 

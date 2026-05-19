@@ -91,6 +91,7 @@ class Settings(BaseSettings):
     jira_test_severity_field_id: str = ""
     memory_similarity_threshold: float = 0.92
     show_auto_tests_ui: bool = True
+    cors_origins: str = ""
     automation_post_analysis: bool = True
     automation_write_run_html: bool = True
     automation_default_timeout_ms: int = 30_000

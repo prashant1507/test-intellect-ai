@@ -2996,7 +2996,7 @@ export default function App() {
               <p className="form-hint-warn">Use “Fetch Requirements” to load this ticket before generating test cases.</p>
             ) : null}
             {inputMode === "paste" && !canSubmitPaste ? (
-              <p className="form-hint-warn">Paste requirement text to enable 'Generate Test Cases'.</p>
+              <p className="form-hint-warn">Paste requirement text to enable Generate Test Cases.</p>
             ) : null}
             </>
             ) : null}

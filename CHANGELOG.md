@@ -272,3 +272,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Removed 'Test Issue Type' from UI and can be set only from .env file
 - Removed 'Issue Link Type' from UI and can be set only from .env file
+- Refactoring

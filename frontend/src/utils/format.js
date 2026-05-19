@@ -79,7 +79,7 @@ export function changeStatusLabel(raw) {
   return raw ? String(raw) : "New";
 }
 
-export function changeStatusTooltip(_key) {
+export function changeStatusTooltip() {
   return "";
 }
 
